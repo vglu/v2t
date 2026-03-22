@@ -4734,7 +4734,7 @@ dependencies = [
 
 [[package]]
 name = "v2t"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "futures-util",

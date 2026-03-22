@@ -1,6 +1,7 @@
 # Build installers and attach to a GitHub Release when you push a version tag.
 # Bump version in package.json, src-tauri/Cargo.toml, and src-tauri/tauri.conf.json first,
-# then: git tag v0.2.0 && git push origin v0.2.0
+# then: git tag v1.0.0 && git push origin v1.0.0
+# See docs/RELEASE.md for the full checklist.
 name: Release
 
 on:
@@ -30,6 +31,8 @@ jobs:
             args: --target x86_64-apple-darwin
           - platform: windows-latest
             args: ""
+          - platform: ubuntu-22.04
+            args: ""
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -39,6 +42,22 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
+
+      - name: Install Linux dependencies for Tauri
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            patchelf
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -65,11 +84,15 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Video to Text ${{ github.ref_name }}
           releaseBody: |
-            Portable **Video to Text (v2t)** — video / audio / URLs → text via ffmpeg, yt-dlp, and a transcription API.
+            **Video to Text (v2t)** — video / audio / URLs → text via ffmpeg, yt-dlp, and either an OpenAI-compatible HTTP API or local whisper.cpp.
 
-            **Windows:** run the NSIS/MSI installer from the assets below (or use the portable folder layout from the README).
+            | OS | Assets |
+            |----|--------|
+            | **Windows** | NSIS setup `.exe`, MSI `.msi` (x64) |
+            | **macOS** | DMG per arch: **aarch64** = Apple Silicon, **x86_64** = Intel |
+            | **Linux** | `.deb` and AppImage (built on Ubuntu 22.04; install WebKitGTK deps per distro if the app fails to start) |
 
-            **macOS:** choose the DMG matching your Mac (**aarch64** = Apple Silicon, **x86_64** = Intel).
+            Close the running app before reinstalling on Windows. Optional: put `ffmpeg` / `yt-dlp` next to the executable or use in-app download (Windows/macOS).
 
             ---
           generateReleaseNotes: true
