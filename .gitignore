@@ -53,6 +53,11 @@ docs/private/
 private/
 *.local.md
 
+# Agent/orchestrator notes and internal phase plan (local only; not on GitHub)
+AGENTS.md
+CLAUDE.md
+docs/PLAN.md
+
 # Optional: local MCP or Cursor overrides with machine paths (uncomment if used)
 # .cursor/mcp.json
 
