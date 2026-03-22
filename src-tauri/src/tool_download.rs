@@ -1,4 +1,6 @@
 //! One-click download of ffmpeg + yt-dlp into `app_data_dir/v2t/bin` (Windows + macOS).
+//! Also: `whisper-cli` on Windows from official [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp)
+//! release zip (MIT); on macOS upstream does not ship a CLI zip — we detect Homebrew installs.
 
 use std::path::{Path, PathBuf};
 
@@ -51,6 +53,17 @@ pub struct DownloadedMediaTools {
     pub yt_dlp_path: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadedWhisperCli {
+    pub whisper_cli_path: String,
+}
+
+/// Official Windows x64 bundle (includes `whisper-cli.exe` + DLLs in `Release/`).
+#[cfg(windows)]
+const WHISPER_CPP_WIN_X64_ZIP_URL: &str =
+    "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip";
+
 /// User-visible Documents folder (OS standard).
 pub fn default_documents_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
@@ -76,6 +89,184 @@ pub async fn download_managed_media_tools(
                 .to_string(),
         )
     }
+}
+
+/// **Windows:** downloads and extracts the official `whisper-bin-x64.zip` (DLLs + `whisper-cli.exe`)
+/// into `app_data_dir/v2t/bin/whisper-cpp/`.
+///
+/// **macOS:** GitHub releases do not include a macOS CLI archive; we search typical Homebrew paths
+/// (`/opt/homebrew/bin/whisper-cli`, `/usr/local/bin/whisper-cli`). If missing, returns an error with
+/// `brew install whisper-cpp`.
+///
+/// **Linux:** not supported here — use distro packages or build from source.
+pub async fn download_whisper_cli_managed(app: &AppHandle) -> Result<DownloadedWhisperCli, String> {
+    #[cfg(windows)]
+    {
+        return download_whisper_cli_windows(app).await;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return locate_whisper_cli_macos(app);
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        Err(
+            "Automatic whisper-cli setup is available on Windows (download) and macOS (Homebrew detection). On Linux install whisper.cpp from your package manager."
+                .to_string(),
+        )
+    }
+}
+
+#[cfg(windows)]
+async fn download_whisper_cli_windows(app: &AppHandle) -> Result<DownloadedWhisperCli, String> {
+    let base = managed_bin_dir(app)?;
+    std::fs::create_dir_all(&base).map_err(|e| format!("create bin dir: {e}"))?;
+    let dest_dir = base.join("whisper-cpp");
+    if dest_dir.exists() {
+        let _ = std::fs::remove_dir_all(&dest_dir);
+    }
+    std::fs::create_dir_all(&dest_dir).map_err(|e| format!("create whisper-cpp dir: {e}"))?;
+
+    let tmp_zip = std::env::temp_dir().join(format!(
+        "v2t-whisper-cpp-{}.zip",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
+
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "whisper-cli".to_string(),
+            phase: "downloading".to_string(),
+            bytes_received: 0,
+            total_bytes: None,
+            message: "Downloading whisper.cpp Windows bundle (ggml-org/whisper.cpp, MIT)…".to_string(),
+        },
+    );
+
+    download_file_streaming(app, WHISPER_CPP_WIN_X64_ZIP_URL, &tmp_zip, "whisper-cli").await?;
+
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "whisper-cli".to_string(),
+            phase: "extracting".to_string(),
+            bytes_received: tmp_zip.metadata().map(|m| m.len()).unwrap_or(0),
+            total_bytes: None,
+            message: "Extracting whisper-cli.exe and DLLs…".to_string(),
+        },
+    );
+
+    let zip_path = tmp_zip.clone();
+    let dest = dest_dir.clone();
+    tokio::task::spawn_blocking(move || extract_whisper_cpp_windows_zip(&zip_path, &dest))
+        .await
+        .map_err(|e| format!("extract task: {e}"))??;
+
+    let _ = std::fs::remove_file(&tmp_zip);
+
+    let exe = dest_dir.join("whisper-cli.exe");
+    if !exe.is_file() {
+        return Err(
+            "whisper-cli.exe missing after extract (upstream zip layout may have changed)".to_string(),
+        );
+    }
+
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "whisper-cli".to_string(),
+            phase: "done".to_string(),
+            bytes_received: exe.metadata().map(|m| m.len()).unwrap_or(0),
+            total_bytes: None,
+            message: "whisper-cli ready (keep DLLs in the same folder)".to_string(),
+        },
+    );
+
+    Ok(DownloadedWhisperCli {
+        whisper_cli_path: exe.to_string_lossy().into_owned(),
+    })
+}
+
+#[cfg(windows)]
+fn extract_whisper_cpp_windows_zip(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
+    use std::fs::File;
+    use zip::ZipArchive;
+
+    let f = File::open(zip_path).map_err(|e| format!("open zip: {e}"))?;
+    let mut archive = ZipArchive::new(f).map_err(|e| format!("read zip: {e}"))?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(|e| format!("zip entry: {e}"))?;
+        let raw = file.name().replace('\\', "/");
+        if raw.ends_with('/') {
+            continue;
+        }
+        let Some(rel) = raw
+            .strip_prefix("Release/")
+            .or_else(|| raw.strip_prefix("release/"))
+        else {
+            continue;
+        };
+        if rel.is_empty() {
+            continue;
+        }
+
+        let out_path = dest_dir.join(rel);
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
+        }
+        let mut out = std::fs::File::create(&out_path)
+            .map_err(|e| format!("create {}: {e}", out_path.display()))?;
+        std::io::copy(&mut file, &mut out).map_err(|e| format!("write {}: {e}", rel))?;
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn locate_whisper_cli_macos(app: &AppHandle) -> Result<DownloadedWhisperCli, String> {
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "whisper-cli".to_string(),
+            phase: "searching".to_string(),
+            bytes_received: 0,
+            total_bytes: None,
+            message: "Looking for whisper-cli (Homebrew paths)…".to_string(),
+        },
+    );
+
+    let candidates = [
+        "/opt/homebrew/bin/whisper-cli",
+        "/usr/local/bin/whisper-cli",
+    ];
+    for c in candidates {
+        let p = std::path::PathBuf::from(c);
+        if p.is_file() {
+            emit(
+                app,
+                ToolDownloadProgress {
+                    tool: "whisper-cli".to_string(),
+                    phase: "done".to_string(),
+                    bytes_received: p.metadata().map(|m| m.len()).unwrap_or(0),
+                    total_bytes: None,
+                    message: format!("Found {}", c),
+                },
+            );
+            return Ok(DownloadedWhisperCli {
+                whisper_cli_path: c.to_string(),
+            });
+        }
+    }
+
+    Err(
+        "whisper-cli not found. Apple does not ship a CLI zip in whisper.cpp releases — install with Homebrew: \
+         `brew install whisper-cpp`, then press this button again or use Pick file…"
+            .to_string(),
+    )
 }
 
 #[cfg(windows)]

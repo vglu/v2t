@@ -4,6 +4,7 @@ import type {
   AppSettings,
   DependencyReport,
   DownloadedMediaTools,
+  DownloadedWhisperCli,
   WhisperModelMeta,
 } from "../types/settings";
 
@@ -26,17 +27,23 @@ export async function saveSettings(settings: AppSettings): Promise<boolean> {
   }
 }
 
-export async function checkDependencies(
-  ffmpegPath: string | null,
-  ytDlpPath: string | null,
-  whisperCliPath: string | null,
-): Promise<DependencyReport | null> {
+export async function checkDependencies(s: {
+  ffmpegPath: string | null;
+  ytDlpPath: string | null;
+  whisperCliPath: string | null;
+  transcriptionMode: string;
+  whisperModel: string;
+  whisperModelsDir: string | null;
+}): Promise<DependencyReport | null> {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     return await invoke<DependencyReport>("check_dependencies", {
-      ffmpegPathOverride: ffmpegPath,
-      ytDlpPathOverride: ytDlpPath,
-      whisperCliPathOverride: whisperCliPath,
+      ffmpegPathOverride: s.ffmpegPath,
+      ytDlpPathOverride: s.ytDlpPath,
+      whisperCliPathOverride: s.whisperCliPath,
+      transcriptionMode: s.transcriptionMode,
+      whisperModel: s.whisperModel,
+      whisperModelsDir: s.whisperModelsDir,
     });
   } catch {
     return null;
@@ -111,6 +118,11 @@ export async function defaultDocumentsDir(): Promise<string | null> {
 export async function downloadMediaTools(): Promise<DownloadedMediaTools> {
   const { invoke } = await import("@tauri-apps/api/core");
   return await invoke<DownloadedMediaTools>("download_media_tools");
+}
+
+export async function downloadWhisperCli(): Promise<DownloadedWhisperCli> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return await invoke<DownloadedWhisperCli>("download_whisper_cli");
 }
 
 export async function defaultWhisperModelsDir(): Promise<string | null> {

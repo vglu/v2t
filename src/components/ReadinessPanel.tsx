@@ -2,6 +2,8 @@ import type { AppSettings, DependencyReport } from "../types/settings";
 
 type Props = {
   report: DependencyReport | null;
+  /** OS Documents path (for “using Documents” hint). */
+  documentsPath: string | null;
   settings: Pick<
     AppSettings,
     "outputDir" | "apiKey" | "transcriptionMode" | "whisperCliPath"
@@ -15,19 +17,37 @@ function StatusDot({ ok }: { ok: boolean }) {
   );
 }
 
-export function ReadinessPanel({ report, settings, onOpenSettings }: Props) {
+function pathsProbablyEqual(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = a?.trim();
+  const y = b?.trim();
+  if (!x || !y) return false;
+  return x.replace(/\\/g, "/").toLowerCase() === y.replace(/\\/g, "/").toLowerCase();
+}
+
+export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings }: Props) {
   const toolsUnknown = report === null;
   const ffmpegOk = report?.ffmpegFound ?? false;
   const ytDlpOk = report?.ytDlpFound ?? false;
   const outputOk = Boolean(settings.outputDir?.trim());
+  const outputIsDocuments = pathsProbablyEqual(settings.outputDir, documentsPath);
+
   const useLocal = settings.transcriptionMode === "localWhisper";
-  const credOk = useLocal
-    ? (report?.whisperCliFound ?? false)
-    : Boolean(settings.apiKey?.trim());
 
-  const allOk = !toolsUnknown && ffmpegOk && ytDlpOk && outputOk && credOk;
+  const whisperCliOk = !toolsUnknown && (report?.whisperCliFound ?? false);
+  const modelOk = !toolsUnknown && (report?.whisperModelReady ?? false);
+  const apiKeyOk = Boolean(settings.apiKey?.trim());
 
-  const rows = [
+  const toolsReady = !toolsUnknown && ffmpegOk && ytDlpOk;
+  const transcriptionReady = useLocal ? whisperCliOk && modelOk : apiKeyOk;
+
+  const allOk = toolsReady && outputOk && transcriptionReady;
+
+  const rows: {
+    id: string;
+    label: string;
+    ok: boolean;
+    hint: string;
+  }[] = [
     {
       id: "ffmpeg",
       label: "ffmpeg",
@@ -36,7 +56,7 @@ export function ReadinessPanel({ report, settings, onOpenSettings }: Props) {
         ? "Checking… (run inside the desktop app)"
         : ffmpegOk
           ? "Found — audio can be normalized."
-          : "Missing — place ffmpeg next to the app or set path in Settings.",
+          : "Missing — install from Settings or place next to the app.",
     },
     {
       id: "ytdlp",
@@ -46,36 +66,53 @@ export function ReadinessPanel({ report, settings, onOpenSettings }: Props) {
         ? "Checking…"
         : ytDlpOk
           ? "Found — URLs can be downloaded."
-          : "Missing — place yt-dlp next to the app or set path in Settings.",
+          : "Missing — install from Settings or place next to the app.",
     },
     {
       id: "output",
       label: "Output folder",
       ok: outputOk,
-      hint: outputOk
-        ? "Set — transcripts will save here."
-        : "Not set — choose a folder in Settings.",
+      hint: !outputOk
+        ? "Not set — choose a folder in the setup guide or Settings."
+        : outputIsDocuments
+          ? "Set — using Documents (default). Transcripts save here."
+          : "Set — transcripts will save here.",
     },
-    useLocal
-      ? {
-          id: "whisper",
-          label: "whisper-cli",
-          ok: toolsUnknown ? false : (report?.whisperCliFound ?? false),
-          hint: toolsUnknown
-            ? "Checking…"
-            : report?.whisperCliFound
-              ? "Found — local transcription can run offline."
-              : "Missing — build whisper.cpp, set path in Settings, or place whisper-cli (or main) next to the app.",
-        }
-      : {
-          id: "api",
-          label: "API key",
-          ok: credOk,
-          hint: credOk
-            ? "Set — transcription API is ready."
-            : "Missing — add your key in Settings (saved in OS secure storage).",
-        },
   ];
+
+  if (useLocal) {
+    rows.push(
+      {
+        id: "whisper-cli",
+        label: "whisper-cli (executable)",
+        ok: toolsUnknown ? false : whisperCliOk,
+        hint: toolsUnknown
+          ? "Checking…"
+          : whisperCliOk
+            ? "Found — local engine ready."
+            : "Missing — pick whisper-cli in Settings (or put whisper-cli / main next to the app).",
+      },
+      {
+        id: "ggml-model",
+        label: "Whisper model (.bin)",
+        ok: toolsUnknown ? false : modelOk,
+        hint: toolsUnknown
+          ? "Checking…"
+          : modelOk
+            ? "Verified on disk (SHA-1) — ready for offline transcription."
+            : "Missing or checksum mismatch — use Download / verify model in Settings or setup.",
+      },
+    );
+  } else {
+    rows.push({
+      id: "api",
+      label: "Cloud API key",
+      ok: apiKeyOk,
+      hint: apiKeyOk
+        ? "Saved in OS secure storage — cloud transcription ready."
+        : "Missing — add your key in the setup guide or Settings (not used for Local Whisper).",
+    });
+  }
 
   return (
     <section
@@ -88,8 +125,17 @@ export function ReadinessPanel({ report, settings, onOpenSettings }: Props) {
         <p className="readiness-sub">
           {allOk
             ? "All set — add files or URLs below and press Start queue."
-            : "Complete the items below (we check them for you)."}
+            : "Complete the checklist (we detect tools and files automatically)."}
         </p>
+        {useLocal ? (
+          <p className="readiness-mode-hint">
+            Mode: <strong>Local Whisper</strong> — cloud API key is not required.
+          </p>
+        ) : (
+          <p className="readiness-mode-hint">
+            Mode: <strong>Cloud API</strong> — whisper-cli and ggml model are not required.
+          </p>
+        )}
         {toolsUnknown ? (
           <p className="readiness-tools-unknown" data-testid="deps-unknown">
             Tools: unknown (run inside the desktop app to detect ffmpeg / yt-dlp)
@@ -102,9 +148,8 @@ export function ReadinessPanel({ report, settings, onOpenSettings }: Props) {
         ) : null}
         {!toolsUnknown && (!ffmpegOk || !ytDlpOk) ? (
           <p className="readiness-tool-hint" data-testid="readiness-tool-hint">
-            Tip: open <strong>Settings</strong> — on Windows or macOS you can use{" "}
-            <strong>Download ffmpeg &amp; yt-dlp for me</strong>, or place the binaries next to the app
-            and set paths under <strong>I’ll install … myself</strong>.
+            Tip: in <strong>Settings</strong> — on Windows or macOS use{" "}
+            <strong>Download ffmpeg &amp; yt-dlp for me</strong>, or install manually.
           </p>
         ) : null}
       </div>

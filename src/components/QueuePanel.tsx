@@ -17,6 +17,50 @@ type Props = {
 
 const MAX_LOG = 200;
 
+function IconRevealInFolder({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconOpenFile({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 2v6h6M8 13h8M8 17h5M8 9h2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function QueuePanel({ settings, readinessComplete }: Props) {
   const { recursiveFolderScan } = settings;
   const [urlDraft, setUrlDraft] = useState("");
@@ -257,7 +301,12 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           setJobs((prev) =>
             prev.map((j) =>
               j.id === job.id
-                ? { ...j, status: "done", detail: result.summary }
+                ? {
+                    ...j,
+                    status: "done",
+                    detail: result.summary,
+                    transcriptPath: result.transcriptPath,
+                  }
                 : j,
             ),
           );
@@ -305,6 +354,26 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
   function copyLog() {
     void navigator.clipboard.writeText(logLines.join("\n"));
     appendLog("Log copied to clipboard");
+  }
+
+  async function revealTranscriptInFolder(path: string) {
+    try {
+      const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+      await revealItemInDir(path);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      appendLog(`Не удалось открыть папку: ${msg}`);
+    }
+  }
+
+  async function openTranscriptFile(path: string) {
+    try {
+      const { openPath } = await import("@tauri-apps/plugin-opener");
+      await openPath(path);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      appendLog(`Не удалось открыть файл: ${msg}`);
+    }
   }
 
   const queueEmpty = jobs.length === 0;
@@ -398,23 +467,61 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
               <th>Label</th>
               <th>Kind</th>
               <th>Status</th>
+              <th className="queue-table-actions-head" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
             {jobs.length === 0 ? (
               <tr>
-                <td colSpan={3} className="muted">
+                <td colSpan={4} className="muted">
                   No jobs yet
                 </td>
               </tr>
             ) : (
-              jobs.map((j) => (
-                <tr key={j.id} data-testid="queue-row">
-                  <td title={j.source}>{j.displayLabel}</td>
-                  <td>{j.kind}</td>
-                  <td data-testid={`job-status-${j.id}`}>{j.status}</td>
-                </tr>
-              ))
+              jobs.map((j) => {
+                const outPath = j.transcriptPath;
+                const canOpenResult = j.status === "done" && Boolean(outPath?.trim());
+                return (
+                  <tr key={j.id} data-testid="queue-row">
+                    <td title={j.source}>{j.displayLabel}</td>
+                    <td>{j.kind}</td>
+                    <td>
+                      <div className="queue-status-cell">
+                        {j.status === "done" ? (
+                          <span className="queue-status-check" aria-hidden>
+                            ✓
+                          </span>
+                        ) : null}
+                        <span data-testid={`job-status-${j.id}`}>{j.status}</span>
+                      </div>
+                    </td>
+                    <td className="queue-table-actions-cell">
+                      {canOpenResult && outPath ? (
+                        <div className="queue-table-actions-inner">
+                          <button
+                            type="button"
+                            className="queue-table-action-btn queue-table-action-btn--icon"
+                            title="Show in folder"
+                            aria-label="Show in folder"
+                            onClick={() => void revealTranscriptInFolder(outPath)}
+                          >
+                            <IconRevealInFolder className="queue-action-icon" />
+                          </button>
+                          <button
+                            type="button"
+                            className="queue-table-action-btn queue-table-action-btn--icon"
+                            title="Open file"
+                            aria-label="Open file"
+                            onClick={() => void openTranscriptFile(outPath)}
+                          >
+                            <IconOpenFile className="queue-action-icon" />
+                          </button>
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

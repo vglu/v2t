@@ -1,0 +1,79 @@
+# Build installers and attach to a GitHub Release when you push a version tag.
+# Bump version in package.json, src-tauri/Cargo.toml, and src-tauri/tauri.conf.json first,
+# then: git tag v0.2.0 && git push origin v0.2.0
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+          - platform: windows-latest
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and upload bundles
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: Apple code signing & notarization (add repo secrets when ready)
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Video to Text ${{ github.ref_name }}
+          releaseBody: |
+            Portable **Video to Text (v2t)** — video / audio / URLs → text via ffmpeg, yt-dlp, and a transcription API.
+
+            **Windows:** run the NSIS/MSI installer from the assets below (or use the portable folder layout from the README).
+
+            **macOS:** choose the DMG matching your Mac (**aarch64** = Apple Silicon, **x86_64** = Intel).
+
+            ---
+          generateReleaseNotes: true
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: false
+          args: ${{ matrix.args }}

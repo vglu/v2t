@@ -100,6 +100,27 @@ cd src-tauri && cargo test
 npm run e2e         # Playwright (поднимает dev-сервер)
 ```
 
+## Релизы и CI (GitHub Actions)
+
+В репозитории настроено:
+
+| Workflow | Когда | Что делает |
+|----------|--------|------------|
+| **CI** (`.github/workflows/ci.yml`) | push / PR в `main` или `master` | `npm run build`, `npm run test:run`, `cargo test` в `src-tauri` |
+| **Release** (`.github/workflows/release.yml`) | push **git-тега** вида `v*` (например `v0.2.0`) | Сборка **Windows** (NSIS/MSI) и **macOS** (отдельно **aarch64** и **x86_64** DMG), загрузка в [GitHub Releases](https://docs.github.com/repositories/releasing-projects-on-github/about-releases) |
+
+**Как выпустить версию**
+
+1. Синхронизируйте версию в **`package.json`**, **`src-tauri/Cargo.toml`** и **`src-tauri/tauri.conf.json`**.
+2. Закоммитьте и запушьте ветку.
+3. Создайте и запушьте тег: `git tag v0.2.0` → `git push origin v0.2.0`.
+
+Если релиз падает с **Resource not accessible by integration**: в GitHub → **Settings → Actions → General → Workflow permissions** включите **Read and write permissions** для `GITHUB_TOKEN`.
+
+Подпись и нотаризация Apple / подпись Windows в workflow закомментированы в `env` — при появлении секретов в настройках репозитория их можно раскомментировать.
+
+**Dependabot** (`.github/dependabot.yml`) предлагает обновления для Actions, npm и Cargo по расписанию.
+
 ## Документация по процессу
 
 - План фаз: [`docs/PLAN.md`](docs/PLAN.md)

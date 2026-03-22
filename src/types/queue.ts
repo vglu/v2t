@@ -15,4 +15,6 @@ export type QueueJob = {
   displayLabel: string;
   status: QueueJobStatus;
   detail?: string;
+  /** Filled when status is `done` — path to the primary .txt transcript */
+  transcriptPath?: string | null;
 };

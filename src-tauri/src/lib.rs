@@ -31,14 +31,22 @@ fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<(), Str
 
 #[tauri::command]
 fn check_dependencies(
+    app: tauri::AppHandle,
     ffmpeg_path_override: Option<String>,
     yt_dlp_path_override: Option<String>,
     whisper_cli_path_override: Option<String>,
+    transcription_mode: Option<String>,
+    whisper_model: Option<String>,
+    whisper_models_dir: Option<String>,
 ) -> deps::DependencyReport {
     deps::check_dependencies(
+        &app,
         ffmpeg_path_override.as_deref(),
         yt_dlp_path_override.as_deref(),
         whisper_cli_path_override.as_deref(),
+        transcription_mode.as_deref(),
+        whisper_model.as_deref(),
+        whisper_models_dir.as_deref(),
     )
 }
 
@@ -143,6 +151,13 @@ async fn download_media_tools(
     tool_download::download_managed_media_tools(&app).await
 }
 
+#[tauri::command]
+async fn download_whisper_cli(
+    app: tauri::AppHandle,
+) -> Result<tool_download::DownloadedWhisperCli, String> {
+    tool_download::download_whisper_cli_managed(&app).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -161,7 +176,8 @@ pub fn run() {
             default_whisper_models_dir,
             download_whisper_model,
             default_documents_dir,
-            download_media_tools
+            download_media_tools,
+            download_whisper_cli
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

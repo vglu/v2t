@@ -18,6 +18,7 @@ describe("DependencyBar", () => {
           ytDlpPath: "/bin/yt-dlp",
           whisperCliFound: true,
           whisperCliPath: "/bin/whisper-cli",
+          whisperModelReady: true,
         }}
       />,
     );

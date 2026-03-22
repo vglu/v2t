@@ -47,6 +47,8 @@ export type DependencyReport = {
   ytDlpPath: string | null;
   whisperCliFound: boolean;
   whisperCliPath: string | null;
+  /** Local Whisper: selected ggml file on disk and SHA-1 matches catalog. */
+  whisperModelReady: boolean;
 };
 
 export type WhisperModelMeta = {
@@ -58,4 +60,8 @@ export type WhisperModelMeta = {
 export type DownloadedMediaTools = {
   ffmpegPath: string;
   ytDlpPath: string;
+};
+
+export type DownloadedWhisperCli = {
+  whisperCliPath: string;
 };

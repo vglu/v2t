@@ -4,6 +4,7 @@ import {
   defaultDocumentsDir,
   defaultWhisperModelsDir,
   downloadMediaTools,
+  downloadWhisperCli,
   downloadWhisperModel,
   listWhisperModels,
 } from "../lib/invokeSafe";
@@ -15,6 +16,8 @@ type Props = {
   onSave: () => void;
   /** Save merged settings (e.g. after auto-download paths). */
   onPersistSettings: (s: AppSettings) => Promise<void>;
+  /** Re-run dependency check (e.g. after model download). */
+  onRefreshReadiness?: () => void;
   saving: boolean;
 };
 
@@ -33,6 +36,7 @@ export function SettingsPanel({
   onChange,
   onSave,
   onPersistSettings,
+  onRefreshReadiness,
   saving,
 }: Props) {
   const [whisperModels, setWhisperModels] = useState<WhisperModelMeta[]>([]);
@@ -47,6 +51,15 @@ export function SettingsPanel({
   const [toolDlMsg, setToolDlMsg] = useState<string | null>(null);
   const [toolDlBusy, setToolDlBusy] = useState(false);
   const [toolDlProgress, setToolDlProgress] = useState<{
+    received: number;
+    total: number | null;
+  } | null>(null);
+
+  const [whisperCliDlBusy, setWhisperCliDlBusy] = useState(false);
+  const [whisperCliDlMsg, setWhisperCliDlMsg] = useState<string | null>(null);
+  const [whisperCliDlError, setWhisperCliDlError] = useState<string | null>(null);
+  const [whisperCliInstallSuccess, setWhisperCliInstallSuccess] = useState(false);
+  const [whisperCliDlProgress, setWhisperCliDlProgress] = useState<{
     received: number;
     total: number | null;
   } | null>(null);
@@ -107,11 +120,18 @@ export function SettingsPanel({
           totalBytes: number | null;
         }>("tool-download-progress", (ev) => {
           if (ac.signal.aborted) return;
-          setToolDlMsg(`[${ev.payload.tool}] ${ev.payload.message}`);
-          setToolDlProgress({
+          const prog = {
             received: ev.payload.bytesReceived,
             total: ev.payload.totalBytes,
-          });
+          };
+          const line = `[${ev.payload.tool}] ${ev.payload.message}`;
+          if (ev.payload.tool === "whisper-cli") {
+            setWhisperCliDlMsg(line);
+            setWhisperCliDlProgress(prog);
+          } else {
+            setToolDlMsg(line);
+            setToolDlProgress(prog);
+          }
         }),
       )
       .then((fn) => {
@@ -144,6 +164,14 @@ export function SettingsPanel({
     }
   }
 
+  async function pickWhisperCliExecutable() {
+    const f = await open({ multiple: false });
+    if (typeof f === "string" && f.length > 0) {
+      onChange({ ...settings, whisperCliPath: f });
+      onRefreshReadiness?.();
+    }
+  }
+
   async function onDownloadModel() {
     setModelDlBusy(true);
     setModelDlMsg(null);
@@ -151,6 +179,7 @@ export function SettingsPanel({
     try {
       await downloadWhisperModel(settings.whisperModel, settings.whisperModelsDir);
       setModelDlMsg("Model ready (verified SHA-1).");
+      onRefreshReadiness?.();
     } catch (e) {
       const msg =
         typeof e === "string"
@@ -162,6 +191,31 @@ export function SettingsPanel({
     } finally {
       setModelDlBusy(false);
       setModelDlProgress(null);
+    }
+  }
+
+  async function onDownloadWhisperCliSetup() {
+    setWhisperCliDlBusy(true);
+    setWhisperCliDlMsg(null);
+    setWhisperCliDlError(null);
+    setWhisperCliInstallSuccess(false);
+    setWhisperCliDlProgress(null);
+    try {
+      const p = await downloadWhisperCli();
+      await onPersistSettings({ ...settings, whisperCliPath: p.whisperCliPath });
+      setWhisperCliInstallSuccess(true);
+      onRefreshReadiness?.();
+    } catch (e) {
+      const msg =
+        typeof e === "string"
+          ? e
+          : e instanceof Error
+            ? e.message
+            : "Setup failed";
+      setWhisperCliDlError(msg);
+    } finally {
+      setWhisperCliDlBusy(false);
+      setWhisperCliDlProgress(null);
     }
   }
 
@@ -222,7 +276,7 @@ export function SettingsPanel({
       <p className="settings-section-title">Transcription &amp; models</p>
       <div className="settings-highlight" data-testid="transcription-mode-card">
         <label className="field" style={{ marginBottom: "0.5rem" }}>
-          <span>Mode (cloud vs offline)</span>
+          <span>Transcription mode</span>
           <select
             value={settings.transcriptionMode}
             onChange={(e) =>
@@ -232,90 +286,160 @@ export function SettingsPanel({
               })
             }
           >
-            <option value="httpApi">HTTP API — OpenAI-compatible cloud</option>
-            <option value="localWhisper">
-              Local Whisper — whisper.cpp on this PC (no API key)
-            </option>
+            <option value="httpApi">Cloud — HTTP API (OpenAI-compatible)</option>
+            <option value="localWhisper">Offline — Local Whisper (whisper.cpp)</option>
           </select>
         </label>
+        <p className="hint settings-mode-summary">
+          {useLocal
+            ? "No API key. You need the whisper-cli executable and one ggml .bin model on disk."
+            : "Uses your provider’s API key. whisper-cli and local models are not used."}
+        </p>
 
         {useLocal ? (
           <div className="local-whisper-block" data-testid="local-whisper-block">
-            <p className="hint" style={{ marginTop: 0 }}>
-              <strong>Offline path:</strong> install or build{" "}
-              <code>whisper-cli</code> (whisper.cpp), then pick a <strong>ggml</strong> model below and
-              download it (or run the queue — the first run can fetch the model).
-            </p>
-
-            <label className="field">
-              <span>whisper-cli path (optional)</span>
-              <input
-                type="text"
-                value={settings.whisperCliPath ?? ""}
-                onChange={(e) =>
-                  onChange({
-                    ...settings,
-                    whisperCliPath: e.target.value.trim() || null,
-                  })
-                }
-                placeholder="Next to v2t.exe if empty — names: whisper-cli.exe or main.exe"
-              />
-            </label>
-
-            <label className="field">
-              <span>Folder for ggml .bin files</span>
-              <div className="row-gap">
-                <input
-                  type="text"
-                  readOnly
-                  value={settings.whisperModelsDir ?? ""}
-                  placeholder={defaultModelsPath ?? "Default: app data / models"}
-                />
-                <button type="button" onClick={() => void pickWhisperModelsDir()}>
-                  Browse…
+            <div className="settings-step-card">
+              <p className="settings-step-title">1 · whisper-cli (engine)</p>
+              <p className="hint settings-step-body">
+                <strong>Windows:</strong> official <code>whisper-bin-x64.zip</code> from{" "}
+                <a href="https://github.com/ggml-org/whisper.cpp/releases" target="_blank" rel="noopener noreferrer">
+                  ggml-org/whisper.cpp
+                </a>{" "}
+                (MIT) — use the button below to download into app data (includes DLLs).{" "}
+                <strong>macOS:</strong> Apple does not publish a CLI zip in those releases; the button looks for{" "}
+                <code>brew install whisper-cpp</code> paths, or use <strong>Pick file…</strong>.{" "}
+                <strong>Linux:</strong> use your distro / build from source.
+              </p>
+              <div className="row-gap" style={{ marginBottom: "0.5rem" }}>
+                {showManagedToolDownloads ? (
+                  <button
+                    type="button"
+                    disabled={whisperCliDlBusy || saving}
+                    onClick={() => void onDownloadWhisperCliSetup()}
+                  >
+                    {whisperCliDlBusy
+                      ? "Working…"
+                      : isWin
+                        ? "Download whisper-cli for me (Windows)"
+                        : "Find Homebrew whisper-cli (macOS)"}
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => void pickWhisperCliExecutable()}>
+                  Pick file…
                 </button>
               </div>
-            </label>
-
-            <label className="field">
-              <span>Model (size on disk)</span>
-              <select
-                value={settings.whisperModel}
-                onChange={(e) =>
-                  onChange({ ...settings, whisperModel: e.target.value })
-                }
-              >
-                {whisperModels.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.id} — ~{m.sizeMib} MiB ({m.fileName})
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="row-gap" style={{ marginTop: "0.35rem" }}>
-              <button
-                type="button"
-                disabled={modelDlBusy}
-                onClick={() => void onDownloadModel()}
-              >
-                {modelDlBusy ? "Downloading…" : "Download / verify model"}
-              </button>
+              {whisperCliDlProgress &&
+              whisperCliDlProgress.total != null &&
+              whisperCliDlProgress.total > 0 ? (
+                <div className="download-progress-wrap">
+                  <progress
+                    value={whisperCliDlProgress.received}
+                    max={whisperCliDlProgress.total}
+                  />
+                </div>
+              ) : null}
+              {whisperCliDlMsg && whisperCliDlBusy ? (
+                <p className="hint" style={{ marginTop: "0.35rem" }}>
+                  {whisperCliDlMsg}
+                </p>
+              ) : null}
+              {whisperCliInstallSuccess ? (
+                <div className="onboarding-success-callout" role="status" style={{ marginTop: "0.5rem" }}>
+                  <span className="onboarding-check-circle" aria-hidden>
+                    ✓
+                  </span>
+                  <div className="onboarding-success-callout-text">
+                    <strong>whisper-cli path saved.</strong> The checklist should update after refresh.
+                  </div>
+                </div>
+              ) : null}
+              {whisperCliDlError ? (
+                <div className="onboarding-error-callout" role="alert" style={{ marginTop: "0.5rem" }}>
+                  <span className="onboarding-error-icon" aria-hidden>
+                    !
+                  </span>
+                  <div>{whisperCliDlError}</div>
+                </div>
+              ) : null}
+              <label className="field">
+                <span>Path to executable (optional if next to app)</span>
+                <div className="row-gap">
+                  <input
+                    type="text"
+                    value={settings.whisperCliPath ?? ""}
+                    onChange={(e) =>
+                      onChange({
+                        ...settings,
+                        whisperCliPath: e.target.value.trim() || null,
+                      })
+                    }
+                    placeholder="whisper-cli.exe / whisper-cli — or use Pick file…"
+                  />
+                </div>
+              </label>
             </div>
 
-            {modelDlProgress && modelDlProgress.total != null && modelDlProgress.total > 0 ? (
-              <div className="download-progress-wrap">
-                <progress
-                  value={modelDlProgress.received}
-                  max={modelDlProgress.total}
-                />
-              </div>
-            ) : null}
-            {modelDlMsg ? (
-              <p className="hint" data-testid="model-download-msg">
-                {modelDlMsg}
+            <div className="settings-step-card">
+              <p className="settings-step-title">2 · GGML model (.bin)</p>
+              <p className="hint settings-step-body">
+                Choose a model size, then download. The checklist turns green when the file exists and the
+                SHA-1 matches the catalog (same check as after download).
               </p>
-            ) : null}
+              <label className="field">
+                <span>Folder for .bin files</span>
+                <div className="row-gap">
+                  <input
+                    type="text"
+                    readOnly
+                    value={settings.whisperModelsDir ?? ""}
+                    placeholder={defaultModelsPath ?? "Default: app data / models"}
+                  />
+                  <button type="button" onClick={() => void pickWhisperModelsDir()}>
+                    Browse…
+                  </button>
+                </div>
+              </label>
+
+              <label className="field">
+                <span>Model</span>
+                <select
+                  value={settings.whisperModel}
+                  onChange={(e) =>
+                    onChange({ ...settings, whisperModel: e.target.value })
+                  }
+                >
+                  {whisperModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id} — ~{m.sizeMib} MiB ({m.fileName})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="row-gap" style={{ marginTop: "0.35rem" }}>
+                <button
+                  type="button"
+                  disabled={modelDlBusy}
+                  onClick={() => void onDownloadModel()}
+                >
+                  {modelDlBusy ? "Downloading…" : "Download / verify model"}
+                </button>
+              </div>
+
+              {modelDlProgress && modelDlProgress.total != null && modelDlProgress.total > 0 ? (
+                <div className="download-progress-wrap">
+                  <progress
+                    value={modelDlProgress.received}
+                    max={modelDlProgress.total}
+                  />
+                </div>
+              ) : null}
+              {modelDlMsg ? (
+                <p className="hint" data-testid="model-download-msg">
+                  {modelDlMsg}
+                </p>
+              ) : null}
+            </div>
           </div>
         ) : (
           <>

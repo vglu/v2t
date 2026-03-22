@@ -29,6 +29,10 @@ export function DependencyBar({ report }: Props) {
       <span data-testid="whisper-status">
         whisper-cli: {report.whisperCliFound ? "ok" : "missing"}
       </span>
+      {" · "}
+      <span data-testid="whisper-model-status">
+        ggml: {report.whisperModelReady ? "ok" : "no"}
+      </span>
     </div>
   );
 }

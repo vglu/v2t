@@ -38,6 +38,31 @@ pub fn is_http_url(s: &str) -> bool {
     t.starts_with("http://") || t.starts_with("https://")
 }
 
+/// YouTube copies `watch?v=…&list=…` links; yt-dlp then downloads the **entire** playlist (slow,
+/// rate limits, failures). For watch / youtu.be URLs with `list=` we only want the `v=` video.
+/// Pure `youtube.com/playlist?list=…` links are left unchanged so full playlists still work.
+pub(crate) fn youtube_watch_url_should_use_no_playlist(url: &str) -> bool {
+    let lower = url.trim().to_lowercase();
+    let on_youtube = lower.contains("youtube.com")
+        || lower.contains("youtu.be")
+        || lower.contains("youtube-nocookie.com")
+        || lower.contains("music.youtube.com");
+    if !on_youtube {
+        return false;
+    }
+    if lower.contains("youtube.com/playlist") {
+        return false;
+    }
+    if !lower.contains("list=") {
+        return false;
+    }
+    lower.contains("watch?")
+        || lower.contains("youtu.be/")
+        || lower.contains("/shorts/")
+        || lower.contains("/live/")
+        || lower.contains("/embed/")
+}
+
 /// Arguments for ffmpeg: 16 kHz mono PCM WAV (Whisper-friendly).
 pub fn build_ffmpeg_normalize_args(input: &Path, output_wav: &Path) -> Vec<String> {
     vec![
@@ -188,19 +213,20 @@ pub async fn prepare_media_audio(
         let yt_dlp = deps::resolve_tool_path(yt_dlp_override.as_deref(), "yt-dlp")
             .ok_or_else(|| "yt-dlp not found (needed for URLs)".to_string())?;
 
-        let template_path = work_dir.join("src.%(ext)s");
+        // %(id)s avoids collisions when multiple tracks are downloaded (real playlists).
+        let template_path = work_dir.join("v2t-%(id)s.%(ext)s");
         let template = template_path
             .to_str()
             .ok_or("Work path is not valid UTF-8")?
             .replace('\\', "/");
 
-        let args: Vec<String> = vec![
-            "-x".into(),
-            "--no-mtime".into(),
-            "-o".into(),
-            template,
-            source.clone(),
-        ];
+        let mut args: Vec<String> = vec!["-x".into(), "--no-mtime".into()];
+        if youtube_watch_url_should_use_no_playlist(&source) {
+            args.push("--no-playlist".into());
+        }
+        args.push("-o".into());
+        args.push(template);
+        args.push(source.clone());
 
         let out = run_cmd(&yt_dlp, &args, YT_DLP_TIMEOUT, cancel).await?;
         if !out.status.success() {
@@ -293,6 +319,23 @@ mod tests {
         assert!(is_http_url(" http://x "));
         assert!(!is_http_url("/tmp/a.mp4"));
         assert!(!is_http_url(""));
+    }
+
+    #[test]
+    fn youtube_no_playlist_flag_matches_browser_style_links() {
+        assert!(youtube_watch_url_should_use_no_playlist(
+            "https://www.youtube.com/watch?v=CwzZuMhk_SI&list=PLkoMD"
+        ));
+        assert!(youtube_watch_url_should_use_no_playlist(
+            "https://youtu.be/CwzZuMhk_SI?list=PLkoMD"
+        ));
+        assert!(!youtube_watch_url_should_use_no_playlist(
+            "https://www.youtube.com/watch?v=CwzZuMhk_SI"
+        ));
+        assert!(!youtube_watch_url_should_use_no_playlist(
+            "https://www.youtube.com/playlist?list=PLkoMD"
+        ));
+        assert!(!youtube_watch_url_should_use_no_playlist("https://example.com/x?list=1"));
     }
 
     #[test]

@@ -8,6 +8,7 @@ describe("ReadinessPanel", () => {
     render(
       <ReadinessPanel
         report={null}
+        documentsPath={null}
         settings={{
           outputDir: null,
           apiKey: "",
@@ -30,7 +31,9 @@ describe("ReadinessPanel", () => {
           ytDlpPath: "/bin/yt-dlp",
           whisperCliFound: false,
           whisperCliPath: null,
+          whisperModelReady: false,
         }}
+        documentsPath={null}
         settings={{
           outputDir: "/out",
           apiKey: "sk-test",
@@ -57,7 +60,9 @@ describe("ReadinessPanel", () => {
           ytDlpPath: "/bin/yt-dlp",
           whisperCliFound: false,
           whisperCliPath: null,
+          whisperModelReady: false,
         }}
+        documentsPath={null}
         settings={{
           outputDir: null,
           apiKey: "",

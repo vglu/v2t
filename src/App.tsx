@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { QueuePanel } from "./components/QueuePanel";
 import { ReadinessPanel } from "./components/ReadinessPanel";
@@ -24,13 +24,19 @@ export default function App() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [documentsPath, setDocumentsPath] = useState<string | null>(null);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   const refreshDeps = useCallback(async (s: AppSettings) => {
-    const r = await checkDependencies(
-      s.ffmpegPath,
-      s.ytDlpPath,
-      s.whisperCliPath,
-    );
+    const r = await checkDependencies({
+      ffmpegPath: s.ffmpegPath,
+      ytDlpPath: s.ytDlpPath,
+      whisperCliPath: s.whisperCliPath,
+      transcriptionMode: s.transcriptionMode,
+      whisperModel: s.whisperModel,
+      whisperModelsDir: s.whisperModelsDir,
+    });
     setDeps(r);
   }, []);
 
@@ -38,6 +44,7 @@ export default function App() {
     void (async () => {
       const loaded = await loadSettings();
       const docDir = await defaultDocumentsDir();
+      if (docDir?.trim()) setDocumentsPath(docDir);
       const next: AppSettings = {
         ...defaultAppSettings,
         ...(loaded ?? {}),
@@ -70,8 +77,13 @@ export default function App() {
     if (settings.transcriptionMode === "httpApi") {
       return Boolean(settings.apiKey?.trim());
     }
-    return deps.whisperCliFound;
-  }, [deps, settings.outputDir, settings.apiKey, settings.transcriptionMode]);
+    return deps.whisperCliFound && deps.whisperModelReady;
+  }, [
+    deps,
+    settings.outputDir,
+    settings.apiKey,
+    settings.transcriptionMode,
+  ]);
 
   async function handleSave() {
     setSaving(true);
@@ -131,6 +143,7 @@ export default function App() {
 
       <ReadinessPanel
         report={deps}
+        documentsPath={documentsPath}
         settings={{
           outputDir: settings.outputDir,
           apiKey: settings.apiKey,
@@ -155,6 +168,7 @@ export default function App() {
           onChange={setSettings}
           onSave={() => void handleSave()}
           onPersistSettings={(s) => persistSettings(s)}
+          onRefreshReadiness={() => void refreshDeps(settingsRef.current)}
           saving={saving}
         />
       ) : null}
@@ -165,6 +179,11 @@ export default function App() {
 
       <OnboardingWizard
         open={wizardOpen}
+        settings={settings}
+        documentsPath={documentsPath}
+        patchSettings={(partial) => setSettings((s) => ({ ...s, ...partial }))}
+        persistSettings={(next) => persistSettings(next)}
+        refreshReadiness={() => void refreshDeps(settingsRef.current)}
         onOpenSettings={() => {
           setShowSettings(true);
           setWizardOpen(false);

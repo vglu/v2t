@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::path::PathBuf;
+use tauri::AppHandle;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -10,6 +11,8 @@ pub struct DependencyReport {
     pub yt_dlp_path: Option<String>,
     pub whisper_cli_found: bool,
     pub whisper_cli_path: Option<String>,
+    /// `localWhisper` only: selected ggml file exists and SHA-1 matches catalog.
+    pub whisper_model_ready: bool,
 }
 
 fn exe_file_name(stem: &str) -> String {
@@ -76,7 +79,8 @@ pub fn resolve_whisper_cli_path(override_path: Option<&str>) -> Option<PathBuf> 
     None
 }
 
-pub fn check_dependencies(
+/// ffmpeg / yt-dlp / whisper-cli only (no ggml check). Used in unit tests.
+pub fn report_tool_paths(
     ffmpeg_override: Option<&str>,
     yt_dlp_override: Option<&str>,
     whisper_cli_override: Option<&str>,
@@ -93,7 +97,52 @@ pub fn check_dependencies(
         whisper_cli_path: whisper_cli_path
             .as_ref()
             .and_then(|p| p.to_str().map(String::from)),
+        whisper_model_ready: false,
     }
+}
+
+fn local_whisper_model_verified(
+    app: &AppHandle,
+    transcription_mode: Option<&str>,
+    whisper_model: Option<&str>,
+    whisper_models_dir: Option<&str>,
+) -> bool {
+    if transcription_mode.map(str::trim) != Some("localWhisper") {
+        return false;
+    }
+    let Some(mid) = whisper_model.map(str::trim).filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    let Some(entry) = crate::whisper_catalog::catalog_entry(mid) else {
+        return false;
+    };
+    let Ok(dir) = crate::model_download::resolve_models_dir(app, whisper_models_dir) else {
+        return false;
+    };
+    let path = dir.join(entry.file_name);
+    if !path.is_file() {
+        return false;
+    }
+    crate::model_download::file_matches_sha1(&path, entry.sha1_hex).unwrap_or(false)
+}
+
+pub fn check_dependencies(
+    app: &AppHandle,
+    ffmpeg_override: Option<&str>,
+    yt_dlp_override: Option<&str>,
+    whisper_cli_override: Option<&str>,
+    transcription_mode: Option<&str>,
+    whisper_model: Option<&str>,
+    whisper_models_dir: Option<&str>,
+) -> DependencyReport {
+    let mut r = report_tool_paths(ffmpeg_override, yt_dlp_override, whisper_cli_override);
+    r.whisper_model_ready = local_whisper_model_verified(
+        app,
+        transcription_mode,
+        whisper_model,
+        whisper_models_dir,
+    );
+    r
 }
 
 #[cfg(test)]
@@ -103,10 +152,11 @@ mod tests {
 
     #[test]
     fn empty_override_uses_none_without_exe() {
-        let r = check_dependencies(None, None, None);
+        let r = report_tool_paths(None, None, None);
         assert!(!r.ffmpeg_found);
         assert!(!r.yt_dlp_found);
         assert!(!r.whisper_cli_found);
+        assert!(!r.whisper_model_ready);
     }
 
     #[test]
@@ -121,7 +171,7 @@ mod tests {
         });
         File::create(&fake).unwrap();
         let p = fake.to_str().unwrap();
-        let r = check_dependencies(Some(p), None, None);
+        let r = report_tool_paths(Some(p), None, None);
         assert!(r.ffmpeg_found);
         assert_eq!(r.ffmpeg_path.as_deref(), Some(p));
         let _ = std::fs::remove_dir_all(&dir);

@@ -17,6 +17,11 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
 
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  revealItemInDir: vi.fn().mockResolvedValue(undefined),
+  openPath: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../lib/invokeSafe", () => ({
   scanMediaFolder: vi.fn().mockResolvedValue(null),
   cancelQueueJob: vi.fn().mockResolvedValue(undefined),
