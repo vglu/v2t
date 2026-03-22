@@ -100,6 +100,13 @@ export function ReadinessPanel({ report, settings, onOpenSettings }: Props) {
             Open Settings
           </button>
         ) : null}
+        {!toolsUnknown && (!ffmpegOk || !ytDlpOk) ? (
+          <p className="readiness-tool-hint" data-testid="readiness-tool-hint">
+            Tip: open <strong>Settings</strong> — on Windows or macOS you can use{" "}
+            <strong>Download ffmpeg &amp; yt-dlp for me</strong>, or place the binaries next to the app
+            and set paths under <strong>I’ll install … myself</strong>.
+          </p>
+        ) : null}
       </div>
       <ul className="readiness-list">
         {rows.map((row) => (

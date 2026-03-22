@@ -7,12 +7,13 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies & build output
 node_modules
 dist
 dist-ssr
 *.local
 
-# Editor directories and files
+# Editor / IDE
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -23,9 +24,10 @@ dist-ssr
 *.sln
 *.sw?
 
-# Secrets
+# Secrets & env
 .env
-.env.local
+.env.*
+!.env.example
 *.pem
 
 # Tauri / Rust
@@ -34,6 +36,33 @@ src-tauri/target/
 # OS
 Thumbs.db
 
-# Playwright
+# Playwright / E2E
 playwright-report/
 test-results/
+
+# -----------------------------------------------------------------------------
+# Private / local material — keep out of public repos
+# (skills, BA tasks, personal notes, machine-local agent copies)
+# -----------------------------------------------------------------------------
+.cursor/skills/
+.cursor/tasks/
+.cursor/prompts/
+.agents/
+MEMEX.md
+docs/private/
+private/
+*.local.md
+
+# Optional: local MCP or Cursor overrides with machine paths (uncomment if used)
+# .cursor/mcp.json
+
+# TypeScript / tooling caches
+*.tsbuildinfo
+.vite/
+coverage/
+.nyc_output/
+
+# Debug & misc
+*.tmp
+*.temp
+.cache/

@@ -29,6 +29,7 @@ describe("SettingsPanel", () => {
         settings={defaultAppSettings}
         onChange={vi.fn()}
         onSave={vi.fn()}
+        onPersistSettings={vi.fn().mockResolvedValue(undefined)}
         saving={false}
       />,
     );

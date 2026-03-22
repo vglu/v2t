@@ -67,6 +67,7 @@ describe("ReadinessPanel", () => {
         onOpenSettings={fn}
       />,
     );
+    expect(screen.getByTestId("readiness-tool-hint")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Settings" }));
     expect(fn).toHaveBeenCalledOnce();
   });

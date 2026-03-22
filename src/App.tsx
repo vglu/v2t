@@ -122,7 +122,7 @@ export default function App() {
             type="button"
             className="ghost"
             onClick={() => setShowSettings((v) => !v)}
-            aria-expanded={showSettings}
+            aria-expanded={showSettings ? "true" : "false"}
           >
             {showSettings ? "Close settings" : "Settings"}
           </button>
@@ -154,7 +154,7 @@ export default function App() {
           settings={settings}
           onChange={setSettings}
           onSave={() => void handleSave()}
-          onPersistSettings={(s) => void persistSettings(s)}
+          onPersistSettings={(s) => persistSettings(s)}
           saving={saving}
         />
       ) : null}

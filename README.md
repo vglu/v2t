@@ -53,6 +53,12 @@ npm run tauri build
 
 То же правило «рядом с приложением» относится к **`whisper-cli`** (или устаревшему бинарнику **`main`**) в **локальном** режиме транскрипции.
 
+**Windows:** в **Settings** — **Download ffmpeg & yt-dlp for me**: `yt-dlp.exe` с GitHub и **FFmpeg** из zip [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) (GPL), в каталог данных приложения; пути подставляются в настройки.
+
+**macOS:** та же кнопка: `yt-dlp_macos` с GitHub и статический `ffmpeg` для вашей архитектуры (Apple Silicon / Intel) из релизов [eugeneware/ffmpeg-static](https://github.com/eugeneware/ffmpeg-static). После загрузки при предупреждении Gatekeeper может понадобиться разрешить в **Системные настройки → Конфиденциальность и безопасность** или снять quarantine (`xattr`). Либо установите через **Homebrew** и укажите пути вручную.
+
+Во всех случаях можно не использовать кнопку и указать пути в **I’ll install … myself**.
+
 ## Локальный режим (whisper.cpp)
 
 1. В **Settings** выберите **Transcription → Local Whisper (whisper.cpp CLI)**.

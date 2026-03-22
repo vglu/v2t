@@ -140,7 +140,7 @@ fn default_documents_dir(app: tauri::AppHandle) -> Result<String, String> {
 async fn download_media_tools(
     app: tauri::AppHandle,
 ) -> Result<tool_download::DownloadedMediaTools, String> {
-    tool_download::download_media_tools_windows(&app).await
+    tool_download::download_managed_media_tools(&app).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

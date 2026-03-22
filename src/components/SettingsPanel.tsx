@@ -23,6 +23,11 @@ function isProbablyWindows(): boolean {
   return /Windows/i.test(navigator.userAgent);
 }
 
+function isProbablyMac(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Macintosh|Mac OS X/i.test(navigator.userAgent);
+}
+
 export function SettingsPanel({
   settings,
   onChange,
@@ -46,7 +51,9 @@ export function SettingsPanel({
     total: number | null;
   } | null>(null);
 
-  const showWinDownloads = useMemo(() => isProbablyWindows(), []);
+  const isWin = useMemo(() => isProbablyWindows(), []);
+  const isMac = useMemo(() => isProbablyMac(), []);
+  const showManagedToolDownloads = isWin || isMac;
 
   useEffect(() => {
     void listWhisperModels().then((m) => {
@@ -358,29 +365,51 @@ export function SettingsPanel({
                   , base <code>https://api.openai.com/v1</code>, model e.g. <code>whisper-1</code>.
                 </p>
                 <p className="hint help-details-warning">
-                  Key is stored in the OS credential store, not in settings.json.
+                  Treat the key like a password: do not share it or paste it into public chats or git.
                 </p>
               </div>
             </details>
+            <p className="hint">
+              API key is saved in the OS credential store (Windows Credential Manager, macOS Keychain,
+              Secret Service on Linux). The settings file keeps other options only (no key in plain text).
+            </p>
           </>
         )}
       </div>
 
       <p className="settings-section-title">Media tools (ffmpeg, yt-dlp)</p>
-      {showWinDownloads ? (
+      {showManagedToolDownloads ? (
         <>
-          <p className="hint">
-            <strong>Download for me (Windows):</strong> fetches <code>yt-dlp.exe</code> from GitHub
-            releases and a <strong>GPL</strong> FFmpeg zip from{" "}
-            <a
-              href="https://github.com/BtbN/FFmpeg-Builds"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              BtbN/FFmpeg-Builds
-            </a>
-            , extracts <code>ffmpeg.exe</code> into your app data folder, then saves paths in settings.
-          </p>
+          {isWin ? (
+            <p className="hint">
+              <strong>Download for me (Windows):</strong> fetches <code>yt-dlp.exe</code> from GitHub
+              releases and a <strong>GPL</strong> FFmpeg zip from{" "}
+              <a
+                href="https://github.com/BtbN/FFmpeg-Builds"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                BtbN/FFmpeg-Builds
+              </a>
+              , extracts <code>ffmpeg.exe</code> into your app data folder, then saves paths in settings.
+            </p>
+          ) : null}
+          {isMac ? (
+            <p className="hint">
+              <strong>Download for me (macOS):</strong> fetches <code>yt-dlp_macos</code> from GitHub
+              releases and a static <code>ffmpeg</code> for your CPU (
+              <a
+                href="https://github.com/eugeneware/ffmpeg-static"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                ffmpeg-static
+              </a>
+              ), saves both under app data and updates paths. If macOS blocks them, allow in{" "}
+              <strong>Privacy &amp; Security</strong> or clear quarantine (
+              <code>xattr -dr com.apple.quarantine …</code>).
+            </p>
+          ) : null}
           <div className="row-gap" style={{ marginBottom: "0.5rem" }}>
             <button
               type="button"
@@ -402,8 +431,9 @@ export function SettingsPanel({
         </>
       ) : (
         <p className="hint">
-          One-click download is only on <strong>Windows</strong>. On macOS/Linux install{" "}
-          <code>ffmpeg</code> and <code>yt-dlp</code> (e.g. package manager) and paste full paths below.
+          One-click download is only on <strong>Windows</strong> and <strong>macOS</strong>. On Linux
+          install <code>ffmpeg</code> and <code>yt-dlp</code> (e.g. package manager) and paste full paths
+          below.
         </p>
       )}
 

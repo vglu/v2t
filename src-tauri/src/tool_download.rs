@@ -1,4 +1,4 @@
-//! One-click download of ffmpeg + yt-dlp into `app_data_dir/v2t/bin` (Windows only).
+//! One-click download of ffmpeg + yt-dlp into `app_data_dir/v2t/bin` (Windows + macOS).
 
 use std::path::{Path, PathBuf};
 
@@ -17,6 +17,10 @@ const YT_DLP_URL: &str =
 #[cfg(windows)]
 const FFMPEG_ZIP_URL: &str =
     "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
+
+#[cfg(target_os = "macos")]
+const YT_DLP_MACOS_URL: &str =
+    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,13 +58,28 @@ pub fn default_documents_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("resolve Document: {e}"))
 }
 
-#[cfg(not(windows))]
-pub async fn download_media_tools_windows(_app: &AppHandle) -> Result<DownloadedMediaTools, String> {
-    Err("Automatic download of ffmpeg / yt-dlp is only available on Windows. Install via your package manager and set paths in Settings.".to_string())
+pub async fn download_managed_media_tools(
+    app: &AppHandle,
+) -> Result<DownloadedMediaTools, String> {
+    #[cfg(windows)]
+    {
+        return download_media_tools_inner(app).await;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return download_media_tools_inner(app).await;
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        Err(
+            "Automatic download of ffmpeg / yt-dlp is available on Windows and macOS only. Install via your package manager and set paths in Settings."
+                .to_string(),
+        )
+    }
 }
 
 #[cfg(windows)]
-pub async fn download_media_tools_windows(app: &AppHandle) -> Result<DownloadedMediaTools, String> {
+async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTools, String> {
     let dir = managed_bin_dir(app)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("create bin dir: {e}"))?;
 
@@ -154,6 +173,104 @@ pub async fn download_media_tools_windows(app: &AppHandle) -> Result<DownloadedM
     })
 }
 
+#[cfg(target_os = "macos")]
+fn ffmpeg_static_macos_url() -> Result<&'static str, String> {
+    match std::env::consts::ARCH {
+        "aarch64" => Ok(
+            "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-arm64",
+        ),
+        "x86_64" => Ok(
+            "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-x64",
+        ),
+        other => Err(format!(
+            "Unsupported macOS CPU architecture for bundled FFmpeg: {other}"
+        )),
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTools, String> {
+    let dir = managed_bin_dir(app)?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create bin dir: {e}"))?;
+
+    let yt_dest = dir.join("yt-dlp");
+    let ff_dest = dir.join("ffmpeg");
+    let ff_url = ffmpeg_static_macos_url()?;
+
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "yt-dlp".to_string(),
+            phase: "downloading".to_string(),
+            bytes_received: 0,
+            total_bytes: None,
+            message: "Downloading yt-dlp (macOS)…".to_string(),
+        },
+    );
+
+    download_file_streaming(app, YT_DLP_MACOS_URL, &yt_dest, "yt-dlp").await?;
+    make_executable(&yt_dest)?;
+
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "yt-dlp".to_string(),
+            phase: "done".to_string(),
+            bytes_received: yt_dest
+                .metadata()
+                .map(|m| m.len())
+                .unwrap_or(0),
+            total_bytes: None,
+            message: "yt-dlp ready".to_string(),
+        },
+    );
+
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "ffmpeg".to_string(),
+            phase: "downloading".to_string(),
+            bytes_received: 0,
+            total_bytes: None,
+            message: "Downloading FFmpeg (static build, may take a while)…".to_string(),
+        },
+    );
+
+    download_file_streaming(app, ff_url, &ff_dest, "ffmpeg").await?;
+    make_executable(&ff_dest)?;
+
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "ffmpeg".to_string(),
+            phase: "done".to_string(),
+            bytes_received: ff_dest
+                .metadata()
+                .map(|m| m.len())
+                .unwrap_or(0),
+            total_bytes: None,
+            message: "ffmpeg ready".to_string(),
+        },
+    );
+
+    Ok(DownloadedMediaTools {
+        ffmpeg_path: ff_dest.to_string_lossy().into_owned(),
+        yt_dlp_path: yt_dest.to_string_lossy().into_owned(),
+    })
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<(), String> {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut perms = fs::metadata(path)
+        .map_err(|e| format!("stat {}: {e}", path.display()))?
+        .permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(path, perms).map_err(|e| format!("chmod {}: {e}", path.display()))
+}
+
 #[cfg(windows)]
 fn extract_ffmpeg_exe_from_zip(zip_path: &Path, dest_ffmpeg: &Path) -> Result<(), String> {
     use std::fs::File;
@@ -176,7 +293,7 @@ fn extract_ffmpeg_exe_from_zip(zip_path: &Path, dest_ffmpeg: &Path) -> Result<()
     Err("ffmpeg.exe not found inside the downloaded zip (upstream layout changed)".to_string())
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 async fn download_file_streaming(
     app: &AppHandle,
     url: &str,

@@ -18,36 +18,37 @@ const STEPS = [
     body: (
       <>
         <p>
-          Put <strong>ffmpeg</strong> and <strong>yt-dlp</strong> in the <strong>same folder</strong> as this
-          app (next to <code>v2t.exe</code> on Windows, or <code>v2t</code> on Mac). A <code>bin</code>{" "}
-          subfolder also works.
+          On <strong>Windows</strong> or <strong>macOS</strong>, open <strong>Settings</strong> and use{" "}
+          <strong>Download ffmpeg &amp; yt-dlp for me</strong> — or put the binaries next to the app (e.g.{" "}
+          <code>v2t.exe</code> / <code>v2t</code>, or a <code>bin</code> folder). On Linux, install via your
+          package manager and paste full paths under <strong>I’ll install … myself</strong>.
         </p>
-        <p className="onboarding-tip">If they are installed elsewhere, you can paste full paths in Settings.</p>
+        <p className="onboarding-tip">
+          Output folder: use <strong>Use Documents</strong> in Settings or pick any folder with Browse.
+        </p>
       </>
     ),
   },
   {
-    title: "Output folder & API",
+    title: "Cloud API or local Whisper",
     body: (
       <>
         <p>
-          Open <strong>Settings</strong> and choose an <strong>output folder</strong> (where <code>.txt</code>{" "}
-          files go).
+          In <strong>Settings → Transcription &amp; models</strong>, choose <strong>HTTP API</strong> (cloud,
+          needs API key) or <strong>Local Whisper</strong> (offline with whisper.cpp — pick a model size and
+          press <strong>Download / verify model</strong>).
         </p>
         <p>
-          Add an <strong>API key</strong> from a provider that offers OpenAI-compatible{" "}
-          <code>/audio/transcriptions</code>. The key is stored in your OS secure storage, not in a plain file.
+          For the cloud, add an <strong>API key</strong> from a provider with OpenAI-compatible{" "}
+          <code>/audio/transcriptions</code>. The key is stored in OS secure storage.
         </p>
         <p className="onboarding-tip">
-          <strong>Example (OpenAI):</strong>{" "}
+          <strong>OpenAI example:</strong>{" "}
           <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">
-            platform.openai.com/api-keys
-          </a>{" "}
-          → create a secret key; keep base URL <code>https://api.openai.com/v1</code> and model{" "}
-          <code>whisper-1</code> unless your account uses something else. Other clouds (e.g. Azure OpenAI,
-          Groq) give keys in their own portals — paste those and match URL/model to their docs.
+            API keys
+          </a>
+          , base <code>https://api.openai.com/v1</code>, model <code>whisper-1</code>.
         </p>
-        <p className="onboarding-tip">In Settings, open “Where do I get an API key?” for a longer checklist.</p>
       </>
     ),
   },
