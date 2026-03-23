@@ -2,6 +2,8 @@
 
 Портативное десктоп-приложение (Tauri 2): видео/аудио (файл, папка, URL) → текст через **ffmpeg**, **yt-dlp** и либо **HTTP API** в стиле OpenAI (`/v1/audio/transcriptions`), либо локально **[whisper.cpp](https://github.com/ggml-org/whisper.cpp)** (`whisper-cli` / `main`) с ggml-моделями. В установщике и заголовке окна — **Video to Text**; исполняемый файл — **`v2t.exe`** (Windows) / **`v2t`** (macOS/Linux).
 
+[Видео тут](https://youtu.be/cInVpU3ErlQ)
+
 ## Требования для разработки
 
 - [Node.js](https://nodejs.org/) (LTS)
