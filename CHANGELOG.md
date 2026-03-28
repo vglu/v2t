@@ -2,6 +2,16 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.1.1] - 2026-03-29
+
+### Исправлено
+
+- **GitHub Actions:** пересобран `package-lock.json` с записями optional-пакетов для Linux/macOS/Windows (`@tauri-apps/cli-*`, `@esbuild/*`, `@rollup/*` и др.), чтобы шаг **`npm ci`** проходил на всех раннерах; релиз **v1.1.0** из-за старого lock-файла не собирался.
+
+### Изменено
+
+- В `docs/RELEASE.md` добавлена памятка на случай ошибки *Missing … from lock file* при `npm ci` в CI.
+
 ## [1.1.0] - 2026-03-28
 
 ### Добавлено
@@ -25,5 +35,6 @@
 
 Функциональность соответствует накопленным возможностям до релиза: очередь файлов/URL, ffmpeg / yt-dlp, облачный API и локальный whisper.cpp, загрузка инструментов из настроек (где поддерживается).
 
+[1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
