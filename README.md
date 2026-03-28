@@ -30,8 +30,8 @@ npm run tauri build
 | Что | Где искать (от корня репозитория) |
 |-----|-----------------------------------|
 | Готовый **EXE** (без установщика) | `src-tauri/target/release/v2t.exe` (Windows) или `src-tauri/target/release/v2t` (macOS/Linux) |
-| **Установщик Windows (NSIS)** | `src-tauri/target/release/bundle/nsis/Video to Text_1.0.0_x64-setup.exe` (имя зависит от `version` в `tauri.conf.json`) |
-| **Установщик Windows (MSI)** | `src-tauri/target/release/bundle/msi/Video to Text_1.0.0_x64_en-US.msi` |
+| **Установщик Windows (NSIS)** | `src-tauri/target/release/bundle/nsis/Video to Text_1.1.0_x64-setup.exe` (имя зависит от `version` в `tauri.conf.json`) |
+| **Установщик Windows (MSI)** | `src-tauri/target/release/bundle/msi/Video to Text_1.1.0_x64_en-US.msi` |
 | **macOS** | `src-tauri/target/release/bundle/dmg/` или `bundle/macos/` (зависит от targets в `tauri.conf.json`) |
 | **Linux** | `src-tauri/target/release/bundle/deb/`, `bundle/appimage/` (`.deb`, AppImage) |
 
@@ -110,13 +110,13 @@ npm run e2e         # Playwright (поднимает dev-сервер)
 | Workflow | Когда | Что делает |
 |----------|--------|------------|
 | **CI** (`.github/workflows/ci.yml`) | push / PR в `main` или `master` | `npm run build`, `npm run test:run`, `cargo test` в `src-tauri` |
-| **Release** (`.github/workflows/release.yml`) | push **git-тега** вида `v*` (например `v1.0.0`) | Сборка **Windows** (NSIS/MSI), **macOS** (**aarch64** и **x86_64** DMG), **Linux** (.deb + AppImage), загрузка в [GitHub Releases](https://docs.github.com/repositories/releasing-projects-on-github/about-releases) |
+| **Release** (`.github/workflows/release.yml`) | push **git-тега** вида `v*` (например `v1.1.0`) | Сборка **Windows** (NSIS/MSI), **macOS** (**aarch64** и **x86_64** DMG), **Linux** (.deb + AppImage), загрузка в [GitHub Releases](https://docs.github.com/repositories/releasing-projects-on-github/about-releases) |
 
 **Как выпустить версию**
 
 1. Синхронизируйте версию в **`package.json`**, **`src-tauri/Cargo.toml`** и **`src-tauri/tauri.conf.json`**.
 2. Закоммитьте и запушьте ветку.
-3. Создайте и запушьте тег: `git tag v1.0.0` → `git push origin v1.0.0`.
+3. Создайте и запушьте тег: `git tag v1.1.0` → `git push origin v1.1.0`.
 
 Подробный чеклист: [`docs/RELEASE.md`](docs/RELEASE.md). Список изменений: [`CHANGELOG.md`](CHANGELOG.md).
 
