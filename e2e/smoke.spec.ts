@@ -24,9 +24,9 @@ test("queue: add URL and start (browser shows error without Tauri)", async ({
   );
 });
 
-test("settings toggle opens panel", async ({ page }) => {
+test("settings tab opens panel", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("tab", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Save settings" }),
@@ -35,7 +35,7 @@ test("settings toggle opens panel", async ({ page }) => {
 
 test("settings panel shows API key storage hint", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("tab", { name: "Settings" }).click();
   await expect(
     page.getByText(/API key is saved in the OS credential store/i),
   ).toBeVisible();

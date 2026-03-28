@@ -1,32 +1,24 @@
 //! One-click download of ffmpeg + yt-dlp into `app_data_dir/v2t/bin` (Windows + macOS).
-//! Also: `whisper-cli` on Windows from official [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp)
-//! release zip (MIT); on macOS upstream does not ship a CLI zip — we detect Homebrew installs.
+//! URLs and SHA-256 expectations live in `tools.manifest.json` (see `tool_manifest.rs`, `include_str!`).
+//! Also: `whisper-cli` on Windows from [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp) zip (MIT).
+//! On macOS, no darwin CLI zip in upstream releases — we search PATH / Homebrew via `locate_whisper_cli_macos`.
 
 use std::path::{Path, PathBuf};
 
 use futures_util::StreamExt;
 use serde::Serialize;
+use sha2::Digest;
 use tauri::path::BaseDirectory;
 use tauri::AppHandle;
 use tauri::Emitter;
 use tauri::Manager;
 
-#[cfg(windows)]
-const YT_DLP_URL: &str =
-    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
-
-/// BtbN FFmpeg-Builds (GPL). Zip layout includes `…/bin/ffmpeg.exe`.
-#[cfg(windows)]
-const FFMPEG_ZIP_URL: &str =
-    "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
-
-#[cfg(target_os = "macos")]
-const YT_DLP_MACOS_URL: &str =
-    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos";
+#[cfg(any(windows, target_os = "macos"))]
+use crate::tool_manifest::tools_manifest;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ToolDownloadProgress {
+pub(crate) struct ToolDownloadProgress {
     tool: String,
     phase: String,
     bytes_received: u64,
@@ -34,7 +26,7 @@ struct ToolDownloadProgress {
     message: String,
 }
 
-fn emit(app: &AppHandle, payload: ToolDownloadProgress) {
+pub(crate) fn emit(app: &AppHandle, payload: ToolDownloadProgress) {
     let _ = app.emit("tool-download-progress", &payload);
 }
 
@@ -58,11 +50,6 @@ pub struct DownloadedMediaTools {
 pub struct DownloadedWhisperCli {
     pub whisper_cli_path: String,
 }
-
-/// Official Windows x64 bundle (includes `whisper-cli.exe` + DLLs in `Release/`).
-#[cfg(windows)]
-const WHISPER_CPP_WIN_X64_ZIP_URL: &str =
-    "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip";
 
 /// User-visible Documents folder (OS standard).
 pub fn default_documents_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -94,9 +81,8 @@ pub async fn download_managed_media_tools(
 /// **Windows:** downloads and extracts the official `whisper-bin-x64.zip` (DLLs + `whisper-cli.exe`)
 /// into `app_data_dir/v2t/bin/whisper-cpp/`.
 ///
-/// **macOS:** GitHub releases do not include a macOS CLI archive; we search typical Homebrew paths
-/// (`/opt/homebrew/bin/whisper-cli`, `/usr/local/bin/whisper-cli`). If missing, returns an error with
-/// `brew install whisper-cpp`.
+/// **macOS:** no official CLI zip in releases; we search `PATH` via `/usr/bin/which` (`whisper-cli`,
+/// `whisper`, then `main`), then Homebrew keg paths (`opt/whisper-cpp/bin/`, Linuxbrew, etc.).
 ///
 /// **Linux:** not supported here — use distro packages or build from source.
 pub async fn download_whisper_cli_managed(app: &AppHandle) -> Result<DownloadedWhisperCli, String> {
@@ -106,7 +92,7 @@ pub async fn download_whisper_cli_managed(app: &AppHandle) -> Result<DownloadedW
     }
     #[cfg(target_os = "macos")]
     {
-        return locate_whisper_cli_macos(app);
+        return download_whisper_cli_macos_bottle_then_fallback(app).await;
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
@@ -146,7 +132,15 @@ async fn download_whisper_cli_windows(app: &AppHandle) -> Result<DownloadedWhisp
         },
     );
 
-    download_file_streaming(app, WHISPER_CPP_WIN_X64_ZIP_URL, &tmp_zip, "whisper-cli").await?;
+    let m = tools_manifest();
+    download_file_streaming(
+        app,
+        &m.windows_whisper_zip.url,
+        &tmp_zip,
+        "whisper-cli",
+        &m.windows_whisper_zip.sha256,
+    )
+    .await?;
 
     emit(
         app,
@@ -227,6 +221,31 @@ fn extract_whisper_cpp_windows_zip(zip_path: &Path, dest_dir: &Path) -> Result<(
 }
 
 #[cfg(target_os = "macos")]
+async fn download_whisper_cli_macos_bottle_then_fallback(
+    app: &AppHandle,
+) -> Result<DownloadedWhisperCli, String> {
+    let base = managed_bin_dir(app)?;
+    let dest_dir = base.join("whisper-cpp");
+    if dest_dir.exists() {
+        let _ = std::fs::remove_dir_all(&dest_dir);
+    }
+    std::fs::create_dir_all(&dest_dir).map_err(|e| format!("create whisper-cpp dir: {e}"))?;
+
+    match crate::whisper_bottle_macos::download_whisper_cli_from_homebrew_bottle(app, &dest_dir).await
+    {
+        Ok(p) => Ok(DownloadedWhisperCli {
+            whisper_cli_path: p.to_string_lossy().into_owned(),
+        }),
+        Err(bottle_err) => match locate_whisper_cli_macos(app) {
+            Ok(p) => Ok(p),
+            Err(find_err) => Err(format!(
+                "Could not install whisper-cli from Homebrew bottle:\n{bottle_err}\n\nTried PATH/Homebrew search:\n{find_err}"
+            )),
+        },
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn locate_whisper_cli_macos(app: &AppHandle) -> Result<DownloadedWhisperCli, String> {
     emit(
         app,
@@ -235,38 +254,34 @@ fn locate_whisper_cli_macos(app: &AppHandle) -> Result<DownloadedWhisperCli, Str
             phase: "searching".to_string(),
             bytes_received: 0,
             total_bytes: None,
-            message: "Looking for whisper-cli (Homebrew paths)…".to_string(),
+            message: "Searching PATH (which whisper-cli, whisper, main) and Homebrew layouts…".to_string(),
         },
     );
 
-    let candidates = [
-        "/opt/homebrew/bin/whisper-cli",
-        "/usr/local/bin/whisper-cli",
-    ];
-    for c in candidates {
-        let p = std::path::PathBuf::from(c);
-        if p.is_file() {
-            emit(
-                app,
-                ToolDownloadProgress {
-                    tool: "whisper-cli".to_string(),
-                    phase: "done".to_string(),
-                    bytes_received: p.metadata().map(|m| m.len()).unwrap_or(0),
-                    total_bytes: None,
-                    message: format!("Found {}", c),
-                },
-            );
-            return Ok(DownloadedWhisperCli {
-                whisper_cli_path: c.to_string(),
-            });
-        }
-    }
+    let Some(found) = crate::deps::macos_search_whisper_cli_in_path() else {
+        return Err(
+            "whisper-cli not found. Checked: /usr/bin/which whisper-cli, whisper, main; \
+             /opt/homebrew and /usr/local bin + whisper-cpp keg paths; Linuxbrew ~/.linuxbrew. \
+             Install: brew install whisper-cpp — then use this button again or Pick file…"
+                .to_string(),
+        );
+    };
 
-    Err(
-        "whisper-cli not found. Apple does not ship a CLI zip in whisper.cpp releases — install with Homebrew: \
-         `brew install whisper-cpp`, then press this button again or use Pick file…"
-            .to_string(),
-    )
+    let path_str = found.to_string_lossy().into_owned();
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "whisper-cli".to_string(),
+            phase: "done".to_string(),
+            bytes_received: found.metadata().map(|m| m.len()).unwrap_or(0),
+            total_bytes: None,
+            message: format!("Found {}", path_str),
+        },
+    );
+
+    Ok(DownloadedWhisperCli {
+        whisper_cli_path: path_str,
+    })
 }
 
 #[cfg(windows)]
@@ -288,7 +303,15 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
         },
     );
 
-    download_file_streaming(app, YT_DLP_URL, &yt_dest, "yt-dlp").await?;
+    let m = tools_manifest();
+    download_file_streaming(
+        app,
+        &m.windows_yt_dlp_exe.url,
+        &yt_dest,
+        "yt-dlp",
+        &m.windows_yt_dlp_exe.sha256,
+    )
+    .await?;
 
     emit(
         app,
@@ -323,7 +346,14 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
         },
     );
 
-    download_file_streaming(app, FFMPEG_ZIP_URL, &tmp_zip, "ffmpeg").await?;
+    download_file_streaming(
+        app,
+        &m.windows_ffmpeg_zip.url,
+        &tmp_zip,
+        "ffmpeg",
+        &m.windows_ffmpeg_zip.sha256,
+    )
+    .await?;
 
     emit(
         app,
@@ -365,28 +395,22 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
 }
 
 #[cfg(target_os = "macos")]
-fn ffmpeg_static_macos_url() -> Result<&'static str, String> {
-    match std::env::consts::ARCH {
-        "aarch64" => Ok(
-            "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-arm64",
-        ),
-        "x86_64" => Ok(
-            "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-x64",
-        ),
-        other => Err(format!(
-            "Unsupported macOS CPU architecture for bundled FFmpeg: {other}"
-        )),
-    }
-}
-
-#[cfg(target_os = "macos")]
 async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTools, String> {
     let dir = managed_bin_dir(app)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("create bin dir: {e}"))?;
 
     let yt_dest = dir.join("yt-dlp");
     let ff_dest = dir.join("ffmpeg");
-    let ff_url = ffmpeg_static_macos_url()?;
+    let m = tools_manifest();
+    let ff_entry = match std::env::consts::ARCH {
+        "aarch64" => &m.macos_ffmpeg_darwin_arm64,
+        "x86_64" => &m.macos_ffmpeg_darwin_x64,
+        other => {
+            return Err(format!(
+                "Unsupported macOS CPU architecture for bundled FFmpeg: {other}"
+            ));
+        }
+    };
 
     emit(
         app,
@@ -399,7 +423,14 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
         },
     );
 
-    download_file_streaming(app, YT_DLP_MACOS_URL, &yt_dest, "yt-dlp").await?;
+    download_file_streaming(
+        app,
+        &m.macos_yt_dlp.url,
+        &yt_dest,
+        "yt-dlp",
+        &m.macos_yt_dlp.sha256,
+    )
+    .await?;
     make_executable(&yt_dest)?;
 
     emit(
@@ -427,7 +458,14 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
         },
     );
 
-    download_file_streaming(app, ff_url, &ff_dest, "ffmpeg").await?;
+    download_file_streaming(
+        app,
+        &ff_entry.url,
+        &ff_dest,
+        "ffmpeg",
+        &ff_entry.sha256,
+    )
+    .await?;
     make_executable(&ff_dest)?;
 
     emit(
@@ -490,9 +528,17 @@ async fn download_file_streaming(
     url: &str,
     dest: &Path,
     tool_label: &str,
+    sha256_hex: &str,
 ) -> Result<(), String> {
     use tokio::fs::File;
     use tokio::io::AsyncWriteExt;
+
+    let expect = sha256_hex.trim().to_ascii_lowercase();
+    let mut hasher = if expect.is_empty() {
+        None
+    } else {
+        Some(sha2::Sha256::new())
+    };
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(7200))
@@ -532,6 +578,9 @@ async fn download_file_streaming(
                 return Err(format!("{tool_label} stream: {e}"));
             }
         };
+        if let Some(ref mut h) = hasher {
+            h.update(&chunk);
+        }
         file
             .write_all(&chunk)
             .await
@@ -562,5 +611,16 @@ async fn download_file_streaming(
     file.sync_all()
         .await
         .map_err(|e| format!("sync: {e}"))?;
+
+    if let Some(h) = hasher {
+        let got = hex::encode(h.finalize());
+        if got != expect {
+            let _ = tokio::fs::remove_file(dest).await;
+            return Err(format!(
+                "{tool_label}: SHA-256 mismatch (expected {expect}, got {got}). Remove partial file and retry, or update tools.manifest.json if upstream changed."
+            ));
+        }
+    }
+
     Ok(())
 }

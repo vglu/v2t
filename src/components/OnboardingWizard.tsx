@@ -8,11 +8,12 @@ import {
   downloadWhisperModel,
   listWhisperModels,
 } from "../lib/invokeSafe";
+import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
 import type { AppSettings, TranscriptionMode, WhisperModelMeta } from "../types/settings";
 
 const TOTAL_STEPS = 6;
 
-type ModeChoice = "cloud" | "local" | "later";
+type ModeChoice = "cloud" | "local" | "browser" | "later";
 
 type Props = {
   open: boolean;
@@ -28,16 +29,6 @@ type Props = {
   onClose: () => void;
 };
 
-function isProbablyWindows(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /Windows/i.test(navigator.userAgent);
-}
-
-function isProbablyMac(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /Macintosh|Mac OS X/i.test(navigator.userAgent);
-}
-
 function stepTitle(step: number, modeChoice: ModeChoice): string {
   switch (step) {
     case 0:
@@ -51,6 +42,7 @@ function stepTitle(step: number, modeChoice: ModeChoice): string {
     case 4:
       if (modeChoice === "cloud") return "Cloud API";
       if (modeChoice === "local") return "Local Whisper";
+      if (modeChoice === "browser") return "In-app Whisper";
       return "Finish in Settings";
     case 5:
       return "Run jobs";
@@ -137,12 +129,19 @@ export function OnboardingWizard({
   const prevOpen = useRef(false);
   const isWin = useMemo(() => isProbablyWindows(), []);
   const isMac = useMemo(() => isProbablyMac(), []);
+  const isLinux = useMemo(() => isProbablyLinux(), []);
   const showManagedToolDownloads = isWin || isMac;
 
   useEffect(() => {
     if (wizardOpen && !prevOpen.current) {
       setStep(0);
-      setModeChoice(settings.transcriptionMode === "localWhisper" ? "local" : "cloud");
+      setModeChoice(
+        settings.transcriptionMode === "localWhisper"
+          ? "local"
+          : settings.transcriptionMode === "browserWhisper"
+            ? "browser"
+            : "cloud",
+      );
       setCloudError(null);
       setOutputError(null);
       setToolDlMsg(null);
@@ -373,9 +372,11 @@ export function OnboardingWizard({
       const tm: TranscriptionMode =
         modeChoice === "local"
           ? "localWhisper"
-          : modeChoice === "cloud"
-            ? "httpApi"
-            : settings.transcriptionMode;
+          : modeChoice === "browser"
+            ? "browserWhisper"
+            : modeChoice === "cloud"
+              ? "httpApi"
+              : settings.transcriptionMode;
       const next =
         modeChoice === "later" ? { ...settings } : { ...settings, transcriptionMode: tm };
       setBusy(true);
@@ -408,6 +409,17 @@ export function OnboardingWizard({
       setBusy(true);
       try {
         await persistSettings({ ...settings, transcriptionMode: "localWhisper" });
+      } finally {
+        setBusy(false);
+      }
+      setStep(5);
+      return;
+    }
+
+    if (step === 4 && modeChoice === "browser") {
+      setBusy(true);
+      try {
+        await persistSettings({ ...settings, transcriptionMode: "browserWhisper" });
       } finally {
         setBusy(false);
       }
@@ -553,6 +565,18 @@ export function OnboardingWizard({
                 <input
                   type="radio"
                   name="wiz-transcription"
+                  checked={modeChoice === "browser"}
+                  onChange={() => setModeChoice("browser")}
+                />
+                <span>
+                  <strong>In-app Whisper</strong> — runs in the app (WASM), no API key and no{" "}
+                  <code>whisper-cli</code>; model downloads on first use.
+                </span>
+              </label>
+              <label className="onboarding-radio">
+                <input
+                  type="radio"
+                  name="wiz-transcription"
                   checked={modeChoice === "later"}
                   onChange={() => setModeChoice("later")}
                 />
@@ -564,6 +588,33 @@ export function OnboardingWizard({
           </>
         );
       case 4:
+        if (modeChoice === "browser") {
+          return (
+            <>
+              <p>
+                <strong>In-app Whisper</strong> uses Transformers.js in the app. You still need ffmpeg / yt-dlp for
+                links; transcription itself stays on-device in the webview.
+              </p>
+              <label className="field onboarding-field">
+                <span>Model size</span>
+                <select
+                  aria-label="In-app Whisper model size"
+                  value={settings.whisperModel}
+                  onChange={(e) => patchSettings({ whisperModel: e.target.value })}
+                >
+                  {whisperModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id} — ~{m.sizeMib} MiB (browser, approximate)
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="onboarding-tip">
+                Labels match the local catalog; ggml <code>.bin</code> files are not used in this mode.
+              </p>
+            </>
+          );
+        }
         if (modeChoice === "cloud") {
           return (
             <>
@@ -616,11 +667,11 @@ export function OnboardingWizard({
                 <a href="https://github.com/ggml-org/whisper.cpp/releases" target="_blank" rel="noopener noreferrer">
                   ggml-org/whisper.cpp
                 </a>{" "}
-                (use the button below; includes DLLs). <strong>macOS</strong> — no CLI zip in those releases; the
-                button looks for Homebrew paths or use <strong>Pick file…</strong> after{" "}
-                <code>brew install whisper-cpp</code>. <strong>Linux</strong> — use your package manager or build
-                from source, then set the path. You can also put <code>whisper-cli</code> next to the app so the
-                checklist finds it without a path.
+                (use the button below; includes DLLs). <strong>macOS</strong> — no CLI zip; the button searches{" "}
+                <code>PATH</code> and Homebrew layouts, or use <strong>Pick file…</strong> after{" "}
+                <code>brew install whisper-cpp</code>. <strong>Linux</strong> — install via your distro or build from
+                source (see below); then set the path or use <strong>Pick file…</strong>. You can also put{" "}
+                <code>whisper-cli</code> next to the app.
               </p>
 
               <div className="onboarding-local-step">
@@ -629,6 +680,27 @@ export function OnboardingWizard({
                   Optional path if the binary is not next to <code>v2t</code>. Use the setup button (Windows/macOS)
                   or <strong>Pick file…</strong> for <code>whisper-cli.exe</code> / <code>whisper-cli</code>.
                 </p>
+                {isLinux ? (
+                  <div className="onboarding-tip onboarding-info-callout onboarding-linux-whisper-block">
+                    <p>
+                      <strong>Linux:</strong> there is no download button here. Examples:
+                    </p>
+                    <ul>
+                      <li>
+                        Ubuntu/Debian: <code>sudo apt install whisper-cpp</code> or build{" "}
+                        <a href="https://github.com/ggml-org/whisper.cpp" target="_blank" rel="noopener noreferrer">
+                          whisper.cpp
+                        </a>
+                      </li>
+                      <li>
+                        Fedora: <code>sudo dnf install whisper-cpp</code>
+                      </li>
+                      <li>
+                        Arch: <code>yay -S whisper-cpp</code> (AUR)
+                      </li>
+                    </ul>
+                  </div>
+                ) : null}
                 <div className="row-gap">
                   {showManagedToolDownloads ? (
                     <button
@@ -640,7 +712,7 @@ export function OnboardingWizard({
                         ? "Working…"
                         : isWin
                           ? "Download whisper-cli for me (Windows)"
-                          : "Find Homebrew whisper-cli (macOS)"}
+                          : "Find whisper-cli (macOS)"}
                     </button>
                   ) : null}
                   <button type="button" disabled={busy} onClick={() => void pickWhisperCliExecutable()}>
@@ -703,6 +775,7 @@ export function OnboardingWizard({
                 <label className="field onboarding-field">
                   <span>Model</span>
                   <select
+                    aria-label="Whisper GGML model"
                     value={settings.whisperModel}
                     onChange={(e) => {
                       patchSettings({ whisperModel: e.target.value });
@@ -742,8 +815,8 @@ export function OnboardingWizard({
         return (
           <>
             <p>
-              You can switch between <strong>HTTP API</strong> and <strong>Local Whisper</strong>, set API keys,
-              and download models anytime in <strong>Settings</strong>.
+              You can switch between <strong>HTTP API</strong>, <strong>Local Whisper</strong>, and{" "}
+              <strong>In-app Whisper</strong>, set API keys, and download models anytime in <strong>Settings</strong>.
             </p>
             <button type="button" className="ghost" disabled={busy} onClick={onOpenSettings}>
               Open Settings now

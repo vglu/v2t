@@ -20,7 +20,7 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(defaultAppSettings);
   const [deps, setDeps] = useState<DependencyReport | null>(null);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState<"queue" | "settings">("queue");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -77,13 +77,11 @@ export default function App() {
     if (settings.transcriptionMode === "httpApi") {
       return Boolean(settings.apiKey?.trim());
     }
+    if (settings.transcriptionMode === "browserWhisper") {
+      return true;
+    }
     return deps.whisperCliFound && deps.whisperModelReady;
-  }, [
-    deps,
-    settings.outputDir,
-    settings.apiKey,
-    settings.transcriptionMode,
-  ]);
+  }, [deps, settings.outputDir, settings.apiKey, settings.transcriptionMode]);
 
   async function handleSave() {
     setSaving(true);
@@ -116,6 +114,11 @@ export default function App() {
     setWizardOpen(false);
   }
 
+  const openSettingsTab = useCallback(() => {
+    setActiveTab("settings");
+    setWizardOpen(false);
+  }, []);
+
   return (
     <div className="app-root">
       <header className="app-header">
@@ -127,19 +130,37 @@ export default function App() {
             className="ghost"
             onClick={() => setWizardOpen(true)}
             title="Short setup walkthrough"
+            aria-label="Open setup guide"
           >
             Setup guide
           </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => setShowSettings((v) => !v)}
-            aria-expanded={showSettings ? "true" : "false"}
-          >
-            {showSettings ? "Close settings" : "Settings"}
-          </button>
         </div>
       </header>
+
+      <div className="app-tabs" role="tablist" aria-label="Main sections">
+        <button
+          type="button"
+          role="tab"
+          className={activeTab === "queue" ? "app-tab app-tab--active" : "app-tab"}
+          aria-selected={activeTab === "queue"}
+          id="tab-queue"
+          onClick={() => setActiveTab("queue")}
+        >
+          Queue
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className={
+            activeTab === "settings" ? "app-tab app-tab--active" : "app-tab"
+          }
+          aria-selected={activeTab === "settings"}
+          id="tab-settings"
+          onClick={() => setActiveTab("settings")}
+        >
+          Settings
+        </button>
+      </div>
 
       <ReadinessPanel
         report={deps}
@@ -150,32 +171,33 @@ export default function App() {
           transcriptionMode: settings.transcriptionMode,
           whisperCliPath: settings.whisperCliPath,
         }}
-        onOpenSettings={() => {
-          setShowSettings(true);
-          setWizardOpen(false);
-        }}
+        onOpenSettings={openSettingsTab}
       />
 
       {toast ? (
-        <div className="toast" role="status">
+        <div className="toast" role="status" aria-live="polite">
           {toast}
         </div>
       ) : null}
 
-      {showSettings ? (
-        <SettingsPanel
-          settings={settings}
-          onChange={setSettings}
-          onSave={() => void handleSave()}
-          onPersistSettings={(s) => persistSettings(s)}
-          onRefreshReadiness={() => void refreshDeps(settingsRef.current)}
-          saving={saving}
-        />
+      {activeTab === "queue" ? (
+        <main className="main-workspace" role="tabpanel" aria-labelledby="tab-queue">
+          <QueuePanel settings={settings} readinessComplete={readinessComplete} />
+        </main>
       ) : null}
 
-      <main className="main-workspace">
-        <QueuePanel settings={settings} readinessComplete={readinessComplete} />
-      </main>
+      {activeTab === "settings" ? (
+        <div role="tabpanel" aria-labelledby="tab-settings">
+          <SettingsPanel
+            settings={settings}
+            onChange={setSettings}
+            onSave={() => void handleSave()}
+            onPersistSettings={(s) => persistSettings(s)}
+            onRefreshReadiness={() => void refreshDeps(settingsRef.current)}
+            saving={saving}
+          />
+        </div>
+      ) : null}
 
       <OnboardingWizard
         open={wizardOpen}
@@ -184,10 +206,7 @@ export default function App() {
         patchSettings={(partial) => setSettings((s) => ({ ...s, ...partial }))}
         persistSettings={(next) => persistSettings(next)}
         refreshReadiness={() => void refreshDeps(settingsRef.current)}
-        onOpenSettings={() => {
-          setShowSettings(true);
-          setWizardOpen(false);
-        }}
+        onOpenSettings={openSettingsTab}
         onFinish={() => void finishOnboarding()}
         onClose={() => setWizardOpen(false)}
       />

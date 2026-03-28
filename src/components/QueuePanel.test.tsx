@@ -22,10 +22,19 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
   openPath: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../lib/browserWhisper", () => ({
+  transcribeBrowserTracks: vi.fn(),
+}));
+
 vi.mock("../lib/invokeSafe", () => ({
   scanMediaFolder: vi.fn().mockResolvedValue(null),
   cancelQueueJob: vi.fn().mockResolvedValue(undefined),
+  sessionLogAppendUi: vi.fn().mockResolvedValue(undefined),
+  openSessionLog: vi.fn().mockResolvedValue(true),
+  browserQueueJobFinish: vi.fn(),
+  releaseQueueJobSlot: vi.fn().mockResolvedValue(undefined),
   processQueueItem: vi.fn().mockResolvedValue({
+    kind: "done",
     transcriptPath: "/out/transcript.txt",
     summary: "Saved: /out/transcript.txt",
   }),
@@ -44,6 +53,7 @@ describe("QueuePanel", () => {
   beforeEach(() => {
     vi.mocked(processQueueItem).mockClear();
     vi.mocked(processQueueItem).mockResolvedValue({
+      kind: "done",
       transcriptPath: "/out/transcript.txt",
       summary: "Saved: /out/transcript.txt",
     });
@@ -96,19 +106,23 @@ describe("QueuePanel", () => {
   it("stop cancels jobs not yet started after the first finishes", async () => {
     const user = userEvent.setup();
     let resolveFirst!: (v: {
+      kind: "done";
       transcriptPath: string;
       summary: string;
     }) => void;
-    const firstP = new Promise<{ transcriptPath: string; summary: string }>(
-      (r) => {
-        resolveFirst = r;
-      },
-    );
+    const firstP = new Promise<{
+      kind: "done";
+      transcriptPath: string;
+      summary: string;
+    }>((r) => {
+      resolveFirst = r;
+    });
     let callCount = 0;
     vi.mocked(processQueueItem).mockImplementation(() => {
       callCount += 1;
       if (callCount === 1) return firstP;
       return Promise.resolve({
+        kind: "done",
         transcriptPath: "/out/2.txt",
         summary: "Saved: /out/2.txt",
       });
@@ -129,6 +143,7 @@ describe("QueuePanel", () => {
     await user.click(screen.getByTestId("stop-queue"));
     expect(cancelQueueJob).toHaveBeenCalled();
     resolveFirst({
+      kind: "done",
       transcriptPath: "/out/1.txt",
       summary: "Saved: /out/1.txt",
     });

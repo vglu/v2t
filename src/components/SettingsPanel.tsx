@@ -8,6 +8,7 @@ import {
   downloadWhisperModel,
   listWhisperModels,
 } from "../lib/invokeSafe";
+import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
 import type { AppSettings, TranscriptionMode, WhisperModelMeta } from "../types/settings";
 
 type Props = {
@@ -20,16 +21,6 @@ type Props = {
   onRefreshReadiness?: () => void;
   saving: boolean;
 };
-
-function isProbablyWindows(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /Windows/i.test(navigator.userAgent);
-}
-
-function isProbablyMac(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /Macintosh|Mac OS X/i.test(navigator.userAgent);
-}
 
 export function SettingsPanel({
   settings,
@@ -66,6 +57,7 @@ export function SettingsPanel({
 
   const isWin = useMemo(() => isProbablyWindows(), []);
   const isMac = useMemo(() => isProbablyMac(), []);
+  const isLinux = useMemo(() => isProbablyLinux(), []);
   const showManagedToolDownloads = isWin || isMac;
 
   useEffect(() => {
@@ -246,9 +238,13 @@ export function SettingsPanel({
   }
 
   const useLocal = settings.transcriptionMode === "localWhisper";
+  const useBrowser = settings.transcriptionMode === "browserWhisper";
 
   return (
-    <section className="settings-panel" aria-label="Settings">
+    <section
+      className="settings-panel settings-panel--embedded"
+      aria-label="Settings"
+    >
       <h2>Settings</h2>
 
       <p className="settings-section-title">Output</p>
@@ -274,10 +270,16 @@ export function SettingsPanel({
       </p>
 
       <p className="settings-section-title">Transcription &amp; models</p>
-      <div className="settings-highlight" data-testid="transcription-mode-card">
-        <label className="field" style={{ marginBottom: "0.5rem" }}>
+      <div
+        className="settings-highlight"
+        data-testid="transcription-mode-card"
+        role="group"
+        aria-label="Transcription settings"
+      >
+        <label className="field mb-sm">
           <span>Transcription mode</span>
           <select
+            aria-label="Transcription mode"
             value={settings.transcriptionMode}
             onChange={(e) =>
               onChange({
@@ -288,13 +290,22 @@ export function SettingsPanel({
           >
             <option value="httpApi">Cloud — HTTP API (OpenAI-compatible)</option>
             <option value="localWhisper">Offline — Local Whisper (whisper.cpp)</option>
+            <option value="browserWhisper">In-app — Whisper (WASM / Transformers.js)</option>
           </select>
         </label>
         <p className="hint settings-mode-summary">
           {useLocal
             ? "No API key. You need the whisper-cli executable and one ggml .bin model on disk."
-            : "Uses your provider’s API key. whisper-cli and local models are not used."}
+            : useBrowser
+              ? "No API key or whisper-cli. Transcription runs in the app (WASM); pick model size — first run may download weights."
+              : "Uses your provider’s API key. whisper-cli and local models are not used."}
         </p>
+        {useBrowser ? (
+          <p className="hint hint--warn" role="note">
+            Experimental: needs internet for the first model download; long audio may be slow or run out of memory. If
+            this fails, switch to Cloud API or Local Whisper.
+          </p>
+        ) : null}
 
         {useLocal ? (
           <div className="local-whisper-block" data-testid="local-whisper-block">
@@ -306,11 +317,37 @@ export function SettingsPanel({
                   ggml-org/whisper.cpp
                 </a>{" "}
                 (MIT) — use the button below to download into app data (includes DLLs).{" "}
-                <strong>macOS:</strong> Apple does not publish a CLI zip in those releases; the button looks for{" "}
-                <code>brew install whisper-cpp</code> paths, or use <strong>Pick file…</strong>.{" "}
-                <strong>Linux:</strong> use your distro / build from source.
+                <strong>macOS:</strong> no CLI zip in those releases; the button runs{" "}
+                <code>which whisper-cli</code> / <code>whisper</code> / <code>main</code> and scans Homebrew paths, or
+                use <strong>Pick file…</strong> after <code>brew install whisper-cpp</code>.
               </p>
-              <div className="row-gap" style={{ marginBottom: "0.5rem" }}>
+              {isLinux ? (
+                <div
+                  className="onboarding-info-callout settings-linux-whisper-hint"
+                  data-testid="linux-whisper-instructions"
+                >
+                  <p className="hint settings-step-body">
+                    <strong>Linux:</strong> this app does not download whisper-cli here. Install a package or build
+                    from source, then set the path below or use <strong>Pick file…</strong>.
+                  </p>
+                  <ul className="hint settings-step-body">
+                    <li>
+                      <strong>Ubuntu / Debian:</strong> <code>sudo apt install whisper-cpp</code> (if available in your
+                      release) or build from{" "}
+                      <a href="https://github.com/ggml-org/whisper.cpp" target="_blank" rel="noopener noreferrer">
+                        ggml-org/whisper.cpp
+                      </a>
+                    </li>
+                    <li>
+                      <strong>Fedora:</strong> <code>sudo dnf install whisper-cpp</code> (package name may vary)
+                    </li>
+                    <li>
+                      <strong>Arch:</strong> AUR e.g. <code>yay -S whisper-cpp</code>
+                    </li>
+                  </ul>
+                </div>
+              ) : null}
+              <div className="row-gap mb-sm">
                 {showManagedToolDownloads ? (
                   <button
                     type="button"
@@ -321,7 +358,7 @@ export function SettingsPanel({
                       ? "Working…"
                       : isWin
                         ? "Download whisper-cli for me (Windows)"
-                        : "Find Homebrew whisper-cli (macOS)"}
+                        : "Find whisper-cli (macOS)"}
                   </button>
                 ) : null}
                 <button type="button" onClick={() => void pickWhisperCliExecutable()}>
@@ -339,12 +376,10 @@ export function SettingsPanel({
                 </div>
               ) : null}
               {whisperCliDlMsg && whisperCliDlBusy ? (
-                <p className="hint" style={{ marginTop: "0.35rem" }}>
-                  {whisperCliDlMsg}
-                </p>
+                <p className="hint mt-xs">{whisperCliDlMsg}</p>
               ) : null}
               {whisperCliInstallSuccess ? (
-                <div className="onboarding-success-callout" role="status" style={{ marginTop: "0.5rem" }}>
+                <div className="onboarding-success-callout mt-sm" role="status">
                   <span className="onboarding-check-circle" aria-hidden>
                     ✓
                   </span>
@@ -354,7 +389,7 @@ export function SettingsPanel({
                 </div>
               ) : null}
               {whisperCliDlError ? (
-                <div className="onboarding-error-callout" role="alert" style={{ marginTop: "0.5rem" }}>
+                <div className="onboarding-error-callout mt-sm" role="alert">
                   <span className="onboarding-error-icon" aria-hidden>
                     !
                   </span>
@@ -403,6 +438,7 @@ export function SettingsPanel({
               <label className="field">
                 <span>Model</span>
                 <select
+                  aria-label="Whisper GGML model"
                   value={settings.whisperModel}
                   onChange={(e) =>
                     onChange({ ...settings, whisperModel: e.target.value })
@@ -416,7 +452,7 @@ export function SettingsPanel({
                 </select>
               </label>
 
-              <div className="row-gap" style={{ marginTop: "0.35rem" }}>
+              <div className="row-gap mt-xs">
                 <button
                   type="button"
                   disabled={modelDlBusy}
@@ -439,6 +475,32 @@ export function SettingsPanel({
                   {modelDlMsg}
                 </p>
               ) : null}
+            </div>
+          </div>
+        ) : useBrowser ? (
+          <div className="browser-whisper-block" data-testid="browser-whisper-block">
+            <div className="settings-step-card">
+              <p className="settings-step-title">Model size (browser)</p>
+              <p className="hint settings-step-body">
+                Same labels as the local catalog; the app maps them to Transformers.js checkpoints. No ggml{" "}
+                <code>.bin</code> download here — weights load on first transcription (needs network once per model).
+              </p>
+              <label className="field">
+                <span>Model</span>
+                <select
+                  aria-label="In-app Whisper model size"
+                  value={settings.whisperModel}
+                  onChange={(e) =>
+                    onChange({ ...settings, whisperModel: e.target.value })
+                  }
+                >
+                  {whisperModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id} — ~{m.sizeMib} MiB (browser, approximate)
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
         ) : (
@@ -534,7 +596,7 @@ export function SettingsPanel({
               <code>xattr -dr com.apple.quarantine …</code>).
             </p>
           ) : null}
-          <div className="row-gap" style={{ marginBottom: "0.5rem" }}>
+          <div className="row-gap mb-sm">
             <button
               type="button"
               disabled={toolDlBusy}
@@ -596,6 +658,25 @@ export function SettingsPanel({
               placeholder="Auto-detect if next to app"
             />
           </label>
+          <label className="field">
+            <span>yt-dlp JS runtimes (optional)</span>
+            <input
+              type="text"
+              value={settings.ytDlpJsRuntimes ?? ""}
+              onChange={(e) =>
+                onChange({
+                  ...settings,
+                  ytDlpJsRuntimes: e.target.value.trim() || null,
+                })
+              }
+              placeholder="e.g. deno — see yt-dlp wiki (EJS)"
+              aria-label="yt-dlp JavaScript runtimes for EJS"
+            />
+          </label>
+          <p className="hint">
+            If YouTube fails with “no supported JavaScript runtime”, install Deno or Node and set this
+            to the runtime name yt-dlp expects (often <code>deno</code>).
+          </p>
         </div>
       </details>
 
@@ -626,6 +707,19 @@ export function SettingsPanel({
       <label className="field checkbox">
         <input
           type="checkbox"
+          checked={settings.keepDownloadedVideo}
+          onChange={(e) =>
+            onChange({ ...settings, keepDownloadedVideo: e.target.checked })
+          }
+        />
+        <span>
+          Save downloaded video to output folder (URL jobs — second yt-dlp pass, best mp4)
+        </span>
+      </label>
+
+      <label className="field checkbox">
+        <input
+          type="checkbox"
           checked={settings.recursiveFolderScan}
           onChange={(e) =>
             onChange({ ...settings, recursiveFolderScan: e.target.checked })
@@ -646,7 +740,39 @@ export function SettingsPanel({
             })
           }
           placeholder="auto"
+          aria-describedby="language-examples-hint"
         />
+        <div
+          className="field-lang-examples"
+          role="group"
+          aria-label="Insert example language codes"
+        >
+          <span className="field-lang-examples-label">Examples:</span>
+          <button
+            type="button"
+            className="lang-code-chip"
+            onClick={() => onChange({ ...settings, language: "ru" })}
+          >
+            ru <span className="lang-code-chip-desc">(Russian)</span>
+          </button>
+          <button
+            type="button"
+            className="lang-code-chip"
+            onClick={() => onChange({ ...settings, language: "uk" })}
+          >
+            uk <span className="lang-code-chip-desc">(Ukrainian)</span>
+          </button>
+          <button
+            type="button"
+            className="lang-code-chip"
+            onClick={() => onChange({ ...settings, language: "en" })}
+          >
+            en <span className="lang-code-chip-desc">(English)</span>
+          </button>
+        </div>
+        <p className="hint" id="language-examples-hint">
+          Or any other ISO 639-1 code (e.g. <code>de</code>, <code>fr</code>, <code>pl</code>).
+        </p>
       </label>
 
       <button type="button" className="primary" disabled={saving} onClick={onSave}>

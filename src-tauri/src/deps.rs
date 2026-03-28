@@ -1,5 +1,7 @@
 use serde::Serialize;
 use std::path::PathBuf;
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use tauri::AppHandle;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -53,6 +55,64 @@ pub fn resolve_tool_path(override_path: Option<&str>, default_stem: &str) -> Opt
     None
 }
 
+/// Typical Homebrew / PATH locations on macOS (Apple Silicon, Intel, Linuxbrew-on-Mac, keg layouts).
+#[cfg(target_os = "macos")]
+const MACOS_WHISPER_STATIC_PATHS: &[&str] = &[
+    "/opt/homebrew/bin/whisper-cli",
+    "/usr/local/bin/whisper-cli",
+    "/opt/homebrew/opt/whisper-cpp/bin/whisper-cli",
+    "/usr/local/opt/whisper-cpp/bin/whisper-cli",
+    "/opt/homebrew/bin/whisper",
+    "/usr/local/bin/whisper",
+    "/opt/homebrew/opt/whisper-cpp/bin/whisper",
+    "/usr/local/opt/whisper-cpp/bin/whisper",
+    "/home/linuxbrew/.linuxbrew/bin/whisper-cli",
+    "/home/linuxbrew/.linuxbrew/bin/whisper",
+    "/opt/homebrew/bin/main",
+    "/usr/local/bin/main",
+    "/opt/homebrew/opt/whisper-cpp/bin/main",
+    "/usr/local/opt/whisper-cpp/bin/main",
+];
+
+#[cfg(target_os = "macos")]
+fn macos_which(executable: &str) -> Option<PathBuf> {
+    let output = Command::new("/usr/bin/which")
+        .arg(executable)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&output.stdout);
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let p = PathBuf::from(trimmed);
+    if p.is_file() {
+        Some(p)
+    } else {
+        None
+    }
+}
+
+/// Resolve `whisper-cli` / `whisper` / `main` from PATH (`which`) and fixed paths (no `AppHandle`).
+#[cfg(target_os = "macos")]
+pub(crate) fn macos_search_whisper_cli_in_path() -> Option<PathBuf> {
+    for name in ["whisper-cli", "whisper"] {
+        if let Some(p) = macos_which(name) {
+            return Some(p);
+        }
+    }
+    for &static_path in MACOS_WHISPER_STATIC_PATHS {
+        let p = PathBuf::from(static_path);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    macos_which("main")
+}
+
 /// whisper.cpp builds ship `whisper-cli`; older builds used `main`.
 pub fn resolve_whisper_cli_path(override_path: Option<&str>) -> Option<PathBuf> {
     if let Some(p) = override_path {
@@ -74,6 +134,12 @@ pub fn resolve_whisper_cli_path(override_path: Option<&str>) -> Option<PathBuf> 
         let in_bin = dir.join("bin").join(&name);
         if in_bin.is_file() {
             return Some(in_bin);
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(p) = macos_search_whisper_cli_in_path() {
+            return Some(p);
         }
     }
     None
@@ -136,6 +202,11 @@ pub fn check_dependencies(
     whisper_models_dir: Option<&str>,
 ) -> DependencyReport {
     let mut r = report_tool_paths(ffmpeg_override, yt_dlp_override, whisper_cli_override);
+    if transcription_mode.map(str::trim) == Some("browserWhisper") {
+        r.whisper_cli_found = true;
+        r.whisper_model_ready = true;
+        return r;
+    }
     r.whisper_model_ready = local_whisper_model_verified(
         app,
         transcription_mode,

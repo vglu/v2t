@@ -10,6 +10,7 @@ use tauri::Emitter;
 
 use crate::deps;
 use crate::process_kill;
+use crate::session_log;
 
 pub const JOB_CANCELLED_MSG: &str = "Job cancelled";
 
@@ -36,6 +37,15 @@ pub(crate) const STDERR_TAIL: usize = 1800;
 pub fn is_http_url(s: &str) -> bool {
     let t = s.trim();
     t.starts_with("http://") || t.starts_with("https://")
+}
+
+/// Append `--js-runtimes …` when non-empty (YouTube EJS; see yt-dlp wiki).
+fn push_yt_dlp_js_runtimes(args: &mut Vec<String>, js_runtimes: Option<&str>) {
+    let Some(raw) = js_runtimes.map(str::trim).filter(|s| !s.is_empty()) else {
+        return;
+    };
+    args.push("--js-runtimes".into());
+    args.push(raw.to_string());
 }
 
 /// YouTube copies `watch?v=…&list=…` links; yt-dlp then downloads the **entire** playlist (slow,
@@ -99,9 +109,29 @@ fn emit_pipeline_log(app: &AppHandle, job_id: &str, label: &str, stderr: &[u8]) 
     let payload = PipelineLogPayload {
         job_id: job_id.to_string(),
         label: label.to_string(),
-        message,
+        message: message.clone(),
     };
     let _ = app.emit("pipeline-log", &payload);
+    session_log::try_append(app, Some(job_id), label, &message);
+}
+
+fn emit_pipeline_text(app: &AppHandle, job_id: &str, label: &str, text: &str) {
+    let t = text.trim();
+    if t.is_empty() {
+        return;
+    }
+    let message = if t.len() <= STDERR_TAIL {
+        t.to_string()
+    } else {
+        format!("…{}", &t[t.len() - STDERR_TAIL..])
+    };
+    let payload = PipelineLogPayload {
+        job_id: job_id.to_string(),
+        label: label.to_string(),
+        message: message.clone(),
+    };
+    let _ = app.emit("pipeline-log", &payload);
+    session_log::try_append(app, Some(job_id), label, &message);
 }
 
 fn apply_win_no_window(cmd: &mut Command) {
@@ -185,13 +215,62 @@ pub(crate) async fn run_cmd(
     }
 }
 
+/// Second yt-dlp pass: best video+audio merged to `mp4` (URL jobs only; used when user opts in).
+pub async fn download_best_video_mp4(
+    maybe_log: Option<(&AppHandle, &str)>,
+    yt_dlp: &Path,
+    url: &str,
+    dest_mp4: &Path,
+    cancel: &CancellationToken,
+    yt_dlp_js_runtimes: Option<&str>,
+) -> Result<(), String> {
+    if let Some(parent) = dest_mp4.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create video dir: {e}"))?;
+    }
+    let dest = dest_mp4
+        .to_str()
+        .ok_or("Video output path must be UTF-8")?
+        .replace('\\', "/");
+
+    let mut args: Vec<String> = Vec::new();
+    push_yt_dlp_js_runtimes(&mut args, yt_dlp_js_runtimes);
+    if youtube_watch_url_should_use_no_playlist(url) {
+        args.push("--no-playlist".into());
+    }
+    args.extend([
+        "-f".into(),
+        "bv*+ba/b".into(),
+        "--merge-output-format".into(),
+        "mp4".into(),
+        "-o".into(),
+        dest,
+        url.trim().to_string(),
+    ]);
+
+    let out = run_cmd(yt_dlp, &args, YT_DLP_TIMEOUT, cancel).await?;
+    if !out.status.success() {
+        return Err(format!(
+            "yt-dlp video download failed (exit {}): {}",
+            out.status.code().unwrap_or(-1),
+            tail_stderr(&out.stderr)
+        ));
+    }
+    if let Some((app, jid)) = maybe_log.as_ref() {
+        emit_pipeline_log(app, jid, "yt-dlp-video", &out.stderr);
+    }
+    Ok(())
+}
+
 pub async fn prepare_media_audio(
     maybe_log: Option<(&AppHandle, &str)>,
     source: String,
     source_kind: String,
     ffmpeg_override: Option<String>,
     yt_dlp_override: Option<String>,
+    yt_dlp_js_runtimes: Option<String>,
     cancel: &CancellationToken,
+    keep_downloaded_video: bool,
+    video_output_path: Option<PathBuf>,
 ) -> Result<PrepareAudioResult, String> {
     let source = source.trim().to_string();
     if source.is_empty() {
@@ -220,7 +299,10 @@ pub async fn prepare_media_audio(
             .ok_or("Work path is not valid UTF-8")?
             .replace('\\', "/");
 
-        let mut args: Vec<String> = vec!["-x".into(), "--no-mtime".into()];
+        let js = yt_dlp_js_runtimes.as_deref();
+        let mut args: Vec<String> = Vec::new();
+        push_yt_dlp_js_runtimes(&mut args, js);
+        args.extend(["-x".into(), "--no-mtime".into()]);
         if youtube_watch_url_should_use_no_playlist(&source) {
             args.push("--no-playlist".into());
         }
@@ -246,7 +328,38 @@ pub async fn prepare_media_audio(
             return Err(JOB_CANCELLED_MSG.to_string());
         }
 
-        sorted_downloaded_media(&work_dir)?
+        let media = sorted_downloaded_media(&work_dir)?;
+
+        if keep_downloaded_video {
+            if let Some(ref vp) = video_output_path {
+                if is_http_url(&source) {
+                    match download_best_video_mp4(
+                        maybe_log,
+                        &yt_dlp,
+                        source.as_str(),
+                        vp,
+                        cancel,
+                        js,
+                    )
+                    .await
+                    {
+                        Ok(()) => {}
+                        Err(e) => {
+                            if let Some((app, jid)) = maybe_log.as_ref() {
+                                emit_pipeline_text(
+                                    app,
+                                    jid,
+                                    "yt-dlp-video",
+                                    &format!("Could not save video (continuing with transcript): {e}"),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        media
     } else {
         let p = PathBuf::from(&source);
         if !p.is_file() {

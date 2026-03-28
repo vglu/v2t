@@ -1,10 +1,15 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  browserQueueJobFinish,
   cancelQueueJob,
+  openSessionLog,
   processQueueItem,
+  releaseQueueJobSlot,
   scanMediaFolder,
+  sessionLogAppendUi,
 } from "../lib/invokeSafe";
+import { transcribeBrowserTracks } from "../lib/browserWhisper";
 import { newJobId, parseInputLines, shortLabel } from "../lib/queueUtils";
 import type { QueueJob } from "../types/queue";
 import type { AppSettings } from "../types/settings";
@@ -78,10 +83,12 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
 
   const appendLog = useCallback((line: string) => {
     const ts = new Date().toISOString().slice(11, 19);
+    const formatted = `[${ts}] ${line}`;
     setLogLines((prev) => {
-      const next = [...prev, `[${ts}] ${line}`];
+      const next = [...prev, formatted];
       return next.length > MAX_LOG ? next.slice(-MAX_LOG) : next;
     });
+    void sessionLogAppendUi(line);
   }, []);
 
   const addJobs = useCallback((incoming: Omit<QueueJob, "id" | "status">[]) => {
@@ -290,7 +297,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
         appendLog(`Run: ${job.displayLabel}`);
         currentJobIdRef.current = job.id;
         try {
-          const result = await processQueueItem({
+          const outcome = await processQueueItem({
             jobId: job.id,
             jobIndex,
             source: job.source,
@@ -298,6 +305,44 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
             displayLabel: job.displayLabel,
             settings,
           });
+
+          let result: { transcriptPath: string; summary: string };
+          if (outcome.kind === "browserPrepared") {
+            const outDir = settings.outputDir?.trim();
+            if (!outDir) {
+              throw new Error("Choose output folder in Settings");
+            }
+            let texts: string[];
+            try {
+              texts = await transcribeBrowserTracks({
+                whisperModelId: outcome.whisperModelId,
+                tracks: outcome.tracks,
+                language: outcome.language,
+                shouldStop: () => stopRequestedRef.current,
+                onProgress: (m) => appendLog(`[browser] ${m}`),
+              });
+            } catch (e) {
+              void releaseQueueJobSlot(job.id);
+              const msg =
+                e instanceof Error
+                  ? e.message
+                  : String(e);
+              appendLog(`[browser-error] ${msg}`);
+              void sessionLogAppendUi(`[browser-error] ${msg}`);
+              throw e;
+            }
+            result = await browserQueueJobFinish({
+              jobId: job.id,
+              tracks: outcome.tracks,
+              texts,
+              workDir: outcome.workDir,
+              deleteAudioAfter: outcome.deleteAudioAfter,
+              outputDir: outDir,
+            });
+          } else {
+            result = outcome;
+          }
+
           setJobs((prev) =>
             prev.map((j) =>
               j.id === job.id
@@ -327,7 +372,9 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
             ),
           );
           appendLog(
-            cancelled ? `Stopped: ${job.displayLabel}` : `Error: ${job.displayLabel}`,
+            cancelled
+              ? `Stopped: ${job.displayLabel}`
+              : `Error: ${detail}${job.displayLabel !== detail ? ` — ${job.displayLabel}` : ""}`,
           );
         } finally {
           currentJobIdRef.current = null;
@@ -354,6 +401,13 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
   function copyLog() {
     void navigator.clipboard.writeText(logLines.join("\n"));
     appendLog("Log copied to clipboard");
+  }
+
+  async function openLogFile() {
+    const ok = await openSessionLog();
+    if (!ok) {
+      appendLog("Could not open session log file (run inside the app or log unavailable)");
+    }
   }
 
   async function revealTranscriptInFolder(path: string) {
@@ -530,9 +584,14 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
       <div className="log-panel">
         <div className="log-header">
           <span>Log</span>
-          <button type="button" onClick={copyLog}>
-            Copy
-          </button>
+          <div className="log-header-actions">
+            <button type="button" onClick={() => void openLogFile()}>
+              Open log file
+            </button>
+            <button type="button" onClick={copyLog}>
+              Copy
+            </button>
+          </div>
         </div>
         <pre className="log-body" data-testid="queue-log">
           {logLines.length === 0 ? "…" : logLines.join("\n")}

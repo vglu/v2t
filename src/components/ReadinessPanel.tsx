@@ -32,13 +32,18 @@ export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings
   const outputIsDocuments = pathsProbablyEqual(settings.outputDir, documentsPath);
 
   const useLocal = settings.transcriptionMode === "localWhisper";
+  const useBrowser = settings.transcriptionMode === "browserWhisper";
 
   const whisperCliOk = !toolsUnknown && (report?.whisperCliFound ?? false);
   const modelOk = !toolsUnknown && (report?.whisperModelReady ?? false);
   const apiKeyOk = Boolean(settings.apiKey?.trim());
 
   const toolsReady = !toolsUnknown && ffmpegOk && ytDlpOk;
-  const transcriptionReady = useLocal ? whisperCliOk && modelOk : apiKeyOk;
+  const transcriptionReady = useLocal
+    ? whisperCliOk && modelOk
+    : useBrowser
+      ? true
+      : apiKeyOk;
 
   const allOk = toolsReady && outputOk && transcriptionReady;
 
@@ -103,6 +108,13 @@ export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings
             : "Missing or checksum mismatch — use Download / verify model in Settings or setup.",
       },
     );
+  } else if (useBrowser) {
+    rows.push({
+      id: "wasm-whisper",
+      label: "In-app Whisper (WASM)",
+      ok: true,
+      hint: "Runs in the app (Transformers.js). First job may download the model; no API key or whisper-cli.",
+    });
   } else {
     rows.push({
       id: "api",
@@ -130,6 +142,11 @@ export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings
         {useLocal ? (
           <p className="readiness-mode-hint">
             Mode: <strong>Local Whisper</strong> — cloud API key is not required.
+          </p>
+        ) : useBrowser ? (
+          <p className="readiness-mode-hint">
+            Mode: <strong>In-app Whisper</strong> — WASM in the UI layer; no API key or whisper-cli (ffmpeg / yt-dlp
+            still required for URLs).
           </p>
         ) : (
           <p className="readiness-mode-hint">

@@ -7,15 +7,22 @@ mod output_template;
 mod pipeline;
 mod process_kill;
 mod scan;
+mod session_log;
 mod settings;
 mod tool_download;
+#[cfg(any(windows, target_os = "macos"))]
+mod tool_manifest;
 mod transcribe;
 mod whisper_catalog;
 mod whisper_local;
+#[cfg(target_os = "macos")]
+mod whisper_bottle_macos;
 
 use cancel_registry::JobCancelRegistry;
+use session_log::SessionLog;
+use std::path::PathBuf;
 use tauri::Manager;
-use job::ProcessQueueItemResult;
+use job::{BrowserTrackInfo, ProcessQueueItemOutcome, ProcessQueueItemResult};
 use settings::AppSettings;
 use tokio_util::sync::CancellationToken;
 
@@ -62,6 +69,7 @@ async fn prepare_media_audio(
     source_kind: String,
     ffmpeg_path_override: Option<String>,
     yt_dlp_path_override: Option<String>,
+    yt_dlp_js_runtimes: Option<String>,
 ) -> Result<pipeline::PrepareAudioResult, String> {
     let never = CancellationToken::new();
     pipeline::prepare_media_audio(
@@ -70,7 +78,10 @@ async fn prepare_media_audio(
         source_kind,
         ffmpeg_path_override,
         yt_dlp_path_override,
+        yt_dlp_js_runtimes,
         &never,
+        false,
+        None,
     )
     .await
 }
@@ -87,7 +98,7 @@ async fn process_queue_item(
     settings: AppSettings,
     ffmpeg_path_override: Option<String>,
     yt_dlp_path_override: Option<String>,
-) -> Result<ProcessQueueItemResult, String> {
+) -> Result<ProcessQueueItemOutcome, String> {
     let cancel = registry.register_job(&job_id);
     let out = job::run_process_queue_item(
         app,
@@ -102,8 +113,47 @@ async fn process_queue_item(
         cancel,
     )
     .await;
-    registry.finish_job(&job_id);
+    match &out {
+        Ok(ProcessQueueItemOutcome::Done { .. }) | Err(_) => registry.finish_job(&job_id),
+        Ok(ProcessQueueItemOutcome::BrowserPrepared { .. }) => {}
+    }
     out
+}
+
+#[tauri::command]
+fn browser_queue_job_finish(
+    app: tauri::AppHandle,
+    registry: tauri::State<'_, JobCancelRegistry>,
+    job_id: String,
+    tracks: Vec<BrowserTrackInfo>,
+    texts: Vec<String>,
+    work_dir: String,
+    delete_audio_after: bool,
+    output_dir: String,
+) -> Result<ProcessQueueItemResult, String> {
+    let trimmed = output_dir.trim();
+    if trimmed.is_empty() {
+        return Err("Output folder is not set".to_string());
+    }
+    let out_dir = PathBuf::from(trimmed);
+    let res = job::finish_browser_queue_job(
+        &app,
+        &registry,
+        &job_id,
+        &tracks,
+        &texts,
+        &work_dir,
+        delete_audio_after,
+        &out_dir,
+    );
+    registry.finish_job(&job_id);
+    res
+}
+
+/// If the UI aborts after `browserPrepared` without calling `browser_queue_job_finish`, free the cancel slot.
+#[tauri::command]
+fn release_queue_job_slot(registry: tauri::State<'_, JobCancelRegistry>, job_id: String) {
+    registry.finish_job(&job_id);
 }
 
 #[tauri::command]
@@ -158,12 +208,31 @@ async fn download_whisper_cli(
     tool_download::download_whisper_cli_managed(&app).await
 }
 
+#[tauri::command]
+fn session_log_append_ui(app: tauri::AppHandle, message: String) {
+    session_log::try_append(&app, None, "ui", &message);
+}
+
+#[tauri::command]
+fn open_session_log(app: tauri::AppHandle) -> Result<(), String> {
+    let Some(log) = app.try_state::<SessionLog>() else {
+        return Err("Session log is not available".to_string());
+    };
+    tauri_plugin_opener::open_path(log.log_path(), None::<&str>).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(JobCancelRegistry::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            if let Some(log) = SessionLog::try_init(app.handle()) {
+                app.manage(log);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             load_settings,
             save_settings,
@@ -171,13 +240,17 @@ pub fn run() {
             scan_media_folder,
             prepare_media_audio,
             process_queue_item,
+            browser_queue_job_finish,
+            release_queue_job_slot,
             cancel_queue_job,
             list_whisper_models,
             default_whisper_models_dir,
             download_whisper_model,
             default_documents_dir,
             download_media_tools,
-            download_whisper_cli
+            download_whisper_cli,
+            session_log_append_ui,
+            open_session_log
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

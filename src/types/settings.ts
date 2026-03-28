@@ -1,11 +1,18 @@
-export type TranscriptionMode = "httpApi" | "localWhisper";
+export type TranscriptionMode =
+  | "httpApi"
+  | "localWhisper"
+  | "browserWhisper";
 
 export type AppSettings = {
   outputDir: string | null;
   filenameTemplate: string;
   ffmpegPath: string | null;
   ytDlpPath: string | null;
+  /** yt-dlp `--js-runtimes` value when non-empty (YouTube EJS). */
+  ytDlpJsRuntimes: string | null;
   deleteAudioAfter: boolean;
+  /** URL jobs: also save merged best-quality video (.mp4) to the output folder (second yt-dlp pass). */
+  keepDownloadedVideo: boolean;
   apiBaseUrl: string;
   apiModel: string;
   apiKey: string;
@@ -24,10 +31,12 @@ export type AppSettings = {
 
 export const defaultAppSettings: AppSettings = {
   outputDir: null,
-  filenameTemplate: "{title}_{date}.txt",
+  filenameTemplate: "{title}_{date}.{ext}",
   ffmpegPath: null,
   ytDlpPath: null,
+  ytDlpJsRuntimes: null,
   deleteAudioAfter: true,
+  keepDownloadedVideo: false,
   apiBaseUrl: "https://api.openai.com/v1",
   apiModel: "whisper-1",
   apiKey: "",

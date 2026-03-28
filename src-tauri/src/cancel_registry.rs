@@ -22,6 +22,10 @@ impl JobCancelRegistry {
         self.inner.lock().unwrap().remove(job_id);
     }
 
+    pub fn token_for(&self, job_id: &str) -> Option<CancellationToken> {
+        self.inner.lock().unwrap().get(job_id).cloned()
+    }
+
     /// Idempotent: returns true if a token existed for this job.
     pub fn cancel_job(&self, job_id: &str) -> bool {
         let g = self.inner.lock().unwrap();

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "windows": {
+    "yt_dlp_exe": {
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp.exe",
+      "sha256": "3db811b366b2da47337d2fcfdfe5bbd9a258dad3f350c54974f005df115a1545"
+    },
+    "ffmpeg_zip": {
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
+      "sha256": ""
+    },
+    "whisper_zip": {
+      "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.4/whisper-bin-x64.zip",
+      "sha256": "74f973345cb52ef5ba3ec9e7e7af8e48cc8c71722d1528603b80588a11f82e3e"
+    }
+  },
+  "macos": {
+    "yt_dlp": {
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_macos",
+      "sha256": "e80c47b3ce712acee51d5e3d4eace2d181b44d38f1942c3a32e3c7ff53cd9ed5"
+    },
+    "ffmpeg_darwin_arm64": {
+      "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-arm64",
+      "sha256": "a90e3db6a3fd35f6074b013f948b1aa45b31c6375489d39e572bea3f18336584"
+    },
+    "ffmpeg_darwin_x64": {
+      "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-x64",
+      "sha256": "ebdddc936f61e14049a2d4b549a412b8a40deeff6540e58a9f2a2da9e6b18894"
+    }
+  }
+}

@@ -1,4 +1,8 @@
-import type { ProcessQueueItemResult } from "../types/job";
+import type {
+  BrowserTrackInfo,
+  ProcessQueueItemOutcome,
+  ProcessQueueItemResult,
+} from "../types/job";
 import type { PrepareAudioResult } from "../types/pipeline";
 import type {
   AppSettings,
@@ -67,6 +71,7 @@ export async function prepareMediaAudio(
   sourceKind: "url" | "file",
   ffmpegPath: string | null,
   ytDlpPath: string | null,
+  ytDlpJsRuntimes: string | null = null,
 ): Promise<PrepareAudioResult> {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
@@ -75,6 +80,7 @@ export async function prepareMediaAudio(
       sourceKind,
       ffmpegPathOverride: ffmpegPath,
       ytDlpPathOverride: ytDlpPath,
+      ytDlpJsRuntimes,
     });
   } catch (e) {
     const msg =
@@ -84,6 +90,25 @@ export async function prepareMediaAudio(
           ? e.message
           : "invoke failed (run inside Tauri app)";
     throw new Error(msg);
+  }
+}
+
+export async function sessionLogAppendUi(message: string): Promise<void> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("session_log_append_ui", { message });
+  } catch {
+    /* web / tests */
+  }
+}
+
+export async function openSessionLog(): Promise<boolean> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("open_session_log");
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -152,12 +177,12 @@ export async function processQueueItem(args: {
   sourceKind: "url" | "file";
   displayLabel: string;
   settings: AppSettings;
-}): Promise<ProcessQueueItemResult> {
+}): Promise<ProcessQueueItemOutcome> {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     const { settings, jobId, jobIndex, source, sourceKind, displayLabel } =
       args;
-    return await invoke<ProcessQueueItemResult>("process_queue_item", {
+    return await invoke<ProcessQueueItemOutcome>("process_queue_item", {
       jobId,
       jobIndex,
       source,
@@ -175,5 +200,43 @@ export async function processQueueItem(args: {
           ? e.message
           : "invoke failed (run inside Tauri app)";
     throw new Error(msg);
+  }
+}
+
+export async function browserQueueJobFinish(args: {
+  jobId: string;
+  tracks: BrowserTrackInfo[];
+  texts: string[];
+  workDir: string;
+  deleteAudioAfter: boolean;
+  outputDir: string;
+}): Promise<ProcessQueueItemResult> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<ProcessQueueItemResult>("browser_queue_job_finish", {
+      jobId: args.jobId,
+      tracks: args.tracks,
+      texts: args.texts,
+      workDir: args.workDir,
+      deleteAudioAfter: args.deleteAudioAfter,
+      outputDir: args.outputDir,
+    });
+  } catch (e) {
+    const msg =
+      typeof e === "string"
+        ? e
+        : e instanceof Error
+          ? e.message
+          : "browser_queue_job_finish failed";
+    throw new Error(msg);
+  }
+}
+
+export async function releaseQueueJobSlot(jobId: string): Promise<void> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("release_queue_job_slot", { jobId });
+  } catch {
+    /* web / tests */
   }
 }

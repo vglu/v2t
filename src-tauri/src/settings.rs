@@ -22,6 +22,8 @@ pub enum TranscriptionMode {
     #[default]
     HttpApi,
     LocalWhisper,
+    /// Transformers.js / WASM in the webview after Rust prepare.
+    BrowserWhisper,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -31,7 +33,13 @@ pub struct AppSettings {
     pub filename_template: String,
     pub ffmpeg_path: Option<String>,
     pub yt_dlp_path: Option<String>,
+    /// Passed to yt-dlp as `--js-runtimes` when non-empty (YouTube EJS).
+    #[serde(default)]
+    pub yt_dlp_js_runtimes: Option<String>,
     pub delete_audio_after: bool,
+    /// After URL download + transcribe, also save best merged video (mp4) to the output folder.
+    #[serde(default)]
+    pub keep_downloaded_video: bool,
     pub api_base_url: String,
     pub api_model: String,
     pub api_key: String,
@@ -60,10 +68,12 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             output_dir: None,
-            filename_template: "{title}_{date}.txt".to_string(),
+            filename_template: "{title}_{date}.{ext}".to_string(),
             ffmpeg_path: None,
             yt_dlp_path: None,
+            yt_dlp_js_runtimes: None,
             delete_audio_after: true,
+            keep_downloaded_video: false,
             api_base_url: "https://api.openai.com/v1".to_string(),
             api_model: "whisper-1".to_string(),
             api_key: String::new(),
