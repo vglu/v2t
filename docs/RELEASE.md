@@ -12,6 +12,8 @@
 
 При необходимости обновите примеры имён установщиков в `README.md`.
 
+Если в GitHub Actions падает шаг **`npm ci`** на Linux/macOS с сообщением вроде *Missing: @tauri-apps/cli-linux-x64-gnu from lock file*, значит в `package-lock.json` не хватает записей для optional-пакетов других ОС (часто после сборки lock-файла только на Windows). Пересоберите lock-файл: удалите `node_modules` и `package-lock.json`, выполните **`npm install`**, закоммитьте новый `package-lock.json` (в нём должны появиться секции `node_modules/@tauri-apps/cli-linux-*`, `node_modules/@esbuild/*` и т.д.).
+
 ## 2. Обновить `CHANGELOG.md`
 
 Добавьте секцию с датой и списком изменений для пользователей.
