@@ -25,14 +25,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # rust-cache key must differ per Rust target; otherwise parallel macOS jobs share one cache and corrupt incremental / target artifacts.
           - platform: macos-latest
             args: --target aarch64-apple-darwin
+            rust_cache_key: macos-aarch64
           - platform: macos-latest
             args: --target x86_64-apple-darwin
+            rust_cache_key: macos-x86_64
           - platform: windows-latest
             args: ""
+            rust_cache_key: windows-x64
           - platform: ubuntu-22.04
             args: ""
+            rust_cache_key: linux-x64
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -66,6 +71,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.rust_cache_key }}
 
       - name: Install dependencies
         run: npm ci

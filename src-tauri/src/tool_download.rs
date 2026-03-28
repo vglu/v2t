@@ -5,8 +5,10 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(any(windows, target_os = "macos"))]
 use futures_util::StreamExt;
 use serde::Serialize;
+#[cfg(any(windows, target_os = "macos"))]
 use sha2::Digest;
 use tauri::path::BaseDirectory;
 use tauri::AppHandle;
@@ -24,6 +26,26 @@ pub(crate) struct ToolDownloadProgress {
     bytes_received: u64,
     total_bytes: Option<u64>,
     message: String,
+}
+
+impl ToolDownloadProgress {
+    /// Used from `whisper_bottle_macos`; on Windows/Linux this crate still compiles `tool_download` without that module.
+    #[allow(dead_code)]
+    pub(crate) fn new(
+        tool: impl Into<String>,
+        phase: impl Into<String>,
+        bytes_received: u64,
+        total_bytes: Option<u64>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            tool: tool.into(),
+            phase: phase.into(),
+            bytes_received,
+            total_bytes,
+            message: message.into(),
+        }
+    }
 }
 
 pub(crate) fn emit(app: &AppHandle, payload: ToolDownloadProgress) {
@@ -59,15 +81,15 @@ pub fn default_documents_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 pub async fn download_managed_media_tools(
-    app: &AppHandle,
+    _app: &AppHandle,
 ) -> Result<DownloadedMediaTools, String> {
     #[cfg(windows)]
     {
-        return download_media_tools_inner(app).await;
+        return download_media_tools_inner(_app).await;
     }
     #[cfg(target_os = "macos")]
     {
-        return download_media_tools_inner(app).await;
+        return download_media_tools_inner(_app).await;
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
@@ -85,14 +107,16 @@ pub async fn download_managed_media_tools(
 /// `whisper`, then `main`), then Homebrew keg paths (`opt/whisper-cpp/bin/`, Linuxbrew, etc.).
 ///
 /// **Linux:** not supported here — use distro packages or build from source.
-pub async fn download_whisper_cli_managed(app: &AppHandle) -> Result<DownloadedWhisperCli, String> {
+pub async fn download_whisper_cli_managed(
+    _app: &AppHandle,
+) -> Result<DownloadedWhisperCli, String> {
     #[cfg(windows)]
     {
-        return download_whisper_cli_windows(app).await;
+        return download_whisper_cli_windows(_app).await;
     }
     #[cfg(target_os = "macos")]
     {
-        return download_whisper_cli_macos_bottle_then_fallback(app).await;
+        return download_whisper_cli_macos_bottle_then_fallback(_app).await;
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {

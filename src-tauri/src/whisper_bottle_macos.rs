@@ -8,7 +8,6 @@ use serde::Deserialize;
 use serde_json::Value;
 use sha2::Digest;
 use tauri::AppHandle;
-use tauri::Emitter;
 use tar::Archive;
 
 use crate::tool_download::{emit, ToolDownloadProgress};
@@ -121,13 +120,13 @@ async fn download_bottle_file(
             last_emit = received;
             emit(
                 app,
-                ToolDownloadProgress {
-                    tool: label.to_string(),
-                    phase: "downloading".to_string(),
-                    bytes_received: received,
-                    total_bytes: None,
-                    message: format!("Downloaded {} KiB (Homebrew bottle)", received / 1024),
-                },
+                ToolDownloadProgress::new(
+                    label.to_string(),
+                    "downloading",
+                    received,
+                    None,
+                    format!("Downloaded {} KiB (Homebrew bottle)", received / 1024),
+                ),
             );
         }
     }
@@ -192,13 +191,13 @@ pub async fn download_whisper_cli_from_homebrew_bottle(
 
     emit(
         app,
-        ToolDownloadProgress {
-            tool: "whisper-cli".to_string(),
-            phase: "downloading".to_string(),
-            bytes_received: 0,
-            total_bytes: None,
-            message: "Fetching Homebrew formula (whisper-cpp)…".to_string(),
-        },
+        ToolDownloadProgress::new(
+            "whisper-cli",
+            "downloading",
+            0,
+            None,
+            "Fetching Homebrew formula (whisper-cpp)…",
+        ),
     );
 
     let client = reqwest::Client::builder()
@@ -246,13 +245,13 @@ pub async fn download_whisper_cli_from_homebrew_bottle(
 
     emit(
         app,
-        ToolDownloadProgress {
-            tool: "whisper-cli".to_string(),
-            phase: "extracting".to_string(),
-            bytes_received: tmp.metadata().map(|m| m.len()).unwrap_or(0),
-            total_bytes: None,
-            message: "Extracting whisper-cli from bottle…".to_string(),
-        },
+        ToolDownloadProgress::new(
+            "whisper-cli",
+            "extracting",
+            tmp.metadata().map(|m| m.len()).unwrap_or(0),
+            None,
+            "Extracting whisper-cli from bottle…",
+        ),
     );
 
     let dest_cli = dest_dir.join("whisper-cli");
@@ -270,13 +269,13 @@ pub async fn download_whisper_cli_from_homebrew_bottle(
 
     emit(
         app,
-        ToolDownloadProgress {
-            tool: "whisper-cli".to_string(),
-            phase: "done".to_string(),
-            bytes_received: dest_cli.metadata().map(|m| m.len()).unwrap_or(0),
-            total_bytes: None,
-            message: "whisper-cli ready. If macOS blocks it: xattr -dr com.apple.quarantine \"path\" (see Privacy & Security).".to_string(),
-        },
+        ToolDownloadProgress::new(
+            "whisper-cli",
+            "done",
+            dest_cli.metadata().map(|m| m.len()).unwrap_or(0),
+            None,
+            "whisper-cli ready. If macOS blocks it: xattr -dr com.apple.quarantine \"path\" (see Privacy & Security).",
+        ),
     );
 
     Ok(dest_cli)

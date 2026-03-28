@@ -2,6 +2,13 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.1.2] - 2026-03-29
+
+### Исправлено
+
+- **Сборка Rust (macOS / кросс-CI):** `whisper_bottle_macos` создавал `ToolDownloadProgress` литералом из другого модуля при приватных полях структуры → **E0451**. Добавлен конструктор `ToolDownloadProgress::new`; убраны лишние предупреждения компилятора (`apply_win_no_window`, `process_kill`, импорты `tool_download` на Linux).
+- **GitHub Actions (Release, macOS):** у `Swatinem/rust-cache` для матрицы был один и тот же ключ для двух job на `macos-latest` (aarch64 и x86_64), из‑за чего кэш `target/` смешивал разные triple и `tauri build` мог падать. Для каждой строки матрицы задан свой `rust_cache_key`.
+
 ## [1.1.1] - 2026-03-29
 
 ### Исправлено
@@ -35,6 +42,7 @@
 
 Функциональность соответствует накопленным возможностям до релиза: очередь файлов/URL, ffmpeg / yt-dlp, облачный API и локальный whisper.cpp, загрузка инструментов из настроек (где поддерживается).
 
+[1.1.2]: https://github.com/vglu/v2t/releases/tag/v1.1.2
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0

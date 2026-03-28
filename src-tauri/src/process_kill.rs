@@ -7,9 +7,6 @@ fn apply_win_no_window(cmd: &mut std::process::Command) {
     cmd.creation_flags(CREATE_NO_WINDOW);
 }
 
-#[cfg(not(windows))]
-fn apply_win_no_window(_cmd: &mut std::process::Command) {}
-
 pub fn kill_process_tree(pid: u32) {
     #[cfg(windows)]
     {

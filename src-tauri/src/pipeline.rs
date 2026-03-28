@@ -140,6 +140,10 @@ fn apply_win_no_window(cmd: &mut Command) {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
+    #[cfg(not(windows))]
+    {
+        let _ = cmd;
+    }
 }
 
 fn is_probably_media(p: &Path) -> bool {
