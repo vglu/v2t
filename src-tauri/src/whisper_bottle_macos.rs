@@ -222,13 +222,13 @@ pub async fn download_whisper_cli_from_homebrew_bottle(
 
     emit(
         app,
-        ToolDownloadProgress {
-            tool: "whisper-cli".to_string(),
-            phase: "downloading".to_string(),
-            bytes_received: 0,
-            total_bytes: None,
-            message: "Getting GHCR pull token…".to_string(),
-        },
+        ToolDownloadProgress::new(
+            "whisper-cli",
+            "downloading",
+            0,
+            None,
+            "Getting GHCR pull token…",
+        ),
     );
     let scope = "repository:homebrew/core/whisper-cpp:pull";
     let token = ghcr_anonymous_token(scope).await?;

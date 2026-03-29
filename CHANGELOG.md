@@ -2,6 +2,12 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.1.3] - 2026-03-29
+
+### Исправлено
+
+- **macOS (CI):** оставался один литерал `ToolDownloadProgress { … }` в `whisper_bottle_macos.rs` (GHCR token) → снова **E0451**; заменён на `ToolDownloadProgress::new`.
+
 ## [1.1.2] - 2026-03-29
 
 ### Исправлено
@@ -42,6 +48,7 @@
 
 Функциональность соответствует накопленным возможностям до релиза: очередь файлов/URL, ffmpeg / yt-dlp, облачный API и локальный whisper.cpp, загрузка инструментов из настроек (где поддерживается).
 
+[1.1.3]: https://github.com/vglu/v2t/releases/tag/v1.1.3
 [1.1.2]: https://github.com/vglu/v2t/releases/tag/v1.1.2
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
