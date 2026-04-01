@@ -29,7 +29,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "mul
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 keyring = "3"
 sha1 = "0.10"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 futures-util = "0.3"
 zip = { version = "2", default-features = false, features = ["deflate", "zstd"] }
