@@ -225,6 +225,7 @@ pub async fn run_process_queue_item(
         ffmpeg_path_override,
         yt_dlp_path_override,
         settings.yt_dlp_js_runtimes.clone(),
+        settings.cookies_from_browser.yt_dlp_arg().map(str::to_string),
         &cancel,
         settings.keep_downloaded_video,
         video_output_path,

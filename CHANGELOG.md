@@ -2,6 +2,19 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.3.0] - 2026-04-01
+
+### Добавлено
+
+- Настройка **Browser cookies source** для yt-dlp: прямое чтение cookies из Chrome, Brave, Edge или Firefox через `--cookies-from-browser` для YouTube и TikTok.
+- Быстрые чипы для **yt-dlp JS runtimes** (`deno`, `nodejs`, `node`) в настройках и в мастере первого запуска.
+- Кнопка **Download & install Deno for me**: приложение скачивает Deno в managed tools и автоматически выставляет `ytDlpJsRuntimes=deno`.
+
+### Изменено
+
+- В pipeline yt-dlp добавлена передача browser cookies и поиск sibling-бинарников через PATH, чтобы yt-dlp видел установленный рядом `deno`.
+- README и подсказки UI обновлены с объяснением ограничений Chromium cookies на Windows и рекомендацией использовать Firefox.
+
 ## [1.2.0] - 2026-04-01
 
 ### Изменено
@@ -55,6 +68,8 @@
 
 Функциональность соответствует накопленным возможностям до релиза: очередь файлов/URL, ffmpeg / yt-dlp, облачный API и локальный whisper.cpp, загрузка инструментов из настроек (где поддерживается).
 
+[1.3.0]: https://github.com/vglu/v2t/releases/tag/v1.3.0
+[1.2.0]: https://github.com/vglu/v2t/releases/tag/v1.2.0
 [1.1.3]: https://github.com/vglu/v2t/releases/tag/v1.1.3
 [1.1.2]: https://github.com/vglu/v2t/releases/tag/v1.1.2
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1

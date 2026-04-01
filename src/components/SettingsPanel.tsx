@@ -6,10 +6,11 @@ import {
   downloadMediaTools,
   downloadWhisperCli,
   downloadWhisperModel,
+  installDeno,
   listWhisperModels,
 } from "../lib/invokeSafe";
 import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
-import type { AppSettings, TranscriptionMode, WhisperModelMeta } from "../types/settings";
+import type { AppSettings, CookiesFromBrowser, TranscriptionMode, WhisperModelMeta } from "../types/settings";
 
 type Props = {
   settings: AppSettings;
@@ -51,6 +52,15 @@ export function SettingsPanel({
   const [whisperCliDlError, setWhisperCliDlError] = useState<string | null>(null);
   const [whisperCliInstallSuccess, setWhisperCliInstallSuccess] = useState(false);
   const [whisperCliDlProgress, setWhisperCliDlProgress] = useState<{
+    received: number;
+    total: number | null;
+  } | null>(null);
+
+  const [denoDlBusy, setDenoDlBusy] = useState(false);
+  const [denoDlMsg, setDenoDlMsg] = useState<string | null>(null);
+  const [denoDlError, setDenoDlError] = useState<string | null>(null);
+  const [denoInstallSuccess, setDenoInstallSuccess] = useState(false);
+  const [denoDlProgress, setDenoDlProgress] = useState<{
     received: number;
     total: number | null;
   } | null>(null);
@@ -120,6 +130,9 @@ export function SettingsPanel({
           if (ev.payload.tool === "whisper-cli") {
             setWhisperCliDlMsg(line);
             setWhisperCliDlProgress(prog);
+          } else if (ev.payload.tool === "deno") {
+            setDenoDlMsg(line);
+            setDenoDlProgress(prog);
           } else {
             setToolDlMsg(line);
             setToolDlProgress(prog);
@@ -234,6 +247,30 @@ export function SettingsPanel({
     } finally {
       setToolDlBusy(false);
       setToolDlProgress(null);
+    }
+  }
+
+  async function onInstallDeno() {
+    setDenoDlBusy(true);
+    setDenoDlMsg(null);
+    setDenoDlError(null);
+    setDenoInstallSuccess(false);
+    setDenoDlProgress(null);
+    try {
+      const res = await installDeno();
+      await onPersistSettings({ ...settings, ytDlpJsRuntimes: res.jsRuntimes });
+      setDenoInstallSuccess(true);
+    } catch (e) {
+      const msg =
+        typeof e === "string"
+          ? e
+          : e instanceof Error
+            ? e.message
+            : "Deno install failed";
+      setDenoDlError(msg);
+    } finally {
+      setDenoDlBusy(false);
+      setDenoDlProgress(null);
     }
   }
 
@@ -672,12 +709,90 @@ export function SettingsPanel({
               placeholder="e.g. deno — see yt-dlp wiki (EJS)"
               aria-label="yt-dlp JavaScript runtimes for EJS"
             />
+            <div
+              className="field-lang-examples"
+              role="group"
+              aria-label="Insert JS runtime values"
+            >
+              <span className="field-lang-examples-label">Common:</span>
+              <button
+                type="button"
+                className="lang-code-chip"
+                onClick={() => onChange({ ...settings, ytDlpJsRuntimes: "deno" })}
+              >
+                deno
+              </button>
+              <button
+                type="button"
+                className="lang-code-chip"
+                onClick={() => onChange({ ...settings, ytDlpJsRuntimes: "nodejs" })}
+              >
+                nodejs
+              </button>
+              <button
+                type="button"
+                className="lang-code-chip"
+                onClick={() => onChange({ ...settings, ytDlpJsRuntimes: "node" })}
+              >
+                node
+              </button>
+            </div>
           </label>
           <p className="hint">
-            If YouTube fails with “no supported JavaScript runtime”, install Deno or Node and set this
+            If YouTube fails with "no supported JavaScript runtime", install Deno or Node and set this
             to the runtime name yt-dlp expects (often <code>deno</code>).
           </p>
-        </div>
+          {showManagedToolDownloads ? (
+            <div className="onboarding-block">
+              <button
+                type="button"
+                className="primary"
+                disabled={denoDlBusy}
+                onClick={() => void onInstallDeno()}
+              >
+                {denoDlBusy ? "Installing…" : "Download & install Deno for me"}
+              </button>
+              {denoDlProgress && denoDlProgress.total != null && denoDlProgress.total > 0 ? (
+                <div className="download-progress-wrap">
+                  <progress value={denoDlProgress.received} max={denoDlProgress.total} />
+                </div>
+              ) : null}
+              {denoDlMsg && denoDlBusy ? <p className="hint">{denoDlMsg}</p> : null}
+              {denoInstallSuccess ? (
+                <p className="hint" style={{ color: "var(--ok)" }}>
+                  <strong>Done.</strong> Deno installed; JS runtimes set to <code>deno</code>.
+                </p>
+              ) : null}
+              {denoDlError ? <p className="hint" style={{ color: "var(--err)" }}>{denoDlError}</p> : null}
+            </div>
+          ) : null}
+          <label className="field">
+            <span>Cookies source for yt-dlp (YouTube / TikTok age-gate)</span>
+            <select
+              aria-label="Browser to read cookies from"
+              value={settings.cookiesFromBrowser}
+              onChange={(e) =>
+                onChange({ ...settings, cookiesFromBrowser: e.target.value as CookiesFromBrowser })
+              }
+            >
+              <option value="auto">Auto (Edge on Windows, Chrome on macOS, Firefox on Linux)</option>
+              <option value="chrome">Chrome</option>
+              <option value="brave">Brave</option>
+              <option value="edge">Edge</option>
+              <option value="firefox">Firefox</option>
+              <option value="none">Disabled — do not use browser cookies</option>
+            </select>
+          </label>
+          <p className="hint">
+            Passes <code>--cookies-from-browser</code> to yt-dlp. The browser must be installed and you
+            must be logged in to YouTube / TikTok in it.{" "}
+            <strong>Chrome, Brave and Edge have two known issues on Windows:</strong>{" "}
+            (1) their cookie database is locked while the browser is running — close it first;{" "}
+            (2) since Chrome 127+ cookies are encrypted with app-bound encryption (DPAPI) that yt-dlp
+            cannot decrypt even when the browser is closed{" "}
+            (<a href="https://github.com/yt-dlp/yt-dlp/issues/10927" target="_blank" rel="noopener noreferrer">issue #10927</a>).{" "}
+            <strong>Firefox is the most reliable option</strong> — log in there and select Firefox.
+          </p>        </div>
       </details>
 
       <p className="settings-section-title">Other</p>

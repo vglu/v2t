@@ -3,6 +3,9 @@ export type TranscriptionMode =
   | "localWhisper"
   | "browserWhisper";
 
+/** Browser to pull yt-dlp cookies from. "auto" = OS default; "none" = disabled. */
+export type CookiesFromBrowser = "auto" | "chrome" | "brave" | "edge" | "firefox" | "none";
+
 export type AppSettings = {
   outputDir: string | null;
   filenameTemplate: string;
@@ -10,6 +13,8 @@ export type AppSettings = {
   ytDlpPath: string | null;
   /** yt-dlp `--js-runtimes` value when non-empty (YouTube EJS). */
   ytDlpJsRuntimes: string | null;
+  /** Browser for yt-dlp --cookies-from-browser (helps with age-gated YouTube / TikTok). */
+  cookiesFromBrowser: CookiesFromBrowser;
   deleteAudioAfter: boolean;
   /** URL jobs: also save merged best-quality video (.mp4) to the output folder (second yt-dlp pass). */
   keepDownloadedVideo: boolean;
@@ -35,6 +40,7 @@ export const defaultAppSettings: AppSettings = {
   ffmpegPath: null,
   ytDlpPath: null,
   ytDlpJsRuntimes: null,
+  cookiesFromBrowser: "auto",
   deleteAudioAfter: true,
   keepDownloadedVideo: false,
   apiBaseUrl: "https://api.openai.com/v1",
@@ -73,4 +79,8 @@ export type DownloadedMediaTools = {
 
 export type DownloadedWhisperCli = {
   whisperCliPath: string;
+};
+
+export type InstalledDeno = {
+  jsRuntimes: string;
 };

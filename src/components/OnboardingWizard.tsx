@@ -6,10 +6,11 @@ import {
   downloadMediaTools,
   downloadWhisperCli,
   downloadWhisperModel,
+  installDeno,
   listWhisperModels,
 } from "../lib/invokeSafe";
 import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
-import type { AppSettings, TranscriptionMode, WhisperModelMeta } from "../types/settings";
+import type { AppSettings, CookiesFromBrowser, TranscriptionMode, WhisperModelMeta } from "../types/settings";
 
 const TOTAL_STEPS = 6;
 
@@ -126,6 +127,15 @@ export function OnboardingWizard({
     total: number | null;
   } | null>(null);
 
+  const [denoDlBusy, setDenoDlBusy] = useState(false);
+  const [denoDlMsg, setDenoDlMsg] = useState<string | null>(null);
+  const [denoDlError, setDenoDlError] = useState<string | null>(null);
+  const [denoInstallSuccess, setDenoInstallSuccess] = useState(false);
+  const [denoDlProgress, setDenoDlProgress] = useState<{
+    received: number;
+    total: number | null;
+  } | null>(null);
+
   const prevOpen = useRef(false);
   const isWin = useMemo(() => isProbablyWindows(), []);
   const isMac = useMemo(() => isProbablyMac(), []);
@@ -153,6 +163,9 @@ export function OnboardingWizard({
       setWhisperCliError(null);
       setWhisperCliSuccess(false);
       setWhisperCliLineMsg(null);
+      setDenoDlMsg(null);
+      setDenoDlError(null);
+      setDenoInstallSuccess(false);
     }
     prevOpen.current = wizardOpen;
   }, [wizardOpen, settings.transcriptionMode]);
@@ -186,6 +199,9 @@ export function OnboardingWizard({
           if (ev.payload.tool === "whisper-cli") {
             setWhisperCliLineMsg(line);
             setWhisperCliProgress(prog);
+          } else if (ev.payload.tool === "deno") {
+            setDenoDlMsg(line);
+            setDenoDlProgress(prog);
           } else {
             setToolDlMsg(line);
             setToolDlProgress(prog);
@@ -322,6 +338,32 @@ export function OnboardingWizard({
     if (typeof f === "string" && f.length > 0) {
       patchSettings({ whisperCliPath: f });
       refreshReadiness();
+    }
+  }
+
+  async function onInstallDeno() {
+    setDenoDlBusy(true);
+    setDenoDlMsg(null);
+    setDenoDlError(null);
+    setDenoInstallSuccess(false);
+    setDenoDlProgress(null);
+    try {
+      const res = await installDeno();
+      const next = { ...settings, ytDlpJsRuntimes: res.jsRuntimes };
+      await persistSettings(next);
+      patchSettings({ ytDlpJsRuntimes: res.jsRuntimes });
+      setDenoInstallSuccess(true);
+    } catch (e) {
+      const msg =
+        typeof e === "string"
+          ? e
+          : e instanceof Error
+            ? e.message
+            : "Deno install failed";
+      setDenoDlError(msg);
+    } finally {
+      setDenoDlBusy(false);
+      setDenoDlProgress(null);
     }
   }
 
@@ -530,6 +572,100 @@ export function OnboardingWizard({
                 set paths in <strong>Settings</strong>.
               </p>
             )}
+            <div className="onboarding-block">
+              <label className="field onboarding-field">
+                <span>yt-dlp JS runtimes (optional)</span>
+                <input
+                  type="text"
+                  value={settings.ytDlpJsRuntimes ?? ""}
+                  onChange={(e) => patchSettings({ ytDlpJsRuntimes: e.target.value.trim() || null })}
+                  placeholder="e.g. deno — see yt-dlp wiki (EJS)"
+                  aria-label="yt-dlp JavaScript runtimes for EJS"
+                />
+                <div
+                  className="field-lang-examples"
+                  role="group"
+                  aria-label="Insert JS runtime values"
+                >
+                  <span className="field-lang-examples-label">Common:</span>
+                  <button
+                    type="button"
+                    className="lang-code-chip"
+                    onClick={() => patchSettings({ ytDlpJsRuntimes: "deno" })}
+                  >
+                    deno
+                  </button>
+                  <button
+                    type="button"
+                    className="lang-code-chip"
+                    onClick={() => patchSettings({ ytDlpJsRuntimes: "nodejs" })}
+                  >
+                    nodejs
+                  </button>
+                  <button
+                    type="button"
+                    className="lang-code-chip"
+                    onClick={() => patchSettings({ ytDlpJsRuntimes: "node" })}
+                  >
+                    node
+                  </button>
+                </div>
+              </label>
+              <p className="onboarding-tip">
+                If YouTube fails with "no supported JavaScript runtime", install Deno or Node and set
+                this to the runtime name yt-dlp expects (often <code>deno</code>).
+              </p>
+              {showManagedToolDownloads ? (
+                <>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={denoDlBusy || busy}
+                    onClick={() => void onInstallDeno()}
+                  >
+                    {denoDlBusy ? "Installing…" : "Download & install Deno for me"}
+                  </button>
+                  {denoDlProgress && denoDlProgress.total != null && denoDlProgress.total > 0 ? (
+                    <div className="download-progress-wrap onboarding-progress">
+                      <progress value={denoDlProgress.received} max={denoDlProgress.total} />
+                    </div>
+                  ) : null}
+                  {denoDlMsg && denoDlBusy ? (
+                    <p className="hint onboarding-hint">{denoDlMsg}</p>
+                  ) : null}
+                  {denoInstallSuccess ? (
+                    <WizardSuccessBanner>
+                      <strong>Done.</strong> Deno installed; JS runtimes set to <code>deno</code>.
+                    </WizardSuccessBanner>
+                  ) : null}
+                  {denoDlError ? <WizardErrorBanner>{denoDlError}</WizardErrorBanner> : null}
+                </>
+              ) : null}
+            </div>
+            <div className="onboarding-block">
+              <label className="field onboarding-field">
+                <span>Browser cookies for YouTube / TikTok</span>
+                <select
+                  aria-label="Browser to read cookies from"
+                  value={settings.cookiesFromBrowser}
+                  onChange={(e) => patchSettings({ cookiesFromBrowser: e.target.value as CookiesFromBrowser })}
+                >
+                  <option value="auto">Auto (Edge on Windows, Chrome on macOS, Firefox on Linux)</option>
+                  <option value="chrome">Chrome</option>
+                  <option value="brave">Brave</option>
+                  <option value="edge">Edge</option>
+                  <option value="firefox">Firefox</option>
+                  <option value="none">Disabled</option>
+                </select>
+              </label>
+              <p className="onboarding-tip">
+                yt-dlp reads cookies from your browser so age-restricted or login-required videos work.
+                Make sure you're logged in to YouTube / TikTok in that browser.{" "}
+                <strong>Firefox is strongly recommended on Windows</strong> — Chrome, Brave and Edge
+                use app-bound cookie encryption (Chrome 127+) that yt-dlp cannot decrypt, even when
+                the browser is closed.
+              </p>
+            </div>
           </>
         );
       case 3:

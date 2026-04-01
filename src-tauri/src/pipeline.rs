@@ -48,6 +48,15 @@ fn push_yt_dlp_js_runtimes(args: &mut Vec<String>, js_runtimes: Option<&str>) {
     args.push(raw.to_string());
 }
 
+/// Append `--cookies-from-browser <browser>` when provided.
+fn push_yt_dlp_cookies(args: &mut Vec<String>, browser: Option<&str>) {
+    let Some(b) = browser.map(str::trim).filter(|s| !s.is_empty()) else {
+        return;
+    };
+    args.push("--cookies-from-browser".into());
+    args.push(b.to_string());
+}
+
 /// YouTube copies `watch?v=…&list=…` links; yt-dlp then downloads the **entire** playlist (slow,
 /// rate limits, failures). For watch / youtu.be URLs with `list=` we only want the `v=` video.
 /// Pure `youtube.com/playlist?list=…` links are left unchanged so full playlists still work.
@@ -184,6 +193,16 @@ pub(crate) async fn run_cmd(
     cmd.args(args);
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
+
+    // Prepend the program's parent dir to PATH so sibling binaries (e.g. deno next to yt-dlp)
+    // are discoverable by child processes.
+    if let Some(parent) = program.parent() {
+        let cur_path = std::env::var("PATH").unwrap_or_default();
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        let new_path = format!("{}{sep}{cur_path}", parent.display());
+        cmd.env("PATH", new_path);
+    }
+
     apply_win_no_window(&mut cmd);
 
     let child = cmd
@@ -227,6 +246,7 @@ pub async fn download_best_video_mp4(
     dest_mp4: &Path,
     cancel: &CancellationToken,
     yt_dlp_js_runtimes: Option<&str>,
+    cookies_from_browser: Option<&str>,
 ) -> Result<(), String> {
     if let Some(parent) = dest_mp4.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("create video dir: {e}"))?;
@@ -238,6 +258,7 @@ pub async fn download_best_video_mp4(
 
     let mut args: Vec<String> = Vec::new();
     push_yt_dlp_js_runtimes(&mut args, yt_dlp_js_runtimes);
+    push_yt_dlp_cookies(&mut args, cookies_from_browser);
     if youtube_watch_url_should_use_no_playlist(url) {
         args.push("--no-playlist".into());
     }
@@ -272,6 +293,7 @@ pub async fn prepare_media_audio(
     ffmpeg_override: Option<String>,
     yt_dlp_override: Option<String>,
     yt_dlp_js_runtimes: Option<String>,
+    cookies_from_browser: Option<String>,
     cancel: &CancellationToken,
     keep_downloaded_video: bool,
     video_output_path: Option<PathBuf>,
@@ -304,8 +326,10 @@ pub async fn prepare_media_audio(
             .replace('\\', "/");
 
         let js = yt_dlp_js_runtimes.as_deref();
+        let cookies = cookies_from_browser.as_deref();
         let mut args: Vec<String> = Vec::new();
         push_yt_dlp_js_runtimes(&mut args, js);
+        push_yt_dlp_cookies(&mut args, cookies);
         args.extend(["-x".into(), "--no-mtime".into()]);
         if youtube_watch_url_should_use_no_playlist(&source) {
             args.push("--no-playlist".into());
@@ -344,6 +368,7 @@ pub async fn prepare_media_audio(
                         vp,
                         cancel,
                         js,
+                        cookies,
                     )
                     .await
                     {

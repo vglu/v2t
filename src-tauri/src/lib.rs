@@ -79,6 +79,7 @@ async fn prepare_media_audio(
         ffmpeg_path_override,
         yt_dlp_path_override,
         yt_dlp_js_runtimes,
+        None,
         &never,
         false,
         None,
@@ -209,6 +210,13 @@ async fn download_whisper_cli(
 }
 
 #[tauri::command]
+async fn install_deno(
+    app: tauri::AppHandle,
+) -> Result<tool_download::InstalledDeno, String> {
+    tool_download::install_deno_managed(&app).await
+}
+
+#[tauri::command]
 fn session_log_append_ui(app: tauri::AppHandle, message: String) {
     session_log::try_append(&app, None, "ui", &message);
 }
@@ -249,6 +257,7 @@ pub fn run() {
             default_documents_dir,
             download_media_tools,
             download_whisper_cli,
+            install_deno,
             session_log_append_ui,
             open_session_log
         ])

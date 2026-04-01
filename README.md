@@ -29,9 +29,37 @@ Paste one URL per line. Powered by **[yt-dlp](https://github.com/yt-dlp/yt-dlp)*
 
 For playlists one queue item may produce multiple transcripts (one `.txt` per track).
 
-> **Note:** TikTok and some other platforms may block automated downloads without browser cookies.
-> If a download fails, export cookies from your browser to a `cookies.txt` (Netscape format) and
-> set the path in **Settings → yt-dlp cookies file**.
+> **Note:** TikTok and some platforms may require you to be logged in. Use **Settings → Browser cookies
+> source** to let yt-dlp read cookies directly from your browser (see [Browser cookies](#browser-cookies-youtube--tiktok) below).
+
+---
+
+## Browser cookies (YouTube / TikTok)
+
+Some videos require a logged-in session — age-restricted YouTube content, private TikToks, etc.
+The app passes `--cookies-from-browser` to yt-dlp so it reads cookies directly from your browser.
+
+**Configure:** Settings → *I'll install ffmpeg / yt-dlp myself* → **Cookies source for yt-dlp**
+(also available on the ffmpeg & yt-dlp step of the Setup guide).
+
+| Option | Browser used |
+|--------|-------------|
+| **Auto** (default) | Edge on Windows · Chrome on macOS · Firefox on Linux |
+| Chrome | Google Chrome |
+| Brave | Brave Browser |
+| Edge | Microsoft Edge |
+| Firefox | Mozilla Firefox |
+| Disabled | No cookies passed |
+
+**Before using:** make sure you are already **logged in** to YouTube / TikTok in the chosen browser.
+
+> ⚠️ **Chrome, Brave and Edge have two known limitations on Windows:**
+>
+> 1. **Database lock** — the cookie file is locked while the browser is running. Close it completely before starting the queue ([yt-dlp #7271](https://github.com/yt-dlp/yt-dlp/issues/7271)).
+> 2. **App-bound encryption (Chrome 127+)** — since mid-2024 Chromium-based browsers encrypt cookies in a way only the browser process itself can decrypt. yt-dlp cannot read them even when the browser is closed. Error: `Failed to decrypt with DPAPI` ([yt-dlp #10927](https://github.com/yt-dlp/yt-dlp/issues/10927)).
+>
+> **Firefox does not have either of these limitations** and is the most reliable choice on Windows.
+> Log in to YouTube / TikTok in Firefox, then select **Firefox** in the cookies setting.
 
 ---
 
@@ -177,7 +205,7 @@ npm run e2e               # Playwright (starts dev server)
 
 1. Update version in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`.
 2. Add an entry to `CHANGELOG.md`.
-3. Commit, then: `git tag v1.2.0 && git push origin v1.2.0`.
+3. Commit, then: `git tag v1.3.0 && git push origin v1.3.0`.
 
 If the release job fails with *Resource not accessible by integration*: GitHub → **Settings → Actions → General → Workflow permissions** → **Read and write permissions**.
 

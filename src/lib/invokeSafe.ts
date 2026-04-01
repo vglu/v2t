@@ -9,6 +9,7 @@ import type {
   DependencyReport,
   DownloadedMediaTools,
   DownloadedWhisperCli,
+  InstalledDeno,
   WhisperModelMeta,
 } from "../types/settings";
 
@@ -148,6 +149,11 @@ export async function downloadMediaTools(): Promise<DownloadedMediaTools> {
 export async function downloadWhisperCli(): Promise<DownloadedWhisperCli> {
   const { invoke } = await import("@tauri-apps/api/core");
   return await invoke<DownloadedWhisperCli>("download_whisper_cli");
+}
+
+export async function installDeno(): Promise<InstalledDeno> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return await invoke<InstalledDeno>("install_deno");
 }
 
 export async function defaultWhisperModelsDir(): Promise<string | null> {

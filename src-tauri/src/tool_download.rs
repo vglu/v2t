@@ -73,6 +73,14 @@ pub struct DownloadedWhisperCli {
     pub whisper_cli_path: String,
 }
 
+/// Result returned to the frontend after Deno installation.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledDeno {
+    /// Value to set as `ytDlpJsRuntimes` in settings.
+    pub js_runtimes: String,
+}
+
 /// User-visible Documents folder (OS standard).
 pub fn default_documents_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
@@ -125,6 +133,130 @@ pub async fn download_whisper_cli_managed(
                 .to_string(),
         )
     }
+}
+
+/// Download Deno into the managed bin dir so yt-dlp can use it as JS runtime.
+/// Windows: `deno.exe` from GitHub release zip. macOS: `deno` from release zip.
+pub async fn install_deno_managed(
+    _app: &AppHandle,
+) -> Result<InstalledDeno, String> {
+    #[cfg(any(windows, target_os = "macos"))]
+    {
+        return install_deno_inner(_app).await;
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        Err(
+            "Automatic Deno download is available on Windows and macOS only. Install via your package manager (e.g. `curl -fsSL https://deno.land/install.sh | sh`) and set JS runtimes to 'deno'."
+                .to_string(),
+        )
+    }
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+async fn install_deno_inner(app: &AppHandle) -> Result<InstalledDeno, String> {
+    let base = managed_bin_dir(app)?;
+    std::fs::create_dir_all(&base).map_err(|e| format!("create bin dir: {e}"))?;
+
+    let deno_exe_name = if cfg!(windows) { "deno.exe" } else { "deno" };
+    let deno_dest = base.join(deno_exe_name);
+
+    let zip_url = if cfg!(windows) {
+        "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"
+    } else if cfg!(target_arch = "aarch64") {
+        "https://github.com/denoland/deno/releases/latest/download/deno-aarch64-apple-darwin.zip"
+    } else {
+        "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-apple-darwin.zip"
+    };
+
+    let tmp_zip = std::env::temp_dir().join(format!(
+        "v2t-deno-{}.zip",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
+
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "deno".to_string(),
+            phase: "downloading".to_string(),
+            bytes_received: 0,
+            total_bytes: None,
+            message: "Downloading Deno runtime from GitHub…".to_string(),
+        },
+    );
+
+    // No SHA check — using HTTPS redirect to latest release.
+    download_file_streaming(app, zip_url, &tmp_zip, "deno", "").await?;
+
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "deno".to_string(),
+            phase: "extracting".to_string(),
+            bytes_received: tmp_zip.metadata().map(|m| m.len()).unwrap_or(0),
+            total_bytes: None,
+            message: format!("Extracting {deno_exe_name}…"),
+        },
+    );
+
+    let dest = deno_dest.clone();
+    let zip_path = tmp_zip.clone();
+    let exe_name = deno_exe_name.to_string();
+    tokio::task::spawn_blocking(move || {
+        use std::fs::File;
+        use zip::ZipArchive;
+
+        let f = File::open(&zip_path).map_err(|e| format!("open zip: {e}"))?;
+        let mut archive = ZipArchive::new(f).map_err(|e| format!("read zip: {e}"))?;
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).map_err(|e| format!("zip entry: {e}"))?;
+            let name = file.name().replace('\\', "/");
+            // The zip contains just "deno.exe" (Windows) or "deno" (macOS) at the root.
+            let basename = name.rsplit('/').next().unwrap_or(&name);
+            if basename.eq_ignore_ascii_case(&exe_name) {
+                let mut out = File::create(&dest)
+                    .map_err(|e| format!("create {}: {e}", dest.display()))?;
+                std::io::copy(&mut file, &mut out)
+                    .map_err(|e| format!("write {}: {e}", dest.display()))?;
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755));
+                }
+
+                return Ok(());
+            }
+        }
+        Err(format!("{exe_name} not found inside the Deno release zip"))
+    })
+    .await
+    .map_err(|e| format!("extract task: {e}"))??;
+
+    let _ = std::fs::remove_file(&tmp_zip);
+
+    if !deno_dest.is_file() {
+        return Err(format!("{deno_exe_name} missing after extract"));
+    }
+
+    emit(
+        app,
+        ToolDownloadProgress {
+            tool: "deno".to_string(),
+            phase: "done".to_string(),
+            bytes_received: deno_dest.metadata().map(|m| m.len()).unwrap_or(0),
+            total_bytes: None,
+            message: format!("Deno installed to {}", deno_dest.display()),
+        },
+    );
+
+    Ok(InstalledDeno {
+        js_runtimes: "deno".to_string(),
+    })
 }
 
 #[cfg(windows)]

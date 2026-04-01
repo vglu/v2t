@@ -26,6 +26,44 @@ pub enum TranscriptionMode {
     BrowserWhisper,
 }
 
+/// Which browser yt-dlp should read cookies from.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum CookiesFromBrowser {
+    /// OS default: Edge on Windows, Chrome on macOS, Firefox on Linux.
+    #[default]
+    Auto,
+    Chrome,
+    Brave,
+    Edge,
+    Firefox,
+    /// Disabled — do not pass --cookies-from-browser.
+    #[serde(rename = "none")]
+    Disabled,
+}
+
+impl CookiesFromBrowser {
+    /// Returns the yt-dlp `--cookies-from-browser` value, or `None` if disabled.
+    pub fn yt_dlp_arg(&self) -> Option<&'static str> {
+        match self {
+            CookiesFromBrowser::Auto => {
+                if cfg!(target_os = "windows") {
+                    Some("edge")
+                } else if cfg!(target_os = "macos") {
+                    Some("chrome")
+                } else {
+                    Some("firefox")
+                }
+            }
+            CookiesFromBrowser::Chrome => Some("chrome"),
+            CookiesFromBrowser::Brave => Some("brave"),
+            CookiesFromBrowser::Edge => Some("edge"),
+            CookiesFromBrowser::Firefox => Some("firefox"),
+            CookiesFromBrowser::Disabled => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -62,6 +100,9 @@ pub struct AppSettings {
     /// Catalog id: `tiny`, `base`, `small`, …
     #[serde(default = "default_whisper_model_id")]
     pub whisper_model: String,
+    /// Browser for yt-dlp `--cookies-from-browser` (helps with age-gated YouTube / TikTok).
+    #[serde(default)]
+    pub cookies_from_browser: CookiesFromBrowser,
 }
 
 impl Default for AppSettings {
@@ -84,6 +125,7 @@ impl Default for AppSettings {
             whisper_cli_path: None,
             whisper_models_dir: None,
             whisper_model: default_whisper_model_id(),
+            cookies_from_browser: CookiesFromBrowser::Auto,
         }
     }
 }
