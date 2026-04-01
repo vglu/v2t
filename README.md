@@ -1,133 +1,184 @@
-# v2t (Video to Text)
+﻿# v2t — Video to Text
 
-Портативное десктоп-приложение (Tauri 2): видео/аудио (файл, папка, URL) → текст через **ffmpeg**, **yt-dlp** и либо **HTTP API** в стиле OpenAI (`/v1/audio/transcriptions`), либо локально **[whisper.cpp](https://github.com/ggml-org/whisper.cpp)** (`whisper-cli` / `main`) с ggml-моделями. В установщике и заголовке окна — **Video to Text**; исполняемый файл — **`v2t.exe`** (Windows) / **`v2t`** (macOS/Linux).
+A portable desktop application (Tauri 2) that converts **video and audio** → text transcript.
+Supports local files, folders, and URLs — including **YouTube, TikTok, and hundreds of other sites**.
 
-[Видео тут](https://youtu.be/cInVpU3ErlQ)
+[Demo video](https://youtu.be/cInVpU3ErlQ)
 
-## Требования для разработки
+---
 
-- [Node.js](https://nodejs.org/) (LTS)
+## How it works
+
+1. **Add sources** — drag & drop files/folders, or paste one URL per line (YouTube, TikTok, …).
+2. **Configure** — pick transcription mode, output folder, and language in **Settings**.
+3. **Run** — click **Start queue**. The app downloads (if URL), extracts audio via **ffmpeg**, and transcribes. Each job runs sequentially so slow operations (model download, long video) do not block the UI.
+4. **Get text** — `.txt` files appear in the output folder you chose.
+
+> **Tip:** Use the queue — add all your sources first, then start processing. The queue can be stopped at any time; already-completed jobs keep their results.
+
+---
+
+## Supported URL sources
+
+Paste one URL per line. Powered by **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**, which supports 1000+ sites, including:
+
+- **YouTube** — videos, Shorts, Live recordings, playlists
+- **TikTok** — public videos (`tiktok.com/@user/video/…`) and short links (`vm.tiktok.com/…`)
+- **Twitter / X, Instagram, Facebook, Vimeo, Twitch VODs** — and many more
+- Any direct link to an audio or video file (`https://…/file.mp3`)
+
+For playlists one queue item may produce multiple transcripts (one `.txt` per track).
+
+> **Note:** TikTok and some other platforms may block automated downloads without browser cookies.
+> If a download fails, export cookies from your browser to a `cookies.txt` (Netscape format) and
+> set the path in **Settings → yt-dlp cookies file**.
+
+---
+
+## Transcription modes
+
+Open **Settings → Transcription** to choose:
+
+### HTTP API (cloud) — default
+
+Sends audio to any OpenAI-compatible `/v1/audio/transcriptions` endpoint.
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| API base URL | `https://api.openai.com/v1` | Change for Azure OpenAI, Groq, local servers, etc. |
+| Model | `whisper-1` | Any model accepted by the endpoint |
+| API key | — | Stored in OS credential store — never written to disk |
+| Language | auto-detect | ISO 639-1 code, e.g. `en`, `uk`, `de` |
+
+Files larger than ~22 MiB are automatically split by ffmpeg and the text concatenated.
+
+**Getting an API key (OpenAI):** sign up at [platform.openai.com](https://platform.openai.com/) → [API keys](https://platform.openai.com/api-keys) → **Create new secret key**.
+Other providers (Azure OpenAI, Groq, etc.) — obtain the key and base URL from their dashboard.
+
+### Local Whisper (whisper.cpp) — offline, no API key
+
+Runs transcription entirely on your machine using **[whisper.cpp](https://github.com/ggml-org/whisper.cpp)**.
+
+**Setup:**
+1. Select **Transcription → Local Whisper (whisper.cpp CLI)** in Settings.
+2. Place `whisper-cli` next to `v2t.exe`, or enter the full path in Settings.
+3. Choose a model and click **Download / verify model** — the file is fetched from Hugging Face and its SHA-1 checksum is verified.
+
+**Available Whisper models:**
+
+| Model | Size | Speed | Quality | Recommended for |
+|-------|------|-------|---------|-----------------|
+| `tiny` | ~75 MB | Fastest | Basic | Quick drafts, weak hardware |
+| `base` | ~142 MB | Fast | Good | General use on older machines |
+| `small` | ~466 MB | Moderate | Better | Good balance on modern CPUs |
+| `medium` | ~1.5 GB | Slow | High | When accuracy matters |
+| `large-v3-turbo` | ~1.5 GB | Fast (GPU) | Best | GPU systems, highest accuracy |
+
+Model files (`ggml-*.bin`) are stored in `app_data_dir/models` by default (configurable in Settings).
+After the first download the app works **fully offline**.
+
+### Browser Whisper (WebAssembly)
+
+Runs the Whisper model directly in the WebView — no binary needed. Suitable for short clips; slower than whisper.cpp for long files.
+
+---
+
+## Getting started
+
+### Prerequisites — two external tools
+
+| Tool | How to get |
+|------|-----------|
+| **ffmpeg** | Click **Settings → Download ffmpeg & yt-dlp for me** (automatic), or download from [ffmpeg.org](https://ffmpeg.org/download.html) and place next to `v2t.exe` |
+| **yt-dlp** | Same button, or download from [github.com/yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp/releases) and place next to `v2t.exe` |
+
+### Portable layout (manual)
+
+Place the binaries **next to the app executable**:
+
+| Platform | App | ffmpeg | yt-dlp |
+|----------|-----|--------|--------|
+| Windows | `v2t.exe` | `ffmpeg.exe` | `yt-dlp.exe` |
+| macOS / Linux | `v2t` | `ffmpeg` | `yt-dlp` |
+
+A `bin/` subfolder next to the executable is also recognized. Paths set in **Settings** take priority over auto-discovery.
+
+### Workflow step by step
+
+1. **Launch** `v2t`.
+2. **Settings tab** — set output folder, transcription mode, API key (cloud) or whisper-cli path (local), language.
+3. **Queue tab** — add sources:
+   - Drop files or folders onto the queue area.
+   - Paste URLs in the text box (one per line: YouTube, TikTok, …) and press **Add**.
+4. Click **Start queue** — jobs process sequentially; progress is shown per job.
+5. When done, find your `.txt` files in the output folder.
+
+> **Recommendation:** for long videos or large playlists, add everything to the queue first and let it run unattended. The queue handles slow operations (download, audio extraction, transcription) without blocking the UI, and you can stop/resume at any time.
+
+---
+
+## Limitations
+
+- **File size (cloud API):** OpenAI `whisper-1` has a 25 MB per-request limit. The app automatically splits large files and joins the text.
+- **Playlists:** one URL item can produce multiple `.txt` files; use `{track}` in the filename template.
+- **Stop queue:** cancels current and pending jobs cleanly — kills ffmpeg/yt-dlp child processes and aborts HTTP requests.
+
+---
+
+## Development
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) LTS
 - [Rust](https://rustup.rs/) stable
-- На Windows: при сборке обычно нужны [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+- Windows: [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
 
-## Сборка и запуск
+### Run in dev mode
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-Продакшен-сборка:
+Place `ffmpeg.exe` and `yt-dlp.exe` in `src-tauri/target/debug/` for the dev build.
+
+### Production build
 
 ```bash
 npm run tauri build
 ```
 
-### Куда класть артефакты и sidecars после сборки
+| Output | Path |
+|--------|------|
+| Standalone EXE | `src-tauri/target/release/v2t.exe` |
+| Windows installer (NSIS) | `src-tauri/target/release/bundle/nsis/` |
+| Windows installer (MSI) | `src-tauri/target/release/bundle/msi/` |
+| macOS DMG | `src-tauri/target/release/bundle/dmg/` |
+| Linux .deb / AppImage | `src-tauri/target/release/bundle/deb/` and `bundle/appimage/` |
 
-После успешной сборки:
-
-| Что | Где искать (от корня репозитория) |
-|-----|-----------------------------------|
-| Готовый **EXE** (без установщика) | `src-tauri/target/release/v2t.exe` (Windows) или `src-tauri/target/release/v2t` (macOS/Linux) |
-| **Установщик Windows (NSIS)** | `src-tauri/target/release/bundle/nsis/Video to Text_1.1.3_x64-setup.exe` (имя зависит от `version` в `tauri.conf.json`) |
-| **Установщик Windows (MSI)** | `src-tauri/target/release/bundle/msi/Video to Text_1.1.3_x64_en-US.msi` |
-| **macOS** | `src-tauri/target/release/bundle/dmg/` или `bundle/macos/` (зависит от targets в `tauri.conf.json`) |
-| **Linux** | `src-tauri/target/release/bundle/deb/`, `bundle/appimage/` (`.deb`, AppImage) |
-
-**Важно:** резолвер путей (`src-tauri/src/deps.rs`) смотрит каталог **`parent(current_exe)`** — то есть папку, где лежит запущенный **`v2t.exe`** / **`v2t`**, а не исходники проекта.
-
-- **Установка через NSIS/MSI:** обычно программа оказывается в каталоге вроде `C:\Program Files\Video to Text\` (имя папки совпадает с `productName` в `tauri.conf.json`). Положите туда же **`ffmpeg.exe`** и **`yt-dlp.exe`** (или создайте подпапку **`bin\`** с теми же именами).
-- **Запуск «портативно» из `target/release`:** положите **`ffmpeg.exe`** и **`yt-dlp.exe`** в **`src-tauri/target/release/`** рядом с **`v2t.exe`**, затем запускайте `v2t.exe` оттуда.
-- **Разработка (`npm run tauri dev`):** sidecars кладите рядом с **`v2t.exe`** в **`src-tauri/target/debug/`** (после первой сборки dev).
-
-При необходимости задайте полные пути к инструментам в **Settings** — они имеют приоритет над поиском рядом с EXE.
-
-## Портативная раскладка (sidecars)
-
-Положите бинарники **рядом с исполняемым файлом приложения** (как ожидает резолвер в Rust):
-
-| Платформа | приложение | ffmpeg | yt-dlp |
-|-----------|------------|--------|--------|
-| Windows   | `v2t.exe` | `ffmpeg.exe` | `yt-dlp.exe` |
-| macOS / Linux | `v2t` | `ffmpeg` | `yt-dlp` |
-
-Допустима подпапка **`bin/`** (рядом с EXE) с теми же именами (см. `src-tauri/src/deps.rs`). При необходимости укажите полные пути в **Settings**.
-
-То же правило «рядом с приложением» относится к **`whisper-cli`** (или устаревшему бинарнику **`main`**) в **локальном** режиме транскрипции.
-
-**Windows:** в **Settings** — **Download ffmpeg & yt-dlp for me**: `yt-dlp.exe` с GitHub и **FFmpeg** из zip [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) (GPL), в каталог данных приложения; пути подставляются в настройки.
-
-**macOS:** та же кнопка: `yt-dlp_macos` с GitHub и статический `ffmpeg` для вашей архитектуры (Apple Silicon / Intel) из релизов [eugeneware/ffmpeg-static](https://github.com/eugeneware/ffmpeg-static). После загрузки при предупреждении Gatekeeper может понадобиться разрешить в **Системные настройки → Конфиденциальность и безопасность** или снять quarantine (`xattr`). Либо установите через **Homebrew** и укажите пути вручную.
-
-Во всех случаях можно не использовать кнопку и указать пути в **I’ll install … myself**.
-
-## Локальный режим (whisper.cpp)
-
-1. В **Settings** выберите **Transcription → Local Whisper (whisper.cpp CLI)**.
-2. Соберите или скачайте **`whisper-cli`** (см. [whisper.cpp](https://github.com/ggml-org/whisper.cpp)) и положите его рядом с `v2t.exe` **или** укажите полный путь в настройках.
-3. Выберите модель (**tiny**, **base**, **small**, **medium**, **large-v3-turbo**). Нажмите **Download / verify model** или запустите очередь: при отсутствии файла модель **скачается** с Hugging Face (`ggerganov/whisper.cpp`), затем проверяется **SHA-1** по таблице из [models/README.md](https://github.com/ggml-org/whisper.cpp/blob/master/models/README.md) whisper.cpp (в коде v2t зашиты URL и ожидаемый хеш; если upstream заменит файл, каталог в приложении нужно обновить).
-4. Файлы **`ggml-*.bin`** по умолчанию хранятся в **`app_data_dir/models`** (можно сменить папку в настройках).
-5. После первой загрузки модели **API key не нужен**; интернет нужен только для докачки модели.
-
-Транскрипция идёт через subprocess `whisper-cli` (`-m`, `-f`, `-of`, `-otxt`, `-nt`, `-l`); для длинных WAV используется та же нарезка **ffmpeg**, что и для облачного API.
-
-## Настройки и API key (облачный режим)
-
-1. Откройте **Settings** в приложении.
-2. Укажите **папку вывода** (куда сохраняются `.txt`).
-3. Оставьте **Transcription → HTTP API** и вставьте **API key**; при необходимости измените **API base URL** и **model** (по умолчанию OpenAI-совместимый endpoint).
-4. Ключ сохраняется в **хранилище учётных данных ОС** (Windows Credential Manager, macOS Keychain, Secret Service на Linux); в JSON настроек ключ не записывается.
-
-Совместимые провайдеры: любой endpoint с multipart `POST …/audio/transcriptions` и JSON-ответом `{"text":"…"}` (как у OpenAI).
-
-### Где взять API key (облако)
-
-- **Общее:** ключ выдаёт **сайт выбранного провайдера** в разделе вроде «API keys» / «Credentials». В v2t нужен сервис, который принимает тот же формат запроса, что и OpenAI для транскрипции (см. выше).
-- **OpenAI (типичный пример):** зарегистрируйтесь на [platform.openai.com](https://platform.openai.com/), при необходимости пополните биллинг, затем раздел [API keys](https://platform.openai.com/api-keys) → **Create new secret key**. В приложении: **API base URL** `https://api.openai.com/v1`, **model** например `whisper-1`. Документация: [Speech to text](https://platform.openai.com/docs/guides/speech-to-text).
-- **Другие облака (Azure OpenAI, Groq и т.д.):** ключ и точный **base URL** / **model** берите из портала этого провайдера и его документации — они отличаются от OpenAI.
-- В окне **Settings** есть раскрывающаяся справка **«Where do I get an API key?»** (на английском, как и остальной UI).
-- **Безопасность:** не публикуйте ключ в репозитории, скриншотах и чатах; при утечке отзовите ключ в кабинете провайдера и создайте новый.
-
-## Ограничения
-
-- **Размер файла для API:** у OpenAI для `whisper-1` действует лимит **25 МБ** на запрос; приложение при превышении порога (~22 MiB сырого WAV) **нарезает** файл через `ffmpeg` на сегменты и склеивает текст.
-- **Плейлисты URL:** один элемент очереди может дать **несколько** нормализованных WAV и отдельных `.txt` (плейсхолдер `{track}` в шаблоне имени).
-- **Stop queue:** отменяет текущий `job_id` в бэкенде (`cancel_queue_job` + `CancellationToken`): по возможности завершаются дочерние процессы (`taskkill /T` на Windows, `kill -9` на Unix) и прерывается ожидание HTTP; оставшиеся в этом запуске задачи помечаются как отменённые.
-
-## Тесты
+### Tests
 
 ```bash
-npm run test:run    # Vitest
-cd src-tauri && cargo test
-npm run e2e         # Playwright (поднимает dev-сервер)
+npm run test:run          # Vitest + Testing Library
+cd src-tauri && cargo test  # Rust unit tests
+npm run e2e               # Playwright (starts dev server)
 ```
 
-## Релизы и CI (GitHub Actions)
+---
 
-В репозитории настроено:
+## Releases & CI (GitHub Actions)
 
-| Workflow | Когда | Что делает |
-|----------|--------|------------|
-| **CI** (`.github/workflows/ci.yml`) | push / PR в `main` или `master` | `npm run build`, `npm run test:run`, `cargo test` в `src-tauri` |
-| **Release** (`.github/workflows/release.yml`) | push **git-тега** вида `v*` (например `v1.1.2`) | Сборка **Windows** (NSIS/MSI), **macOS** (**aarch64** и **x86_64** DMG), **Linux** (.deb + AppImage), загрузка в [GitHub Releases](https://docs.github.com/repositories/releasing-projects-on-github/about-releases) |
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| **CI** | push / PR to `main` | Build, Vitest, cargo test |
+| **Release** | push of a `v*` tag | Builds Windows (NSIS/MSI), macOS (aarch64 + x86_64 DMG), Linux (.deb + AppImage) → uploads to GitHub Releases |
 
-**Как выпустить версию**
+**How to release:**
 
-1. Синхронизируйте версию в **`package.json`**, **`src-tauri/Cargo.toml`** и **`src-tauri/tauri.conf.json`**.
-2. Закоммитьте и запушьте ветку.
-3. Создайте и запушьте тег: `git tag v1.1.3` → `git push origin v1.1.3`.
+1. Update version in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`.
+2. Add an entry to `CHANGELOG.md`.
+3. Commit, then: `git tag v1.2.0 && git push origin v1.2.0`.
 
-Подробный чеклист: [`docs/RELEASE.md`](docs/RELEASE.md). Список изменений: [`CHANGELOG.md`](CHANGELOG.md).
+If the release job fails with *Resource not accessible by integration*: GitHub → **Settings → Actions → General → Workflow permissions** → **Read and write permissions**.
 
-Если релиз падает с **Resource not accessible by integration**: в GitHub → **Settings → Actions → General → Workflow permissions** включите **Read and write permissions** для `GITHUB_TOKEN`.
-
-Подпись и нотаризация Apple / подпись Windows в workflow закомментированы в `env` — при появлении секретов в настройках репозитория их можно раскомментировать.
-
-**Dependabot** (`.github/dependabot.yml`) предлагает обновления для Actions, npm и Cargo по расписанию.
-
-## Документация по процессу
-
-Файлы **`AGENTS.md`**, **`CLAUDE.md`** и **`docs/PLAN.md`** намеренно **не** в репозитории: они в **`.gitignore`** и остаются только локально у разработчика.
-
-Публично в репозитории: [`CHANGELOG.md`](CHANGELOG.md), [`docs/RELEASE.md`](docs/RELEASE.md), правила в **`.cursor/rules/`** (если включены в git).
+See also: [`docs/RELEASE.md`](docs/RELEASE.md) · [`CHANGELOG.md`](CHANGELOG.md)
