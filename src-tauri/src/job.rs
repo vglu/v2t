@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use tauri::Emitter;
 use tokio_util::sync::CancellationToken;
 
+use crate::audio_save;
 use crate::cancel_registry::JobCancelRegistry;
 use crate::deps;
 use crate::model_download;
@@ -218,19 +219,45 @@ pub async fn run_process_queue_item(
 
     emit_progress(&app, &job_id, "prepare", "Preparing audio (yt-dlp / ffmpeg)…");
 
+    let audio_format_for_yt_dlp =
+        if settings.keep_downloaded_audio && (source_kind == "url" || pipeline::is_http_url(&source)) {
+            Some(settings.downloaded_audio_format)
+        } else {
+            None
+        };
+
     let prep = pipeline::prepare_media_audio(
         Some((&app, job_id.as_str())),
         source.clone(),
-        source_kind,
-        ffmpeg_path_override,
+        source_kind.clone(),
+        ffmpeg_path_override.clone(),
         yt_dlp_path_override,
         settings.yt_dlp_js_runtimes.clone(),
         settings.cookies_from_browser.yt_dlp_arg().map(str::to_string),
         &cancel,
         settings.keep_downloaded_video,
         video_output_path,
+        audio_format_for_yt_dlp,
     )
     .await?;
+
+    if settings.keep_downloaded_audio {
+        save_downloaded_audio(
+            &app,
+            &job_id,
+            &prep.source_media_files,
+            &source,
+            &source_kind,
+            &display_label,
+            &date,
+            job_index,
+            &settings,
+            &out_dir,
+            ffmpeg_path_override.as_deref(),
+            &cancel,
+        )
+        .await;
+    }
 
     if prep.wav_paths.is_empty() {
         return Err("No WAV paths produced".to_string());
@@ -459,4 +486,114 @@ pub async fn run_process_queue_item(
         transcript_path: transcript_path.clone(),
         summary,
     })
+}
+
+/// Save extracted audio for each source track into `out_dir`. URL jobs copy the
+/// first-pass yt-dlp output (already in the requested format); local video jobs
+/// invoke ffmpeg. Local audio sources are skipped. Errors are logged and swallowed
+/// so transcription keeps going.
+#[allow(clippy::too_many_arguments)]
+async fn save_downloaded_audio(
+    app: &tauri::AppHandle,
+    job_id: &str,
+    source_media_files: &[PathBuf],
+    source: &str,
+    source_kind: &str,
+    display_label: &str,
+    date: &str,
+    job_index: u32,
+    settings: &AppSettings,
+    out_dir: &Path,
+    ffmpeg_override: Option<&str>,
+    cancel: &CancellationToken,
+) {
+    let is_url = source_kind == "url" || pipeline::is_http_url(source);
+
+    for (ti, src_media) in source_media_files.iter().enumerate() {
+        if cancel.is_cancelled() {
+            return;
+        }
+        let track = (ti + 1) as u32;
+
+        let save_result: Result<PathBuf, String> = if is_url {
+            // yt-dlp already produced the exact format we want (or the original
+            // container when format == Original). Just copy with the real extension.
+            let ext = src_media
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("m4a")
+                .to_string();
+            let name = output_template::audio_filename_from_transcript_template(
+                &settings.filename_template,
+                display_label,
+                date,
+                job_index,
+                track,
+                source,
+                &ext,
+            );
+            let dest = out_dir.join(&name);
+            audio_save::copy_downloaded_audio(src_media, &dest).map(|_| dest)
+        } else if pipeline::is_probably_video(src_media) {
+            let Some(ffmpeg) = deps::resolve_tool_path(ffmpeg_override, "ffmpeg") else {
+                pipeline::emit_pipeline_text(
+                    app,
+                    job_id,
+                    "audio-save",
+                    "Could not save audio: ffmpeg not found",
+                );
+                return;
+            };
+            let ffprobe = deps::resolve_tool_path(ffmpeg_override, "ffprobe");
+            let template = settings.filename_template.clone();
+            let display = display_label.to_string();
+            let date_s = date.to_string();
+            let source_s = source.to_string();
+            audio_save::extract_audio_from_local_video(
+                &ffmpeg,
+                ffprobe.as_deref(),
+                src_media,
+                out_dir,
+                settings.downloaded_audio_format,
+                move |ext: &str| {
+                    output_template::audio_filename_from_transcript_template(
+                        &template, &display, &date_s, job_index, track, &source_s, ext,
+                    )
+                },
+                cancel,
+            )
+            .await
+        } else {
+            // Local audio source — file is already audio, no point copying. Emit a note once.
+            if ti == 0 {
+                pipeline::emit_pipeline_text(
+                    app,
+                    job_id,
+                    "audio-save",
+                    "Source is already an audio file — skipping audio save.",
+                );
+            }
+            continue;
+        };
+
+        match save_result {
+            Ok(dest) => {
+                pipeline::emit_pipeline_text(
+                    app,
+                    job_id,
+                    "audio-save",
+                    &format!("Saved audio: {}", dest.display()),
+                );
+            }
+            Err(e) => {
+                pipeline::emit_pipeline_text(
+                    app,
+                    job_id,
+                    "audio-save",
+                    &format!("Could not save audio (continuing with transcript): {e}"),
+                );
+            }
+        }
+    }
+
 }

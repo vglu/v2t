@@ -6,6 +6,9 @@ export type TranscriptionMode =
 /** Browser to pull yt-dlp cookies from. "auto" = OS default; "none" = disabled. */
 export type CookiesFromBrowser = "auto" | "chrome" | "brave" | "edge" | "firefox" | "none";
 
+/** Audio format when saving downloaded audio. "original" = no re-encode. */
+export type DownloadedAudioFormat = "original" | "mp3" | "m4a";
+
 export type AppSettings = {
   outputDir: string | null;
   filenameTemplate: string;
@@ -18,6 +21,10 @@ export type AppSettings = {
   deleteAudioAfter: boolean;
   /** URL jobs: also save merged best-quality video (.mp4) to the output folder (second yt-dlp pass). */
   keepDownloadedVideo: boolean;
+  /** URL jobs + local video: also save the extracted audio file to the output folder. */
+  keepDownloadedAudio: boolean;
+  /** Format for saved audio; "original" keeps bestaudio from yt-dlp / copies local video's audio stream without re-encoding. */
+  downloadedAudioFormat: DownloadedAudioFormat;
   apiBaseUrl: string;
   apiModel: string;
   apiKey: string;
@@ -43,6 +50,8 @@ export const defaultAppSettings: AppSettings = {
   cookiesFromBrowser: "auto",
   deleteAudioAfter: true,
   keepDownloadedVideo: false,
+  keepDownloadedAudio: false,
+  downloadedAudioFormat: "original",
   apiBaseUrl: "https://api.openai.com/v1",
   apiModel: "whisper-1",
   apiKey: "",

@@ -2,6 +2,19 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.4.0] - 2026-04-15
+
+### Добавлено
+
+- Настройка **Save downloaded audio**: сохранение извлечённого аудио в папку вывода — симметрично опции «Save downloaded video». Работает для URL-джоб (копия из первого прохода yt-dlp, без повторной закачки) и локальных видеофайлов (извлечение через ffmpeg). Локальные аудиофайлы пропускаются.
+- Селектор **Audio format**: `Original` (без перекодирования — bestaudio / `-c:a copy`; контейнер определяется ffprobe: aac→m4a, opus→.opus, vorbis→.ogg, flac→.flac, fallback AAC/m4a), `m4a` (AAC) и `mp3`.
+- Новый модуль `audio_save` с `copy_downloaded_audio` и `extract_audio_from_local_video`. Ошибки сохранения аудио не прерывают транскрипцию, а уходят в лог канала `audio-save`.
+
+### Изменено
+
+- `PrepareAudioResult` теперь отдаёт `source_media_files`, index-aligned с `wav_paths` — джоба использует это, чтобы забрать исходное аудио до нормализации в 16 kHz WAV.
+- `output_template::format_output_filename` обобщён: для legacy-шаблонов без `{ext}` суффикс `.txt` переписывается в любой целевой extension (не только `.mp4`).
+
 ## [1.3.0] - 2026-04-01
 
 ### Добавлено

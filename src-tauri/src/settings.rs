@@ -42,6 +42,28 @@ pub enum CookiesFromBrowser {
     Disabled,
 }
 
+/// Audio format for saved downloaded audio.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum DownloadedAudioFormat {
+    /// Keep bestaudio from yt-dlp (URL) or `-c:a copy` for local video — no re-encoding.
+    #[default]
+    Original,
+    Mp3,
+    M4a,
+}
+
+impl DownloadedAudioFormat {
+    /// Value for yt-dlp `--audio-format`, or `None` when the original container should be preserved.
+    pub fn yt_dlp_arg(&self) -> Option<&'static str> {
+        match self {
+            DownloadedAudioFormat::Original => None,
+            DownloadedAudioFormat::Mp3 => Some("mp3"),
+            DownloadedAudioFormat::M4a => Some("m4a"),
+        }
+    }
+}
+
 impl CookiesFromBrowser {
     /// Returns the yt-dlp `--cookies-from-browser` value, or `None` if disabled.
     pub fn yt_dlp_arg(&self) -> Option<&'static str> {
@@ -78,6 +100,12 @@ pub struct AppSettings {
     /// After URL download + transcribe, also save best merged video (mp4) to the output folder.
     #[serde(default)]
     pub keep_downloaded_video: bool,
+    /// Also save extracted audio (URL: copy from yt-dlp output; local video: ffmpeg extract).
+    #[serde(default)]
+    pub keep_downloaded_audio: bool,
+    /// Format for saved audio. `Original` keeps bestaudio / copies the source audio stream without re-encoding.
+    #[serde(default)]
+    pub downloaded_audio_format: DownloadedAudioFormat,
     pub api_base_url: String,
     pub api_model: String,
     pub api_key: String,
@@ -115,6 +143,8 @@ impl Default for AppSettings {
             yt_dlp_js_runtimes: None,
             delete_audio_after: true,
             keep_downloaded_video: false,
+            keep_downloaded_audio: false,
+            downloaded_audio_format: DownloadedAudioFormat::Original,
             api_base_url: "https://api.openai.com/v1".to_string(),
             api_model: "whisper-1".to_string(),
             api_key: String::new(),

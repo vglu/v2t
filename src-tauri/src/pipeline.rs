@@ -11,6 +11,7 @@ use tauri::Emitter;
 use crate::deps;
 use crate::process_kill;
 use crate::session_log;
+use crate::settings::DownloadedAudioFormat;
 
 pub const JOB_CANCELLED_MSG: &str = "Job cancelled";
 
@@ -20,6 +21,12 @@ pub struct PrepareAudioResult {
     /// One or more normalized 16 kHz mono WAV paths (playlist → multiple).
     pub wav_paths: Vec<String>,
     pub summary: String,
+    /// Pre-normalization media files, index-aligned with `wav_paths`.
+    /// URL jobs: files inside the temp work dir (yt-dlp output).
+    /// Local files: the caller-supplied source path itself.
+    /// Not serialized to JS — kept as strings for the Tauri command shape.
+    #[serde(skip_serializing)]
+    pub source_media_files: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -110,7 +117,7 @@ pub fn tail_stderr(data: &[u8]) -> String {
     }
 }
 
-fn emit_pipeline_log(app: &AppHandle, job_id: &str, label: &str, stderr: &[u8]) {
+pub(crate) fn emit_pipeline_log(app: &AppHandle, job_id: &str, label: &str, stderr: &[u8]) {
     let message = tail_stderr(stderr);
     if message.is_empty() {
         return;
@@ -124,7 +131,7 @@ fn emit_pipeline_log(app: &AppHandle, job_id: &str, label: &str, stderr: &[u8]) 
     session_log::try_append(app, Some(job_id), label, &message);
 }
 
-fn emit_pipeline_text(app: &AppHandle, job_id: &str, label: &str, text: &str) {
+pub(crate) fn emit_pipeline_text(app: &AppHandle, job_id: &str, label: &str, text: &str) {
     let t = text.trim();
     if t.is_empty() {
         return;
@@ -165,6 +172,22 @@ fn is_probably_media(p: &Path) -> bool {
         ext.as_str(),
         "mp3" | "m4a" | "opus" | "webm" | "mp4" | "mkv" | "wav" | "flac" | "ogg" | "aac"
             | "wma" | "avi" | "mov" | "wmv" | "m4v" | "3gp"
+    )
+}
+
+/// Video container extensions — whitelist for audio extraction from a local file.
+/// NOTE: `webm` can carry audio-only (opus) as well; we treat it as video here since
+/// we only use this to gate "extract audio from local video", and on a video-less webm
+/// ffmpeg's `-vn` is a no-op (still produces a clean audio file).
+pub(crate) fn is_probably_video(p: &Path) -> bool {
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    matches!(
+        ext.as_str(),
+        "mp4" | "mkv" | "mov" | "webm" | "avi" | "flv" | "m4v" | "mpeg" | "mpg" | "wmv" | "ts" | "3gp"
     )
 }
 
@@ -297,6 +320,9 @@ pub async fn prepare_media_audio(
     cancel: &CancellationToken,
     keep_downloaded_video: bool,
     video_output_path: Option<PathBuf>,
+    // When Some, tells yt-dlp's first pass to convert to this format via --audio-format
+    // (mp3|m4a). None keeps bestaudio. Only used for URL sources.
+    audio_format_for_yt_dlp: Option<DownloadedAudioFormat>,
 ) -> Result<PrepareAudioResult, String> {
     let source = source.trim().to_string();
     if source.is_empty() {
@@ -331,6 +357,12 @@ pub async fn prepare_media_audio(
         push_yt_dlp_js_runtimes(&mut args, js);
         push_yt_dlp_cookies(&mut args, cookies);
         args.extend(["-x".into(), "--no-mtime".into()]);
+        if let Some(fmt) = audio_format_for_yt_dlp.and_then(|f| f.yt_dlp_arg()) {
+            args.push("--audio-format".into());
+            args.push(fmt.into());
+            args.push("--audio-quality".into());
+            args.push("0".into());
+        }
         if youtube_watch_url_should_use_no_playlist(&source) {
             args.push("--no-playlist".into());
         }
@@ -448,7 +480,11 @@ pub async fn prepare_media_audio(
         )
     };
 
-    Ok(PrepareAudioResult { wav_paths, summary })
+    Ok(PrepareAudioResult {
+        wav_paths,
+        summary,
+        source_media_files: input_files,
+    })
 }
 
 #[cfg(test)]

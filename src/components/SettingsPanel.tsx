@@ -835,6 +835,38 @@ export function SettingsPanel({
       <label className="field checkbox">
         <input
           type="checkbox"
+          checked={settings.keepDownloadedAudio}
+          onChange={(e) =>
+            onChange({ ...settings, keepDownloadedAudio: e.target.checked })
+          }
+        />
+        <span>
+          Save downloaded audio to output folder (URL jobs + local video — extracted via ffmpeg)
+        </span>
+      </label>
+
+      {settings.keepDownloadedAudio && (
+        <label className="field">
+          <span>Audio format</span>
+          <select
+            value={settings.downloadedAudioFormat}
+            onChange={(e) =>
+              onChange({
+                ...settings,
+                downloadedAudioFormat: e.target.value as AppSettings["downloadedAudioFormat"],
+              })
+            }
+          >
+            <option value="original">Original (bestaudio / stream copy, no re-encode)</option>
+            <option value="m4a">m4a (AAC)</option>
+            <option value="mp3">mp3</option>
+          </select>
+        </label>
+      )}
+
+      <label className="field checkbox">
+        <input
+          type="checkbox"
           checked={settings.recursiveFolderScan}
           onChange={(e) =>
             onChange({ ...settings, recursiveFolderScan: e.target.checked })

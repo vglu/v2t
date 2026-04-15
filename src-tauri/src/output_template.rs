@@ -17,7 +17,7 @@ pub fn sanitize_filename_segment(raw: &str) -> String {
 }
 
 /// Replace `{title}`, `{date}`, `{index}`, `{track}`, `{source}`, `{ext}`.
-/// If the template has no `{ext}` and `ext == "mp4"`, rewrites a trailing `.txt` to `.mp4` (legacy templates).
+/// If the template has no `{ext}` and `ext != "txt"`, rewrites a trailing `.txt` to `.{ext}` (legacy templates).
 pub fn format_output_filename(
     template: &str,
     title: &str,
@@ -36,20 +36,20 @@ pub fn format_output_filename(
     if template.contains("{ext}") {
         return t.replace("{ext}", ext);
     }
-    if ext == "mp4" {
-        return rewrite_txt_suffix_to_mp4(&t);
+    if ext != "txt" {
+        return rewrite_suffix_to_ext(&t, ext);
     }
     t
 }
 
-fn rewrite_txt_suffix_to_mp4(name: &str) -> String {
+fn rewrite_suffix_to_ext(name: &str, ext: &str) -> String {
     if let Some(stripped) = name.strip_suffix(".txt") {
-        format!("{stripped}.mp4")
+        format!("{stripped}.{ext}")
     } else if let Some(dot) = name.rfind('.') {
         let (base, _) = name.split_at(dot);
-        format!("{base}.mp4")
+        format!("{base}.{ext}")
     } else {
-        format!("{name}.mp4")
+        format!("{name}.{ext}")
     }
 }
 
@@ -63,6 +63,20 @@ pub fn video_filename_from_transcript_template(
     source: &str,
 ) -> String {
     format_output_filename(template, title, date, index, track, source, "mp4")
+}
+
+/// Audio file next to transcript: template rules with a caller-chosen extension
+/// (`m4a`, `mp3`, `opus`, `webm`, …).
+pub fn audio_filename_from_transcript_template(
+    template: &str,
+    title: &str,
+    date: &str,
+    index: u32,
+    track: u32,
+    source: &str,
+    ext: &str,
+) -> String {
+    format_output_filename(template, title, date, index, track, source, ext)
 }
 
 #[cfg(test)]
@@ -128,5 +142,43 @@ mod tests {
             "url",
         );
         assert_eq!(v, "Clip_2026-03-27.mp4");
+    }
+
+    #[test]
+    fn audio_name_uses_ext_placeholder() {
+        let v = audio_filename_from_transcript_template(
+            "{title}_{date}.{ext}",
+            "Clip",
+            "2026-03-27",
+            1,
+            1,
+            "url",
+            "m4a",
+        );
+        assert_eq!(v, "Clip_2026-03-27.m4a");
+    }
+
+    #[test]
+    fn audio_name_derived_from_legacy_txt_template() {
+        let v = audio_filename_from_transcript_template(
+            "{title}_{date}.txt",
+            "Clip",
+            "2026-03-27",
+            1,
+            1,
+            "url",
+            "opus",
+        );
+        assert_eq!(v, "Clip_2026-03-27.opus");
+    }
+
+    #[test]
+    fn audio_name_various_exts() {
+        for ext in ["mp3", "m4a", "opus", "webm", "ogg", "flac"] {
+            let v = audio_filename_from_transcript_template(
+                "{title}.{ext}", "t", "d", 1, 1, "s", ext,
+            );
+            assert_eq!(v, format!("t.{ext}"));
+        }
     }
 }
