@@ -610,6 +610,251 @@ Release v1.6.0.
 
 ---
 
+# Wave 6 — Локализация UI (украинский язык)
+
+**Цель.** Пользователь видит весь UI v2t на украинском. На свежем профиле в украинской ОС wizard стартует на украинском по умолчанию; в Settings есть переключатель `Auto / English / Українська` со сохранением между запусками без перезагрузки приложения.
+
+**Зависимости.** Никаких хардовых; стек React 19 + TS не меняется. Конфликтов с Wave 1-5 нет — это рефакторинг строк в UI, бэкенд не трогается.
+
+**Объём.** ~2.5-3 рабочих дня. Главный пожиратель времени — перевод OnboardingWizard (~1071 LOC).
+
+**PO-решения для этой волны** (закрыты 2026-04-29, источник `.cursor/tasks/BA-20260429-135435-alice.md`):
+
+| OQ | Решение PO |
+|----|------------|
+| OQ-1 | **7 локалей**: `en, uk, ru, de, es, fr, pl`. Marginal cost N-го языка ≈ ноль через local Ollama bot. |
+| OQ-2 | Default `uiLanguage = auto`, fallback `en` |
+| OQ-3 | **Header (компактный, ~80px) + Settings (полный с хинтом)** |
+| OQ-4 | `react-i18next` |
+| OQ-5 | Backend-ошибки **не** переводятся |
+| OQ-6 | Полный перевод onboarding prose |
+| OQ-7 | Лог-строки **не** переводятся |
+| OQ-8 | Все тесты переписываются на `data-testid` / `aria-label` |
+| OQ-9 | CI-проверка отсутствующих ключей — **error при build** |
+| OQ-10 | Каталоги per-component: `src/locales/{lang}/{onboarding,settings,queue,common,readiness}.json` |
+| OQ-11 | `t("key", {n, path})` через react-i18next interpolation |
+| OQ-12 | Plurals — упрощённо (без ICU); per-key `_one/_few/_many` если конкретное место плохо склоняется |
+
+## 6.1. Что сделать (по подзадачам M1..M7)
+
+### M1 — i18n scaffolding
+**Файлы:** `package.json`, `vite.config.ts` (если нужен plugin), новый `src/i18n/index.ts`, новый `src/i18n/types.ts`, `src/main.tsx` (init).
+
+- `npm i react-i18next i18next` (плюс `i18next-browser-languagedetector` для `auto`).
+- Создать `src/i18n/index.ts`:
+  ```typescript
+  import i18n from "i18next";
+  import { initReactI18next } from "react-i18next";
+  import LanguageDetector from "i18next-browser-languagedetector";
+  // import { resources } from "./resources";
+  i18n
+    .use(LanguageDetector)
+    .use(initReactI18next)
+    .init({
+      resources,
+      fallbackLng: "en",
+      supportedLngs: ["en", "uk"],
+      interpolation: { escapeValue: false }, // React уже экранирует
+      detection: { order: ["customSettings", "navigator"], caches: [] },
+    });
+  ```
+- Добавить custom `customSettings` detector, который читает `uiLanguage` из `AppSettings` (в обход `i18next`'s LocalStorage).
+- Создать `src/i18n/types.ts` с экспортом `MessageKey` через TypeScript template literal types **или** воспользоваться [i18next typed translations](https://www.i18next.com/overview/typescript). Ключ опечатки → ts error.
+- В `src/main.tsx` импортировать `./i18n` ДО `<App />`.
+- Helper-хук `useT(): { t: TFunction }` тонко обёрнутый над `useTranslation`.
+
+### M2 — Settings: поле `uiLanguage` + двойной UI-переключатель
+**Файлы:** `src-tauri/src/settings.rs` (поле + serde default), `src/types/settings.ts` (тип + default), `src/components/SettingsPanel.tsx` (полный `<select>`), `src/App.tsx` (компактный header `<select>`), `src/i18n/index.ts` (sync с settings).
+
+- Rust: поле `ui_language: UiLanguage` (enum `Auto | En | Uk | Ru | De | Es | Fr | Pl`), `#[serde(default)]` → `Auto`.
+- TS: `type UiLanguage = "auto" | "en" | "uk" | "ru" | "de" | "es" | "fr" | "pl"`, в `defaultAppSettings: uiLanguage = "auto"`.
+- **Header switcher** (новый, ~80px ширины): native `<select>` в `.app-header-actions` слева от Setup-guide button.
+  - Опции: `🌐 Auto` / `🇬🇧 EN` / `🇺🇦 UK` / `🇷🇺 RU` / `🇩🇪 DE` / `🇪🇸 ES` / `🇫🇷 FR` / `🇵🇱 PL`.
+  - `aria-label="UI language"`, `data-testid="header-language-switcher"`.
+  - CSS: `width: 80px; max-width: 80px; font-size: 0.85em` — компактно, не ломает header.
+- **Settings switcher** (полный): новая секция «Language / Мова» в SettingsPanel, full names (`Auto (по системі)`, `English`, `Українська`, `Русский`, `Deutsch`, `Español`, `Français`, `Polski`) + хинт про auto-detect через `navigator.language`.
+- При `onChange` (любой из двух) — `i18next.changeLanguage(...)` мгновенно + `setSettings({...settings, uiLanguage})` + `persistSettings`.
+- Тест: переключение `<select>` вызывает `i18next.changeLanguage` (mock).
+
+### M3 — Locale catalogs (4 sub-steps)
+
+**M3a — extract en**
+**Файлы:** новые `src/locales/en/{common,onboarding,settings,queue,readiness}.json`.
+
+- Пройтись по `src/components/*.tsx` + `src/App.tsx`, извлечь все литералы → ключи в snake_case по разделам:
+  - `common`: header, tabs, toast, generic buttons (Save/Cancel/Browse).
+  - `onboarding`: всё из `OnboardingWizard.tsx` — step titles, body, hints, callouts, button labels, по-шаговая разбивка `step.welcome.*`, `step.output.*`, …
+  - `settings`: всё из `SettingsPanel.tsx`.
+  - `queue`: всё из `QueuePanel.tsx`, `SubtaskRow.tsx`, `SubtaskList.tsx`, `JobProgressBar.tsx`.
+  - `readiness`: всё из `ReadinessPanel.tsx`, `DependencyBar.tsx`.
+- Это чистый refactor — **НЕ переводить, только перенести**. Каждая строка в JSON — текущая EN-версия слово-в-слово.
+- CI-script `scripts/check-i18n-keys.mjs`: для каждой пары ключ-значение в `en/` проверить наличие в каждой целевой локали. Запускать в `npm run build` через pre-build hook.
+
+**M3b — copy & adapt translation-bot**
+**Файлы:** новый `scripts/translation-bot/` (копия из `D:\Projects\NumbersM\scripts\translation-bot\`).
+
+- Копировать целиком: `src/`, `package.json`, `tsconfig.json`, `README.md`. Не workspace member — отдельный isolated `package.json` с `tsx`, `node-fetch`, `picocolors`.
+- Адаптировать `src/config.ts`:
+  - `REPO_ROOT` остаётся (3 уровня вверх).
+  - **Удалить** `AUDIT_FILE` (NumbersM-специфика). Заменить на `LOCALE_SOURCE_DIR = src/locales/en/`.
+  - **`TARGET_LOCALES`** = `['uk', 'ru', 'de', 'es', 'fr', 'pl']`.
+  - **`LOCALE_LABELS`** — добавить `pl: 'Polish (polski)'`.
+  - **`BRAND_GLOSSARY`** — заменить на v2t-glossary (см. BA-доку, секция «Решение PO: использовать локальный Ollama translation-bot»).
+  - **`NAMESPACE_HINTS`** — заменить на v2t namespaces:
+    ```typescript
+    common: 'app header, tabs, generic buttons',
+    onboarding: 'first-run setup wizard for ffmpeg/yt-dlp/Whisper',
+    settings: 'preferences (output dir, transcription mode, models, subtitles)',
+    queue: 'job queue table and per-job progress',
+    readiness: 'top-bar dependency checklist',
+    ```
+- Адаптировать `src/prompt.ts`:
+  - В `PROMPT_TEMPLATE` заменить «You are a professional UI/UX translator for "NumbersM" — a numerology, astrology, and wellness mobile + web app» на «You are a professional UI/UX translator for v2t — a free open-source desktop app (Tauri/React) that converts video and audio files / URLs to text via ffmpeg, yt-dlp, and Whisper. Audience: technically literate users — content creators, researchers, students.»
+  - Hard rule #2 — заменить список never-translate на v2t-glossary.
+  - Удалить «target audience: 18-35yo women, wellness-curious» — register для v2t — нейтрально-дружелюбный, технически точный.
+- Адаптировать `src/audit.ts` (входной формат):
+  - NumbersM читает один большой `untranslated-by-locale.json`. Для v2t — читаем все 5 файлов из `src/locales/en/` и формируем in-memory структуру `{ namespace: { key: enValue } }` per-locale (для каждой target locale считаем «всё untranslated», т.к. при первом прогоне каталоги UA/RU/… ещё не существуют).
+  - Если уже есть partial `src/locales/{lang}/{namespace}.json` — bot пропускает уже переведённые ключи (resume на уровне ключа, не файла).
+- Адаптировать `src/output.ts` (выходной формат):
+  - Драфты пишутся в `scripts/translation-bot/output/drafts/{lang}/{namespace}.draft.json` — структура зеркалит `src/locales/{lang}/{namespace}.json`.
+  - Это позволяет M3d мерджить дрейфом per-namespace без перетасовки.
+- `state/`, `output/`, `logs/` — `.gitignore` (как в NumbersM).
+
+**M3c — bot run (manual, PO-trigger)**
+- Триггер: PO пишет в чате «давай переведём» / «запусти bot» / аналог.
+- Агент проверяет:
+  1. `curl http://localhost:11434/api/tags` — Ollama жив.
+  2. `ollama list | grep -i qwen` — Qwen2.5-Coder pulled.
+  3. `npm --prefix scripts/translation-bot run smoke` — 5 строк × 6 локалей ≈ 5 минут sanity, валидирует prompt + connection.
+- Запуск: `npm --prefix scripts/translation-bot run run:all` в **foreground** (не background — bot длинный, ~6 часов на 600 строк × 6 локалей; логи нужны).
+- По завершении — отчёт в чат: количество, warnings (`GLOSSARY_LOST`, `PLACEHOLDER_DRIFT`, `LENGTH_OUT_OF_BAND`, etc.) per-locale.
+
+**M3d — review & merge**
+- PO читает `output/drafts/uk/*.draft.json` внимательно (он UA-нативный, AC-4 в BA-доке).
+- Для остальных 5 локалей — **quick scan**: смотрим только записи с warning != null. Если warning'и пустые / минорные — merge без чтения каждой строки.
+- Merge: для каждой локали L, для каждого namespace N, скопировать `output/drafts/L/N.draft.json` → `src/locales/L/N.json`, при необходимости отредактировав отдельные значения вручную.
+- Скрипт `scripts/merge-drafts.mjs` (опционально) — копирует все drafts разом, можно потом переоткрывать diff'ы вручную.
+
+### M4 — OnboardingWizard
+**Файл:** `src/components/OnboardingWizard.tsx` (~1071 LOC).
+
+- Заменить **все** литералы на `t("key", { params })`. Плотные prose-блоки с inline-`<code>` и `<a>` — использовать `<Trans i18nKey="key" components={{ a: <a href="..." />, code: <code /> }} />` для сохранения структуры.
+- Step titles `stepTitle(step, modeChoice)` → `t("onboarding.step.title.welcome")` etc.
+- Tests: проверить `data-testid` рендера каждого шага, не текст.
+- Smoke: `i18next.changeLanguage("uk")` в dev → wizard полностью на украинском.
+
+### M5 — SettingsPanel
+**Файл:** `src/components/SettingsPanel.tsx` (~1055 LOC).
+
+- Аналогично M4 — все литералы → `t(...)`.
+- Сохранить тестовые `data-testid` (`transcription-mode-card`, `whisper-acceleration-card`, `subtitle-priority-langs`, `use-subtitles-toggle`).
+- Подсказки (hint'ы) с inline-кодом — через `<Trans>`.
+
+### M6 — QueuePanel + мелочёвка
+**Файлы:** `src/components/QueuePanel.tsx`, `src/components/SubtaskRow.tsx`, `src/components/SubtaskList.tsx`, `src/components/JobProgressBar.tsx`, `src/components/ReadinessPanel.tsx`, `src/components/DependencyBar.tsx`, `src/App.tsx`.
+
+- Все JSX-строки → `t(...)`.
+- Русские error-фразы из `QueuePanel.tsx` (`Не удалось открыть папку`, `Не удалось открыть файл`) — заменить на ключи `queue.error.openFolder` / `queue.error.openFile`, EN + UK переводы.
+- `App.tsx`: `Video to Text` (h1) — **не** переводить (это название продукта). Tagline `v2t — portable video / audio → text` — переводится. Tab-метки `Queue`/`Settings` — переводятся.
+- Backend-сообщения, печатаемые в лог как есть (`[yt-dlp] X% …`, `[ffmpeg] …`) — **не** трогать.
+
+### M7 — Tests
+**Файлы:** все `*.test.tsx` в `src/components/`.
+
+- Заменить text-matchers на testid-matchers:
+  - `screen.getByText(/Ready when you are/i)` → `screen.getByTestId("queue-empty-hint-ok-text")` (добавить testid в JSX) или `getByTestId("queue-empty-hint")` + проверка `aria-label`.
+- Один новый тест в новом файле `src/i18n/__tests__/i18n.switch.test.tsx`:
+  ```typescript
+  it("changeLanguage swaps rendered text", async () => {
+    render(<App />);
+    expect(screen.getByTestId("tab-queue")).toHaveTextContent("Queue");
+    act(() => { i18next.changeLanguage("uk"); });
+    expect(screen.getByTestId("tab-queue")).toHaveTextContent("Черга");
+  });
+  ```
+- Все 25 vitest и 77 cargo-тестов остаются зелёными.
+
+## 6.2. Файлы (полный список)
+
+**Новые:**
+- `src/i18n/index.ts`, `src/i18n/types.ts`, `src/i18n/customDetector.ts`.
+- `src/locales/{en,uk,ru,de,es,fr,pl}/{common,onboarding,settings,queue,readiness}.json` — 7 локалей × 5 namespaces = 35 файлов.
+- `src/i18n/__tests__/i18n.switch.test.tsx`.
+- `scripts/check-i18n-keys.mjs` (CI-чек).
+- `scripts/translation-bot/` — копия из `D:\Projects\NumbersM\scripts\translation-bot\` с адаптированными `config.ts` и `prompt.ts` (и при необходимости `audit.ts` / `output.ts` для per-namespace структуры).
+
+**Правка:**
+- `package.json` (deps `i18next`, `react-i18next`, `i18next-browser-languagedetector` + script `check:i18n`).
+- `src/main.tsx`, `src/App.tsx` (init + header switcher).
+- Все 8 файлов `src/components/*.tsx` (без `*.test.tsx` — они меняются в M7).
+- `src-tauri/src/settings.rs` (+ поле `ui_language: UiLanguage` — enum 8 вариантов).
+- `src/types/settings.ts` (+ тип + default).
+- Все 4 `src/components/*.test.tsx`.
+- `CHANGELOG.md`, `package.json`/`Cargo.toml`/`tauri.conf.json` (bump до 1.7.0), `docs/WAVES.md` (статус).
+- `.gitignore` (+ `scripts/translation-bot/state/`, `scripts/translation-bot/output/`, `scripts/translation-bot/logs/`).
+
+## 6.3. Тест-план Wave 6
+
+**Юнит-тесты:**
+```bash
+cd src-tauri && cargo test --no-default-features --lib
+# Ожидание: 77+ passed (новый settings-тест на ui_language default)
+cd .. && npm run test:run
+# Ожидание: 25 vitest passed + 1 новый = 26
+npm run check:i18n
+# Ожидание: exit 0 (все ключи en имеют пары в uk)
+```
+
+**Smoke в `npm run tauri dev`:**
+1. Удалить `%APPDATA%\com.v2t.app\settings.json` (свежий профиль).
+2. Запустить → wizard стартует. Если в системе UA-локаль — на украинском, иначе на английском.
+3. Settings → переключатель языка → проверить мгновенную смену UI (без перезагрузки).
+4. Закрыть приложение → запустить снова → язык сохранён.
+5. Все длинные обучающие тексты в wizard читаемы и грамматически корректны на UA.
+
+## 6.4. Acceptance
+
+- [ ] `react-i18next` установлен; типы строго типизированные (`t("typo")` падает в TS).
+- [ ] `src/locales/{en,uk,ru,de,es,fr,pl}/*.json` содержат все ключи, объединение перекрывает 100% UI-строк.
+- [ ] CI-чек `npm run check:i18n` проходит (errors при отсутствующих ключах в **любой** target-локали).
+- [ ] Поле `uiLanguage` (8 вариантов) сохраняется в `settings.json`, переживает перезапуск.
+- [ ] Default = `auto`; на украинской Windows показывается UA, на остальных — EN.
+- [ ] **Header-switcher** (компактный, ~80px) виден всегда; **Settings-switcher** (full names) дублирует.
+- [ ] Все 8 UI-компонентов используют `t(...)` или `<Trans>`. Inline JSX-строк длиннее 2 слов нет.
+- [ ] Все vitest-тесты переписаны на `data-testid` / `aria-label` matchers; не зависят от текущего языка.
+- [ ] Один новый тест: переключение языка меняет текст без перерендера всего дерева.
+- [ ] Backend-сообщения от Rust **не** переводятся (логи в `[yt-dlp]`, `[ffmpeg]`, error-строки в catch-блоках).
+- [ ] `scripts/translation-bot/` скопирован и адаптирован (`config.ts`, `prompt.ts`); `npm --prefix scripts/translation-bot run smoke` проходит.
+- [ ] PO прочитал и одобрил UA-draft; для остальных 5 локалей все warnings разрешены (либо приняты как минорные).
+- [ ] CHANGELOG обновлён, версии bump'ятся до `1.7.0`.
+
+## 6.5. Коммит
+
+Один коммит на всю волну (по конвенции v2t):
+```
+feat(ui): Ukrainian localization with auto-detect language switcher
+
+Add react-i18next infrastructure with typed message keys (TS template
+literal types ban typos at compile time). Catalogs split per-component
+(common/onboarding/settings/queue/readiness × en/uk). Default
+uiLanguage=auto reads navigator.language; manual switcher lives in
+Settings and saves to settings.json without app restart.
+
+Translate all 8 UI components to Ukrainian. Backend (Rust) error
+messages and log lines are intentionally left in English — they are
+technical and end up in support tickets.
+
+CI script `npm run check:i18n` blocks builds when an `en` key is
+missing in `uk`. Existing vitest tests rewritten to data-testid
+matchers so they pass under any current language.
+
+Release v1.7.0.
+```
+
+**Reference:** детальные подзадачи M1..M7 с инлайн-снippets — выше в этой секции; первичные требования и матрица OQ — в `.cursor/tasks/BA-20260429-135435-alice.md`.
+
+---
+
 ## 4. Финальный чеклист агента (для каждой волны)
 
 После завершения волны:
@@ -631,5 +876,6 @@ Release v1.6.0.
 | 3 | J1 + J4 | v1.5.0-rc3 | ✅ done | 1 |
 | 4 | J2 + J3 | v1.5.0 | ✅ done | 3 |
 | 5 | K | v1.6.0 | ✅ done | 1 |
+| 6 | M1..M7 (i18n UA) | v1.7.0 | ⏳ awaiting PO (~2.5-3 дня) | — |
 
 Полный путь от 1.4.0 до 1.6.0: ~1 рабочая неделя сосредоточенного кодинга.
