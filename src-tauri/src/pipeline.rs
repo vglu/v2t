@@ -115,12 +115,23 @@ pub fn build_ffmpeg_normalize_args(input: &Path, output_wav: &Path) -> Vec<Strin
 
 pub fn tail_stderr(data: &[u8]) -> String {
     let s = String::from_utf8_lossy(data);
-    let t = s.trim();
-    if t.len() <= STDERR_TAIL {
-        t.to_string()
-    } else {
-        format!("…{}", &t[t.len() - STDERR_TAIL..])
+    tail_with_ellipsis(s.trim(), STDERR_TAIL)
+}
+
+/// Take the last `max_bytes` bytes of `s` *without* slicing through a UTF-8
+/// char (which would `panic!` on `&str` indexing). Walks forward from the
+/// naive cut to the next char boundary; prepends `…` when truncation happens.
+/// Long ffmpeg --help output mixed with localized `built with`/`configuration`
+/// lines reliably hits this once stderr crosses the threshold.
+fn tail_with_ellipsis(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_string();
     }
+    let mut start = s.len() - max_bytes;
+    while start < s.len() && !s.is_char_boundary(start) {
+        start += 1;
+    }
+    format!("…{}", &s[start..])
 }
 
 pub(crate) fn emit_pipeline_log(app: &AppHandle, job_id: &str, label: &str, stderr: &[u8]) {
@@ -142,11 +153,7 @@ pub(crate) fn emit_pipeline_text(app: &AppHandle, job_id: &str, label: &str, tex
     if t.is_empty() {
         return;
     }
-    let message = if t.len() <= STDERR_TAIL {
-        t.to_string()
-    } else {
-        format!("…{}", &t[t.len() - STDERR_TAIL..])
-    };
+    let message = tail_with_ellipsis(t, STDERR_TAIL);
     let payload = PipelineLogPayload {
         job_id: job_id.to_string(),
         label: label.to_string(),
@@ -790,6 +797,27 @@ mod tests {
             "https://www.youtube.com/playlist?list=PLkoMD"
         ));
         assert!(!youtube_watch_url_should_use_no_playlist("https://example.com/x?list=1"));
+    }
+
+    #[test]
+    fn tail_with_ellipsis_respects_char_boundary() {
+        // Build a string longer than the cut size whose naive byte-cut would
+        // land in the middle of a Cyrillic letter (`н` is 2 bytes in UTF-8).
+        let prefix = "x".repeat(80);
+        let cyrillic_run = "приветпривет".repeat(20);
+        let s = format!("{prefix}{cyrillic_run}");
+        // Ensure we exercise the > max_bytes branch.
+        assert!(s.len() > 100);
+        let out = tail_with_ellipsis(&s, 100);
+        assert!(out.starts_with('…'));
+        // Slicing must not panic and result must still be valid UTF-8.
+        assert!(std::str::from_utf8(out.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn tail_with_ellipsis_passthrough_when_short() {
+        let s = "short";
+        assert_eq!(tail_with_ellipsis(s, 100), "short");
     }
 
     #[test]
