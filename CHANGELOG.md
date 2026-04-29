@@ -2,6 +2,20 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.5.0-rc1] - 2026-04-29
+
+### Добавлено
+
+- **Heartbeat-watchdog для yt-dlp** (120 сек) вместо wall-clock-таймаута 900 сек: длинные плейлисты докачиваются произвольное время, реально зависший yt-dlp убивается за ~2 мин. Реализация — `pipeline::run_yt_dlp_streaming` с per-line streaming stdout+stderr.
+- **Streaming-парсер прогресса yt-dlp** (`yt_dlp_progress.rs`): распознаёт `Downloading item N of M`, `[download] X% of …`, `[ExtractAudio]`, `[Merger]`; эмитит `queue-job-progress` с фазой `yt-dlp` / `yt-dlp-video` (5%-bucket для уменьшения шума).
+- **Сборка мусора во временной папке**: модуль `temp_cleanup` сканирует `%TEMP%` на старте приложения и удаляет осиротевшие `v2t-work-*` старше 24 часов (после kill -9 / panic / `delete_audio_after=false`).
+- Флаг `--newline` в обоих yt-dlp-вызовах (audio-pass + video-pass) — даёт построчные progress-updates вместо `\r`-перезаписи одной линии.
+
+### Исправлено
+
+- **Windows / video-pass: `OSError: [Errno 22]` на UA/RU заголовках** (`I+ encoding-fix`). Под `Stdio::piped()` Windows назначает stdout кодовую страницу `cp1252`, и Python внутри yt-dlp падает при flush кириллических metadata-строк с exit 120. Теперь у дочернего процесса `PYTHONIOENCODING=utf-8` + флаг yt-dlp `--encoding utf-8` (двойной пояс).
+- Cleanup `work_dir` на error-path первого прохода yt-dlp — больше не оставляет недокачанные части в `%TEMP%`.
+
 ## [1.4.0] - 2026-04-15
 
 ### Добавлено

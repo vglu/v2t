@@ -1,7 +1,9 @@
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
@@ -12,6 +14,7 @@ use crate::deps;
 use crate::process_kill;
 use crate::session_log;
 use crate::settings::DownloadedAudioFormat;
+use crate::yt_dlp_progress;
 
 pub const JOB_CANCELLED_MSG: &str = "Job cancelled";
 
@@ -37,7 +40,10 @@ struct PipelineLogPayload {
     message: String,
 }
 
-const YT_DLP_TIMEOUT: Duration = Duration::from_secs(900);
+/// Heartbeat-based watchdog for yt-dlp: kill the child if no stderr line arrives
+/// for this duration. Replaces the previous 900s wall-clock timeout, which made
+/// any non-trivial playlist (~12+ items) impossible to download.
+const YT_DLP_HEARTBEAT: Duration = Duration::from_secs(120);
 const FFMPEG_TIMEOUT: Duration = Duration::from_secs(600);
 pub(crate) const STDERR_TAIL: usize = 1800;
 
@@ -261,6 +267,192 @@ pub(crate) async fn run_cmd(
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QueueJobProgressEmit {
+    job_id: String,
+    phase: String,
+    message: String,
+}
+
+/// Spawn a task that reads `pipe` line-by-line, refreshing `last_activity` on every
+/// line, sending recognized progress lines through the queue-job-progress event,
+/// and accumulating the full bytes for the caller (used for error tails).
+fn spawn_pipe_reader<R>(
+    pipe: R,
+    last_activity: Arc<Mutex<Instant>>,
+    emit_target: Option<(AppHandle, String)>,
+    phase_label: String,
+) -> tokio::task::JoinHandle<Vec<u8>>
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    tokio::spawn(async move {
+        let mut reader = BufReader::new(pipe);
+        let mut line = String::new();
+        let mut last_emitted: Option<String> = None;
+        let mut full = Vec::<u8>::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line).await {
+                Ok(0) => break,
+                Ok(_) => {
+                    if let Ok(mut g) = last_activity.lock() {
+                        *g = Instant::now();
+                    }
+                    full.extend_from_slice(line.as_bytes());
+                    if let Some((app, jid)) = emit_target.as_ref() {
+                        if let Some(msg) = yt_dlp_progress::parse_yt_dlp_line(line.trim_end()) {
+                            if last_emitted.as_ref() != Some(&msg) {
+                                let payload = QueueJobProgressEmit {
+                                    job_id: jid.clone(),
+                                    phase: phase_label.clone(),
+                                    message: msg.clone(),
+                                };
+                                let _ = app.emit("queue-job-progress", &payload);
+                                session_log::try_append(
+                                    app,
+                                    Some(jid.as_str()),
+                                    &phase_label,
+                                    &msg,
+                                );
+                                last_emitted = Some(msg);
+                            }
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        full
+    })
+}
+
+/// Run yt-dlp with **per-line stdout+stderr streaming + heartbeat watchdog**.
+///
+/// Replaces the old `run_cmd(yt_dlp, …, YT_DLP_TIMEOUT, …)` for both yt-dlp call
+/// sites in this module. Both pipes are streamed concurrently:
+/// - yt-dlp's progress (`[download] N% …`, `[ExtractAudio] …`, `[Merger] …`,
+///   `Downloading item N of M`) lands on **stdout**, not stderr — so we read both
+///   and route each line through `yt_dlp_progress::parse_yt_dlp_line`.
+/// - Each line on either pipe refreshes a shared `last_activity` instant; if no
+///   activity for `heartbeat`, the process tree is killed with a stalled error.
+/// - Cancellation is honored on every select-loop iteration.
+///
+/// Returns the full `std::process::Output` (both pipes captured) so callers can
+/// keep using `tail_stderr` for failure messages.
+pub(crate) async fn run_yt_dlp_streaming(
+    program: &Path,
+    args: &[String],
+    heartbeat: Duration,
+    cancel: &CancellationToken,
+    maybe_log: Option<(&AppHandle, &str)>,
+    phase_label: &str,
+) -> Result<std::process::Output, String> {
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+
+    if let Some(parent) = program.parent() {
+        let cur_path = std::env::var("PATH").unwrap_or_default();
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        let new_path = format!("{}{sep}{cur_path}", parent.display());
+        cmd.env("PATH", new_path);
+    }
+    // Force Python (yt-dlp) stdout/stderr to UTF-8. Without this, on Windows with
+    // Stdio::piped() Python defaults to cp1252 and crashes with `OSError: [Errno 22]
+    // Invalid argument` when printing non-ASCII metadata (e.g. UA/RU video titles).
+    cmd.env("PYTHONIOENCODING", "utf-8");
+    apply_win_no_window(&mut cmd);
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn process: {e}"))?;
+    let pid = child.id();
+
+    let stderr = child.stderr.take().ok_or("yt-dlp: no stderr pipe")?;
+    let stdout = child.stdout.take().ok_or("yt-dlp: no stdout pipe")?;
+
+    let last_activity: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
+    let emit_target = maybe_log.map(|(a, j)| (a.clone(), j.to_string()));
+
+    let stdout_task = spawn_pipe_reader(
+        stdout,
+        last_activity.clone(),
+        emit_target.clone(),
+        phase_label.to_string(),
+    );
+    let stderr_task = spawn_pipe_reader(
+        stderr,
+        last_activity.clone(),
+        emit_target.clone(),
+        phase_label.to_string(),
+    );
+
+    let mut wait_handle = tokio::spawn(async move { child.wait().await });
+
+    let mut hb_tick = tokio::time::interval(Duration::from_secs(2));
+    hb_tick.tick().await; // discard the immediate first tick
+
+    let status = loop {
+        tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                if let Some(p) = pid { process_kill::kill_process_tree(p); }
+                wait_handle.abort();
+                stderr_task.abort();
+                stdout_task.abort();
+                return Err(JOB_CANCELLED_MSG.to_string());
+            }
+            r = &mut wait_handle => {
+                match r {
+                    Ok(Ok(s)) => break s,
+                    Ok(Err(e)) => {
+                        stderr_task.abort();
+                        stdout_task.abort();
+                        return Err(format!("Process wait error: {e}"));
+                    }
+                    Err(e) => {
+                        stderr_task.abort();
+                        stdout_task.abort();
+                        return Err(format!("Process task join: {e}"));
+                    }
+                }
+            }
+            _ = hb_tick.tick() => {
+                let elapsed = match last_activity.lock() {
+                    Ok(g) => g.elapsed(),
+                    Err(p) => p.into_inner().elapsed(),
+                };
+                if elapsed > heartbeat {
+                    if let Some(p) = pid { process_kill::kill_process_tree(p); }
+                    wait_handle.abort();
+                    stderr_task.abort();
+                    stdout_task.abort();
+                    return Err(format!(
+                        "yt-dlp stalled (no output for {}s) — network or remote rate-limit issue",
+                        heartbeat.as_secs()
+                    ));
+                }
+            }
+        }
+    };
+
+    let stderr_bytes = stderr_task
+        .await
+        .map_err(|e| format!("yt-dlp stderr task: {e}"))?;
+    let stdout_bytes = stdout_task
+        .await
+        .map_err(|e| format!("yt-dlp stdout task: {e}"))?;
+
+    Ok(std::process::Output {
+        status,
+        stdout: stdout_bytes,
+        stderr: stderr_bytes,
+    })
+}
+
 /// Second yt-dlp pass: best video+audio merged to `mp4` (URL jobs only; used when user opts in).
 pub async fn download_best_video_mp4(
     maybe_log: Option<(&AppHandle, &str)>,
@@ -286,6 +478,9 @@ pub async fn download_best_video_mp4(
         args.push("--no-playlist".into());
     }
     args.extend([
+        "--newline".into(),
+        "--encoding".into(),
+        "utf-8".into(),
         "-f".into(),
         "bv*+ba/b".into(),
         "--merge-output-format".into(),
@@ -295,7 +490,15 @@ pub async fn download_best_video_mp4(
         url.trim().to_string(),
     ]);
 
-    let out = run_cmd(yt_dlp, &args, YT_DLP_TIMEOUT, cancel).await?;
+    let out = run_yt_dlp_streaming(
+        yt_dlp,
+        &args,
+        YT_DLP_HEARTBEAT,
+        cancel,
+        maybe_log,
+        "yt-dlp-video",
+    )
+    .await?;
     if !out.status.success() {
         return Err(format!(
             "yt-dlp video download failed (exit {}): {}",
@@ -356,7 +559,19 @@ pub async fn prepare_media_audio(
         let mut args: Vec<String> = Vec::new();
         push_yt_dlp_js_runtimes(&mut args, js);
         push_yt_dlp_cookies(&mut args, cookies);
-        args.extend(["-x".into(), "--no-mtime".into()]);
+        // `--newline` forces yt-dlp to terminate each progress update with `\n`
+        // instead of `\r`-overwriting one line. Required for our line-by-line
+        // streaming reader to see updates as they happen rather than as one
+        // mega-line at the end of the download. `--encoding utf-8` is yt-dlp's
+        // own belt-and-braces fix for the same Windows cp1252 crash that
+        // PYTHONIOENCODING addresses at the env level.
+        args.extend([
+            "--newline".into(),
+            "--encoding".into(),
+            "utf-8".into(),
+            "-x".into(),
+            "--no-mtime".into(),
+        ]);
         if let Some(fmt) = audio_format_for_yt_dlp.and_then(|f| f.yt_dlp_arg()) {
             args.push("--audio-format".into());
             args.push(fmt.into());
@@ -370,7 +585,22 @@ pub async fn prepare_media_audio(
         args.push(template);
         args.push(source.clone());
 
-        let out = run_cmd(&yt_dlp, &args, YT_DLP_TIMEOUT, cancel).await?;
+        let out = match run_yt_dlp_streaming(
+            &yt_dlp,
+            &args,
+            YT_DLP_HEARTBEAT,
+            cancel,
+            maybe_log,
+            "yt-dlp",
+        )
+        .await
+        {
+            Ok(o) => o,
+            Err(e) => {
+                let _ = fs::remove_dir_all(&work_dir);
+                return Err(e);
+            }
+        };
         if !out.status.success() {
             let _ = fs::remove_dir_all(&work_dir);
             return Err(format!(

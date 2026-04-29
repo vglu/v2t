@@ -10,6 +10,7 @@ mod process_kill;
 mod scan;
 mod session_log;
 mod settings;
+mod temp_cleanup;
 mod tool_download;
 #[cfg(any(windows, target_os = "macos"))]
 mod tool_manifest;
@@ -18,6 +19,7 @@ mod whisper_catalog;
 mod whisper_local;
 #[cfg(target_os = "macos")]
 mod whisper_bottle_macos;
+mod yt_dlp_progress;
 
 use cancel_registry::JobCancelRegistry;
 use session_log::SessionLog;
@@ -241,6 +243,18 @@ pub fn run() {
             if let Some(log) = SessionLog::try_init(app.handle()) {
                 app.manage(log);
             }
+            // Sweep orphaned v2t-work-* dirs older than 24 h. Off the main thread —
+            // the scan touches the temp dir but does not block UI startup.
+            std::thread::spawn(|| {
+                let report =
+                    temp_cleanup::run_cleanup(std::time::Duration::from_secs(24 * 3600));
+                if report.removed > 0 || report.errors > 0 {
+                    eprintln!(
+                        "[v2t] temp cleanup: removed={} bytes_freed={} errors={}",
+                        report.removed, report.bytes_freed, report.errors
+                    );
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
