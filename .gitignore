@@ -44,10 +44,12 @@ test-results/
 # Private / local material — keep out of public repos
 # (skills, BA tasks, personal notes, machine-local agent copies)
 # -----------------------------------------------------------------------------
+.cursor/agents/
 .cursor/skills/
 .cursor/tasks/
 .cursor/prompts/
 .agents/
+.context/
 MEMEX.md
 docs/private/
 private/

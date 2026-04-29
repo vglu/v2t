@@ -5,6 +5,8 @@
 
 **Статус (2026-03-28):** в коде уже есть вкладки Queue / Settings (TASK-01), глобальные стили форм и a11y для селектов (TASK-08), часть TASK-09 (лог WASM в сессию), `keep_downloaded_video` и второй проход yt-dlp. Добавлена настройка **`ytDlpJsRuntimes`** → yt-dlp `--js-runtimes` в `prepare_media_audio` и `download_best_video_mp4`. Ниже — исторические спецификации; при расхождении с репозиторием ориентироваться на код и `docs/PLAN_NEXT.md`.
 
+**Новый пакет (2026-04-20):** TASK-11/12/13 — параллелизация pipeline, очереди и chunked-upload. Источник: BA-артефакт `.cursor/tasks/BA-20260420-180000-alice.md` (Алиса). Все 13 OQ закрыты PO. Стартовать с **TASK-11** (главный выигрыш для дефолтного `localWhisper` сценария).
+
 ---
 
 ## TASK-01 — Вкладки вместо выпадающей панели Settings
@@ -941,23 +943,445 @@ export type ProcessQueueItemOutcome =
 
 ---
 
+---
+
+## TASK-11 — Pipeline overlap внутри одной задачи (Epic 3)
+
+**Приоритет:** высокий
+**Агент:** v2t-pipeline-specialist
+**Источник:** `.cursor/tasks/BA-20260420-180000-alice.md` (Epic 3)
+**Файлы:** `src-tauri/src/pipeline.rs`, `src-tauri/src/whisper_local.rs`, `src-tauri/src/transcribe.rs`, `src-tauri/src/job.rs`
+
+### Контекст
+
+Главный выигрыш для пользователя в дефолтном сценарии (`localWhisper`, `maxConcurrentJobs=1`).
+Без новых UI-настроек, без изменения семантики, без новых внешних зависимостей.
+
+Целевые узкие места:
+
+1. В `pipeline.rs::prepare_media_audio` ветка URL: `download_audio` (yt-dlp) → `download_best_video_mp4` (yt-dlp ещё раз) → `ffmpeg` нормализация **идут последовательно**. Шаг 2 и 3 независимы (видео-файл сохраняется отдельно от аудио-нормализации, см. TASK-04).
+2. В `transcribe.rs::transcribe_wav_maybe_split` (HTTP API) и `whisper_local.rs::transcribe_wav_maybe_split_whisper` (Local Whisper) обработка чанков **строго последовательная**: ffmpeg режет чанк → транскрипция этого чанка → ffmpeg режет следующий. Шаги (cut chunk N+1) и (transcribe chunk N) независимы по файлам.
+
+### Что нужно сделать
+
+**Часть A — overlap «yt-dlp видео ‖ ffmpeg-нормализация» в `pipeline.rs`**
+
+В ветке URL после успешного скачивания аудио:
+- Если `keep_downloaded_video == true`, запускать `download_best_video_mp4` через `tokio::spawn` параллельно с `ffmpeg_normalize_input`.
+- Дождаться обоих через `tokio::try_join!`. Ошибка ffmpeg-нормализации обязательно прерывает задачу (это путь к транскрипции). Ошибка скачивания видео — **только warning в session log**, не прерывает задачу (видео — опциональный артефакт).
+- Cancellation: оба future должны слушать тот же `CancellationToken`, при отмене обе спавн-таски корректно завершаются (kill_process_tree обоих yt-dlp + ffmpeg).
+
+**Часть B — overlap «ffmpeg-чанк N+1 ‖ транскрипция чанка N» в `transcribe.rs`**
+
+Текущий цикл `while start < duration_sec - 0.05` в `transcribe_wav_maybe_split`:
+```
+loop:
+  cut_chunk(i)         // ffmpeg
+  transcribe_chunk(i)  // HTTP
+  i += 1
+```
+
+Новая структура (channel-based prefetch с глубиной 1):
+- Завести `tokio::sync::mpsc::channel::<(usize, PathBuf)>(1)` — слот на один pre-cut чанк.
+- Producer task: цикл по чанкам, для каждого вызывает `pipeline::run_cmd` (ffmpeg) и шлёт `(idx, chunk_path)` в канал. Канал закрывается, когда чанков больше нет.
+- Consumer (основная функция): принимает `(idx, chunk_path)`, вызывает `transcribe_wav_file` (или whisper-cli), обрабатывает результат, удаляет временный файл (если `delete_chunks_after`).
+- При первой ошибке — отменить producer (`drop` receiver или explicit cancel), kill_process_tree оставшихся ffmpeg-процессов.
+- Resume-логика (`v2t-api-{fp}-chunk-{i}.txt`): если для индекса `i` уже есть валидный чекпоинт, **producer пропускает ffmpeg-нарезку** (генерирует только событие skip и пустой path-marker). Consumer видит маркер и читает чекпоинт без транскрипции.
+
+**Часть C — то же для `whisper_local.rs`**
+
+Для `localWhisper` overlap имеет смысл **только при `maxConcurrentJobs == 1`**: ffmpeg на пустом ядре пока CPU занят whisper.cpp. При `maxConcurrentJobs > 1` всё CPU и так загружено — overlap не помогает, но и не мешает (просто ffmpeg ждёт планировщика).
+
+Реализация — **симметричная** Части B, отдельной функцией `chunk_prefetch_loop` в общем модуле (создать `src-tauri/src/chunk_prefetch.rs` или положить в `pipeline.rs`), параметризованной transcribe-функцией.
+
+### Что **не** делать
+
+- Не менять API публичных Tauri-команд.
+- Не добавлять новые поля в `AppSettings`.
+- Не делать prefetch с глубиной > 1 (защита от RAM blowup на 4-часовых файлах).
+- Не параллелить нарезку **внутри** одной задачи — параллельно работает максимум **один** ffmpeg чанк на задачу.
+
+### Тесты (обязательно)
+
+- Unit-тест в `transcribe.rs`: мокнутая transcribe-функция возвращает фиксированный текст с `tokio::time::sleep`; проверяем, что общее время выполнения ≈ max(N × cut_time, N × transcribe_time), а не sum.
+- Тест на cancellation: после `cancel.cancel()` обе таски (producer + consumer) завершаются за < 2 секунды, никаких leak-процессов в `process_kill::test_helpers` (если есть).
+- Тест на resume: при наличии чекпоинтов для chunks [0, 2] и отсутствии для [1, 3] — ffmpeg вызывается ровно для [1, 3].
+
+### Критерий готовности
+
+- `cargo build` и `cargo test` чисто.
+- На реальном файле длительностью 1 час (предоставит PO в папке тестов): время транскрипции через `localWhisper` сокращается **не менее чем на 8%** относительно текущего sequential pipeline.
+- Лог сессии содержит явные фазы `cut-chunk-{i}` и `transcribe-chunk-{i}` с временными метками, по которым видно перекрытие.
+- Stop queue → процессы корректно убиваются за < 2 секунд.
+
+---
+
+## TASK-12 — Параллельная очередь jobs + инфраструктура семафоров (Epic 1)
+
+**Приоритет:** средний
+**Агенты:** kieran-typescript-reviewer + julik-frontend-races-reviewer (**обязательное ревью гонок**) + code-simplicity-reviewer (финальный проход)
+**Источник:** `.cursor/tasks/BA-20260420-180000-alice.md` (Epic 1)
+**Файлы:**
+- Rust: `src-tauri/src/lib.rs`, `src-tauri/src/settings.rs`, `src-tauri/src/pipeline.rs`, `src-tauri/src/transcribe.rs`, `src-tauri/src/whisper_local.rs`, `src-tauri/src/job.rs`
+- TS: `src/types/settings.ts`, `src/components/QueuePanel.tsx`, `src/components/SettingsPanel.tsx`, `src/App.tsx`, `src/App.css`
+
+### Контекст
+
+Сейчас `QueuePanel.tsx::startQueue` обрабатывает задачи строго последовательно через `for` + `await processQueueItem`. Глобальные единичные ref-ы (`runningRef`, `currentJobIdRef`, `stopRequestedRef`) предполагают одного worker-а — масштабирование напрямую вызовет гонки.
+
+PO выбрал «yt-dlp в один поток» (см. BA-артефакт OQ-9), поэтому параллельность реализуется как **pipeline с тремя lane-ами с разными лимитами**: download=1, normalize=1, transcribe=N.
+
+### Шаг 1 — Rust: новый модуль `concurrency.rs`
+
+Создать `src-tauri/src/concurrency.rs`:
+
+```rust
+use std::sync::Arc;
+use tokio::sync::Semaphore;
+
+pub struct PipelineLanes {
+    pub download: Arc<Semaphore>,    // capacity = 1
+    pub normalize: Arc<Semaphore>,   // capacity = 1
+    pub http_transcribe: Arc<Semaphore>, // capacity = 6
+}
+
+impl PipelineLanes {
+    pub fn new() -> Self {
+        Self {
+            download: Arc::new(Semaphore::new(1)),
+            normalize: Arc::new(Semaphore::new(1)),
+            http_transcribe: Arc::new(Semaphore::new(6)),
+        }
+    }
+}
+```
+
+Константы (`DOWNLOAD_LANE_CAP = 1`, `NORMALIZE_LANE_CAP = 1`, `GLOBAL_HTTP_CAP = 6`) — `pub const` в этом модуле.
+
+В `lib.rs::run()`:
+```rust
+let lanes = PipelineLanes::new();
+.manage(lanes)
+```
+
+### Шаг 2 — Rust: прокинуть семафоры в pipeline и transcribe
+
+`prepare_media_audio` принимает `&PipelineLanes`:
+- Перед вызовом `download_audio` / `download_best_video_mp4` — `lanes.download.acquire().await`.
+- Перед `ffmpeg_normalize_input` — `lanes.normalize.acquire().await`.
+- Permits держатся `let _permit = ...;` до конца соответствующей фазы; падают через RAII при ошибке/отмене.
+
+`transcribe_wav_file_inner` (HTTP API) принимает `&PipelineLanes`:
+- Перед каждым POST-запросом — `lanes.http_transcribe.acquire().await`. Permit держится ровно на время одного HTTP-запроса (включая ретраи в одной попытке).
+
+`whisper_local::transcribe_one_wav` — **семафоры не нужны**. Concurrency для `localWhisper` ограничивается только `maxConcurrentJobs` в очереди (количеством параллельных jobs), потому что whisper.cpp сам внутри использует все доступные CPU-ядра.
+
+### Шаг 3 — Rust: `AppSettings.max_concurrent_jobs`
+
+В `src-tauri/src/settings.rs` добавить в `AppSettings`:
+```rust
+#[serde(default)]
+pub max_concurrent_jobs: Option<u32>,
+```
+
+`None` означает «использовать default режима». Хелпер:
+```rust
+pub fn effective_max_concurrent_jobs(settings: &AppSettings) -> u32 {
+    settings.max_concurrent_jobs.unwrap_or_else(|| {
+        match settings.transcription_mode {
+            TranscriptionMode::HttpApi => 2,
+            TranscriptionMode::LocalWhisper => 1,
+            TranscriptionMode::BrowserWhisper => 1,
+        }
+    }).clamp(1, 8)
+}
+```
+
+### Шаг 4 — TypeScript types (`src/types/settings.ts`)
+
+Добавить в `AppSettings`:
+```ts
+maxConcurrentJobs: number | null;
+```
+В `defaultAppSettings`:
+```ts
+maxConcurrentJobs: null,
+```
+Добавить хелпер:
+```ts
+export function effectiveMaxConcurrentJobs(settings: AppSettings): number {
+  if (settings.maxConcurrentJobs && settings.maxConcurrentJobs >= 1) {
+    return Math.min(8, settings.maxConcurrentJobs);
+  }
+  switch (settings.transcriptionMode) {
+    case "httpApi": return 2;
+    case "localWhisper": return 1;
+    case "browserWhisper": return 1;
+    default: return 1;
+  }
+}
+
+export function defaultMaxConcurrentJobsFor(mode: TranscriptionMode): number {
+  return mode === "httpApi" ? 2 : 1;
+}
+```
+
+### Шаг 5 — UI (`src/components/SettingsPanel.tsx`)
+
+В секцию "Performance" (создать, если нет) добавить:
+
+```tsx
+<label className="field">
+  <span>Concurrent jobs ({defaultMaxConcurrentJobsFor(settings.transcriptionMode)} default for {settings.transcriptionMode})</span>
+  <div className="field-row">
+    <input
+      type="number"
+      min={1}
+      max={8}
+      value={effectiveMaxConcurrentJobs(settings)}
+      aria-label="Maximum concurrent jobs"
+      onChange={(e) => onChange({
+        ...settings,
+        maxConcurrentJobs: clamp(parseInt(e.target.value, 10) || 1, 1, 8),
+      })}
+    />
+    <button
+      type="button"
+      className="reset-btn"
+      onClick={() => onChange({ ...settings, maxConcurrentJobs: null })}
+    >
+      Reset to default
+    </button>
+  </div>
+  {effectiveMaxConcurrentJobs(settings) > 1 &&
+   (settings.transcriptionMode === "localWhisper" ||
+    settings.transcriptionMode === "browserWhisper") && (
+    <p className="hint hint--warn" role="alert">
+      ⚠ Running multiple {settings.transcriptionMode === "localWhisper" ? "Local Whisper" : "In-app WASM"} jobs
+      in parallel will load each model into RAM separately. Large models may exceed
+      available memory and crash the app. Recommended: keep at 1 unless you know your machine has spare RAM/GPU.
+    </p>
+  )}
+</label>
+```
+
+Стили `.field-row` и `.reset-btn` — добавить в `App.css` рядом с `.field` (flex row, gap 0.5rem; reset-btn — secondary outline).
+
+### Шаг 6 — TypeScript: worker pool в `QueuePanel.tsx`
+
+Удалить single-worker инварианты:
+- `runningRef`, `currentJobIdRef` → заменить на `runningJobsRef: Set<string>` (id-set активных).
+- `stopRequestedRef` остаётся (общий флаг отмены).
+
+Новая `startQueue`:
+```ts
+const startQueue = useCallback(async () => {
+  if (running) return;
+  setRunning(true);
+  stopRequestedRef.current = false;
+  const limit = effectiveMaxConcurrentJobs(settings);
+  const queue = jobs.filter(j => j.status === "pending").map(j => j.id);
+  const inflight: Map<string, Promise<void>> = new Map();
+
+  while (queue.length > 0 || inflight.size > 0) {
+    if (stopRequestedRef.current) break;
+    while (inflight.size < limit && queue.length > 0 && !stopRequestedRef.current) {
+      const jobId = queue.shift()!;
+      runningJobsRef.current.add(jobId);
+      const p = processQueueItem(jobId)
+        .catch((e) => appendLog(`[error] job ${jobId}: ${stringifyError(e)}`))
+        .finally(() => {
+          runningJobsRef.current.delete(jobId);
+          inflight.delete(jobId);
+        });
+      inflight.set(jobId, p);
+    }
+    if (inflight.size > 0) {
+      await Promise.race(inflight.values());
+    }
+  }
+  setRunning(false);
+}, [jobs, settings, processQueueItem, appendLog]);
+```
+
+`stopQueue` — hard stop:
+- `stopRequestedRef.current = true`
+- Для каждого id в `runningJobsRef.current` → `invoke("cancel_queue_job", { jobId: id })` (используется существующая команда отмены, она вызывает `cancel.cancel()` в Rust → `process_kill::kill_process_tree`).
+- `appendLog(\`[stop] hard stop, ${runningJobsRef.current.size} active jobs cancelled\`)`.
+
+### Шаг 7 — Cross-cutting
+
+- В `processQueueItem` снять любые предположения «эта задача единственная активная» (если есть).
+- `currentJobIdRef` → удалить или заменить на `runningJobsRef`.
+- В `jobs` state: при параллельном обновлении нескольких rows одновременно использовать функциональный setter `setJobs(prev => prev.map(...))`. Любой setter, использующий замыкание над старым `jobs`, — потенциальная гонка → `julik-frontend-races-reviewer` обязательно проверяет.
+
+### Тесты (обязательно)
+
+**Rust:**
+- `concurrency.rs`: семафор реально лимитирует параллельные holders.
+- `pipeline.rs`: при двух одновременных задачах с URL вызовы `yt-dlp` сериализуются (мок через trait `CommandRunner` или счётчик активных вызовов).
+
+**TypeScript (Vitest):**
+- `effectiveMaxConcurrentJobs` для каждой комбинации (mode × user-value).
+- `QueuePanel`: при `maxConcurrentJobs=3` и 5 pending jobs `inflight.size` никогда не превышает 3 (мок `processQueueItem`).
+- При `stopQueue` все active jobs получают `cancel_queue_job`.
+
+**E2E (ручной, на папке PO):**
+- httpApi, jobs=2 — два HTTP-задания идут параллельно, лог это показывает.
+- localWhisper, jobs=2 (вручную выставлено) — warning виден, обе задачи выполняются, ничего не падает.
+- Stop queue в середине — все активные останавливаются < 2 сек.
+
+### Что **не** делать
+
+- Не добавлять автоматическую регулировку `maxConcurrentJobs` от железа (вне скоупа).
+- Не выносить overlap внутри одной задачи (это TASK-11).
+- Не реализовывать parallel chunks (это TASK-13).
+- Не менять формат session log.
+
+### Критерий готовности
+
+- `cargo build`, `cargo test`, `npm run build`, `npm run test:run` — чисто.
+- При `transcriptionMode=httpApi`, `maxConcurrentJobs=null` (=2 default) и трёх задачах в очереди — две идут параллельно, одна ждёт.
+- При смене `transcriptionMode` с `httpApi` на `localWhisper` UI показывает «default 1 for localWhisper», warning не появляется (effective = 1).
+- При вводе `maxConcurrentJobs=5` для localWhisper — warning виден, очередь работает.
+- Stop queue убивает всех активных за < 2 секунд.
+- `julik-frontend-races-reviewer` подтверждает отсутствие гонок в `QueuePanel.tsx`.
+
+---
+
+## TASK-13 — Параллельная загрузка чанков HTTP API (Epic 2)
+
+**Приоритет:** низкий
+**Агент:** v2t-pipeline-specialist
+**Источник:** `.cursor/tasks/BA-20260420-180000-alice.md` (Epic 2)
+**Зависимость:** TASK-12 (использует `PipelineLanes::http_transcribe`).
+**Файлы:** `src-tauri/src/transcribe.rs`, `src-tauri/src/settings.rs`, `src/types/settings.ts`, `src/components/SettingsPanel.tsx`
+
+### Контекст
+
+Сейчас при работе с большим WAV-файлом через HTTP API чанки отправляются строго последовательно. PO предпочитает `localWhisper` (см. BA OQ-1), поэтому это quality-of-life фича для случая, когда пользователь временно переключается на cloud.
+
+### Шаг 1 — Settings
+
+Rust (`settings.rs`):
+```rust
+#[serde(default)]
+pub parallel_chunks_per_file: Option<u32>,
+```
+
+TS (`src/types/settings.ts`):
+```ts
+parallelChunksPerFile: number | null;
+```
+Default — `null` (=3). Эффективное значение: `clamp(value || 3, 1, 6)`.
+
+### Шаг 2 — UI (`SettingsPanel.tsx`)
+
+В секции "Performance" (создана в TASK-12) добавить второе поле:
+```tsx
+<label className="field">
+  <span>API: parallel chunks per file (default 3, max 6)</span>
+  <input
+    type="number"
+    min={1}
+    max={6}
+    aria-label="Parallel chunks per file for HTTP API"
+    value={settings.parallelChunksPerFile ?? 3}
+    onChange={(e) => onChange({
+      ...settings,
+      parallelChunksPerFile: clamp(parseInt(e.target.value, 10) || 3, 1, 6),
+    })}
+  />
+  <p className="hint">
+    Effective concurrency is capped by the global HTTP limit (6) shared across all jobs.
+  </p>
+</label>
+```
+
+Поле видимо только при `transcriptionMode === "httpApi"` (через условный рендер).
+
+### Шаг 3 — Rust: параллельные чанки
+
+В `transcribe.rs::transcribe_wav_maybe_split` (HTTP API ветка):
+
+После того как через ffmpeg нарезаны все чанки (или с overlap из TASK-11 — производятся постепенно), отправлять их через `futures::stream::iter(chunks).buffered(N)` где `N = effective_parallel_chunks`:
+
+```rust
+use futures::StreamExt;
+
+let parallel = settings.parallel_chunks_per_file.unwrap_or(3).clamp(1, 6) as usize;
+let results: Vec<Result<(usize, String), String>> = futures::stream::iter(chunk_paths.iter().enumerate())
+    .map(|(idx, chunk_path)| {
+        let lanes = lanes.clone();
+        let cancel = cancel.clone();
+        async move {
+            // resume check via checkpoint file
+            if let Some(text) = read_chunk_checkpoint(fp, idx) {
+                return Ok((idx, text));
+            }
+            let permit = lanes.http_transcribe.acquire().await
+                .map_err(|e| format!("semaphore: {e}"))?;
+            let text = transcribe_wav_file_inner(chunk_path, ..., &cancel).await?;
+            drop(permit);
+            write_chunk_checkpoint(fp, idx, &text)?;
+            Ok((idx, text))
+        }
+    })
+    .buffered(parallel)
+    .collect()
+    .await;
+
+// проверить ошибки, отсортировать по idx, склеить
+```
+
+Важно:
+- Глобальный HTTP-лимит из `PipelineLanes::http_transcribe` (capacity 6) **уже** ограничивает суммарную concurrency между всеми jobs и chunks. `parallel_chunks_per_file` — это per-job upper bound, фактическая concurrency = `min(parallel_chunks_per_file, free permits in global semaphore)`.
+- Cancellation: `cancel.cancelled()` в `tokio::select!` обёртке внутри producer-функции; `buffered` корректно отменяет все pending tasks при drop stream.
+- Resume: каждый chunk пишет `v2t-api-{fp}-chunk-{i}.txt` сразу после успешной транскрипции (как сейчас); параллельная запись разных файлов — без race.
+- Порядок результатов: после `collect()` отсортировать `Vec<(usize, String)>` по `idx`, затем `join` с разделителем (как сейчас).
+
+Для `whisper_local.rs` **не делать** — у локального whisper.cpp нет смысла в параллельных чанках (CPU/GPU bound).
+
+### Тесты (обязательно)
+
+- Unit-тест: мокнутая `transcribe_wav_file_inner` с `sleep(100ms)`; для 6 чанков и `parallel=3` суммарное время ≈ 200ms (3 параллельно × 2 батча), а не 600ms.
+- Тест на сохранение порядка: моки возвращают `"text-{idx}"`; результат — `"text-0 text-1 ... text-5"` независимо от порядка завершения.
+- Тест на cancellation: после `cancel.cancel()` все inflight chunks завершаются за < 2 секунды.
+- Тест на resume: 3 чекпоинта существуют, 3 — нет → `transcribe_wav_file_inner` вызывается ровно 3 раза.
+
+### Критерий готовности
+
+- `cargo build` и `npm run build` без ошибок.
+- На реальном файле длительностью 1 час через `httpApi` с `parallelChunksPerFile=3`: время сокращается **не менее чем на 50%** относительно `parallelChunksPerFile=1`.
+- При `maxConcurrentJobs=2` + `parallelChunksPerFile=3` — global HTTP semaphore показывает не более 6 одновременных запросов (видно в логе как `[http-permit] acquired (X/6)` если такой лог решено добавить — иначе через test fixture).
+- При cancel — очередь pending chunks немедленно дропается.
+
+### Что **не** делать
+
+- Не параллелить чанки для `localWhisper` / `browserWhisper`.
+- Не вводить per-host rate limit (одна цель API — только её лимит важен).
+- Не менять текущий формат чекпоинтов.
+
+---
+
 ## Зависимости между задачами
 
 ```
-TASK-01 — независима
-TASK-02 — независима
-TASK-03 — независима
-TASK-04 — независима (можно после TASK-01 если хочется видеть в табе)
-TASK-05 — независима
-TASK-06 — независима
-TASK-07 — зависит от TASK-02 (нужен managed_bin_dir с whisper-cpp)
-TASK-08 — независима
-TASK-09 — независима (можно параллельно с любой)
-TASK-10 — независима
+TASK-01..TASK-10 — описаны в исторической части (см. PLAN_NEXT.md о статусе)
+TASK-11 — независима. Главный выигрыш для дефолтного сценария PO.
+TASK-12 — независима по коду. Зависит от завершения BA (готово). Включает инфраструктуру `PipelineLanes`.
+TASK-13 — зависит от TASK-12 (использует `PipelineLanes::http_transcribe`). Если TASK-13 стартует раньше — вынести `concurrency.rs` отдельным шагом и реализовать infra-only часть TASK-12 досрочно.
 ```
 
 ## Порядок выполнения (рекомендуемый)
 
+Текущий фокус (parallelization, BA-артефакт от 2026-04-20):
+
+1. **TASK-11** — pipeline overlap. Высокий приоритет, можно стартовать немедленно. Главный выигрыш для PO.
+2. **TASK-12** — параллельная очередь + инфраструктура семафоров. Средний приоритет. Готовит почву для TASK-13.
+3. **TASK-13** — параллельные чанки HTTP API. Низкий приоритет (PO на localWhisper).
+
+Исторический хвост (если ещё не закрыт по `PLAN_NEXT.md`):
 1. TASK-09 (BrowserWhisper fix) — блокирует пользователей уже сейчас
 2. TASK-01 (таб) — визуально улучшит всё остальное
 3. TASK-08 (дизайн-фиксы) — параллельно с TASK-01
