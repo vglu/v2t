@@ -30,6 +30,7 @@ describe("SettingsPanel", () => {
         onChange={vi.fn()}
         onSave={vi.fn()}
         onPersistSettings={vi.fn().mockResolvedValue(undefined)}
+        onLanguageChange={vi.fn()}
         saving={false}
       />,
     );
@@ -40,6 +41,26 @@ describe("SettingsPanel", () => {
     });
   });
 
+  it("language switcher fires onLanguageChange with the new locale", async () => {
+    const onLanguageChange = vi.fn();
+    render(
+      <SettingsPanel
+        settings={defaultAppSettings}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onPersistSettings={vi.fn().mockResolvedValue(undefined)}
+        onLanguageChange={onLanguageChange}
+        saving={false}
+      />,
+    );
+    const select = screen.getByTestId("settings-language-switcher") as HTMLSelectElement;
+    expect(select.value).toBe("auto");
+    const { default: userEvent } = await import("@testing-library/user-event");
+    const user = userEvent.setup();
+    await user.selectOptions(select, "uk");
+    expect(onLanguageChange).toHaveBeenCalledWith("uk");
+  });
+
   it("toggling subtitles fast-path reveals priority langs and keep-srt", async () => {
     const onChange = vi.fn();
     render(
@@ -48,6 +69,7 @@ describe("SettingsPanel", () => {
         onChange={onChange}
         onSave={vi.fn()}
         onPersistSettings={vi.fn().mockResolvedValue(undefined)}
+        onLanguageChange={vi.fn()}
         saving={false}
       />,
     );
@@ -59,6 +81,7 @@ describe("SettingsPanel", () => {
         onChange={onChange}
         onSave={vi.fn()}
         onPersistSettings={vi.fn().mockResolvedValue(undefined)}
+        onLanguageChange={vi.fn()}
         saving={false}
       />,
     );

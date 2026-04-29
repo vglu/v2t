@@ -16,6 +16,7 @@ import type {
   CookiesFromBrowser,
   GpuInfo,
   TranscriptionMode,
+  UiLanguage,
   WhisperAcceleration,
   WhisperModelMeta,
 } from "../types/settings";
@@ -28,8 +29,23 @@ type Props = {
   onPersistSettings: (s: AppSettings) => Promise<void>;
   /** Re-run dependency check (e.g. after model download). */
   onRefreshReadiness?: () => void;
+  /** Persist a UI-language change immediately (also drives i18next.changeLanguage). */
+  onLanguageChange: (lang: UiLanguage) => void;
   saving: boolean;
 };
+
+/** Full-name labels for the Settings panel switcher. The header switcher uses
+ * compact ISO codes — these are the readable-by-natives versions. */
+const FULL_LANG_OPTIONS: ReadonlyArray<{ value: UiLanguage; label: string }> = [
+  { value: "auto", label: "Auto (system)" },
+  { value: "en", label: "English" },
+  { value: "uk", label: "Українська" },
+  { value: "ru", label: "Русский" },
+  { value: "de", label: "Deutsch" },
+  { value: "es", label: "Español" },
+  { value: "fr", label: "Français" },
+  { value: "pl", label: "Polski" },
+];
 
 export function SettingsPanel({
   settings,
@@ -37,6 +53,7 @@ export function SettingsPanel({
   onSave,
   onPersistSettings,
   onRefreshReadiness,
+  onLanguageChange,
   saving,
 }: Props) {
   const [whisperModels, setWhisperModels] = useState<WhisperModelMeta[]>([]);
@@ -297,6 +314,28 @@ export function SettingsPanel({
       aria-label="Settings"
     >
       <h2>Settings</h2>
+
+      <p className="settings-section-title">Language</p>
+      <label className="field">
+        <span>UI language</span>
+        <select
+          aria-label="UI language (full)"
+          data-testid="settings-language-switcher"
+          value={settings.uiLanguage}
+          onChange={(e) => onLanguageChange(e.target.value as UiLanguage)}
+        >
+          {FULL_LANG_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <p className="hint">
+          <strong>Auto</strong> follows your OS locale (<code>navigator.language</code>); other
+          options force a specific language. Saved instantly — no need to press Save below. The
+          same switcher (compact, flag-only) lives in the top-right header.
+        </p>
+      </label>
 
       <p className="settings-section-title">Output</p>
       <label className="field">

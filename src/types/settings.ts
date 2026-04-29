@@ -12,6 +12,19 @@ export type DownloadedAudioFormat = "original" | "mp3" | "m4a";
 /** Local Whisper backend: "auto" picks CUDA on NVIDIA, else CPU. */
 export type WhisperAcceleration = "auto" | "cuda" | "vulkan" | "cpu";
 
+/** UI language. "auto" lets React derive from navigator.language; the
+ * other values are ISO 639-1 codes matching the i18n catalogs in
+ * `src/locales/`. Mirror of the Rust `UiLanguage` enum (`settings.rs`). */
+export type UiLanguage =
+  | "auto"
+  | "en"
+  | "uk"
+  | "ru"
+  | "de"
+  | "es"
+  | "fr"
+  | "pl";
+
 /** Result of `Win32_VideoController` classification (Windows) or empty (macOS / Linux). */
 export type GpuKind = "nvidia" | "amd" | "intel" | "none";
 export type GpuInfo = { kind: GpuKind; names: string[] };
@@ -55,6 +68,8 @@ export type AppSettings = {
   subtitlePriorityLangs: string[];
   /** When the subtitle fast-path runs, also save the raw `.srt` next to `.txt`. */
   keepSrt: boolean;
+  /** UI language. "auto" derives from navigator.language. */
+  uiLanguage: UiLanguage;
 };
 
 export const defaultAppSettings: AppSettings = {
@@ -82,6 +97,7 @@ export const defaultAppSettings: AppSettings = {
   useSubtitlesWhenAvailable: false,
   subtitlePriorityLangs: ["uk", "ru", "en"],
   keepSrt: false,
+  uiLanguage: "auto",
 };
 
 export type DependencyReport = {

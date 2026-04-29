@@ -60,6 +60,26 @@ body {
   margin-left: 0;
 }
 
+/* Compact UI-language switcher in the header. Width capped so the
+ * collapsed view stays ~80px (flag emoji + 2-letter ISO code). The native
+ * dropdown opens below and is full-width by browser default — no custom
+ * popup that could cover content. */
+.app-lang-select {
+  width: 80px;
+  max-width: 80px;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #2a2e3a;
+  background: #1c1f28;
+  color: #e8e8ec;
+  cursor: pointer;
+}
+
+.app-lang-select:hover {
+  border-color: #3d4456;
+}
+
 button {
   border-radius: 8px;
   border: 1px solid #2a2e3a;

@@ -57,6 +57,23 @@ pub enum WhisperAcceleration {
     Cpu,
 }
 
+/// UI language code. `Auto` defers to the OS locale (`navigator.language` on
+/// the React side); other variants are ISO 639-1 codes for the locales
+/// supported by the i18n catalogs in `src/locales/`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum UiLanguage {
+    #[default]
+    Auto,
+    En,
+    Uk,
+    Ru,
+    De,
+    Es,
+    Fr,
+    Pl,
+}
+
 /// Audio format for saved downloaded audio.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
@@ -163,6 +180,9 @@ pub struct AppSettings {
     /// next to the `.txt` transcript (preserves timings).
     #[serde(default)]
     pub keep_srt: bool,
+    /// UI language; `Auto` lets the React layer derive from `navigator.language`.
+    #[serde(default)]
+    pub ui_language: UiLanguage,
 }
 
 impl Default for AppSettings {
@@ -192,6 +212,7 @@ impl Default for AppSettings {
             use_subtitles_when_available: false,
             subtitle_priority_langs: default_subtitle_priority_langs(),
             keep_srt: false,
+            ui_language: UiLanguage::Auto,
         }
     }
 }
@@ -265,6 +286,23 @@ mod tests {
         let json = r#"{"outputDir":null,"filenameTemplate":"{title}_{date}.txt","ffmpegPath":null,"ytDlpPath":null,"deleteAudioAfter":true,"apiBaseUrl":"https://api.openai.com/v1","apiModel":"whisper-1","apiKey":"","language":null,"recursiveFolderScan":false}"#;
         let s: AppSettings = serde_json::from_str(json).unwrap();
         assert!(s.onboarding_completed);
+    }
+
+    #[test]
+    fn missing_ui_language_defaults_to_auto() {
+        let json = r#"{"outputDir":null,"filenameTemplate":"{title}_{date}.txt","ffmpegPath":null,"ytDlpPath":null,"deleteAudioAfter":true,"apiBaseUrl":"https://api.openai.com/v1","apiModel":"whisper-1","apiKey":"","language":null,"recursiveFolderScan":false}"#;
+        let s: AppSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(s.ui_language, UiLanguage::Auto);
+    }
+
+    #[test]
+    fn ui_language_roundtrip_uk() {
+        let mut s = AppSettings::default();
+        s.ui_language = UiLanguage::Uk;
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains("\"uiLanguage\":\"uk\""));
+        let back: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.ui_language, UiLanguage::Uk);
     }
 
     #[test]

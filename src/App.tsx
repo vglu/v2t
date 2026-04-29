@@ -1,8 +1,10 @@
+import i18next from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { QueuePanel } from "./components/QueuePanel";
 import { ReadinessPanel } from "./components/ReadinessPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "./i18n";
 import {
   checkDependencies,
   defaultDocumentsDir,
@@ -13,8 +15,35 @@ import {
   defaultAppSettings,
   type AppSettings,
   type DependencyReport,
+  type UiLanguage,
 } from "./types/settings";
 import "./App.css";
+
+/** Resolve `uiLanguage = "auto"` to a concrete supported locale by reading
+ * the OS / browser locale and stripping the region suffix (e.g. `uk-UA` →
+ * `uk`). Falls back to English when the OS locale is not in our catalog. */
+function resolveAutoLanguage(): SupportedLanguage {
+  const raw =
+    typeof navigator !== "undefined" && typeof navigator.language === "string"
+      ? navigator.language
+      : "en";
+  const short = (raw.split("-")[0] ?? "en").toLowerCase();
+  return (SUPPORTED_LANGUAGES as readonly string[]).includes(short)
+    ? (short as SupportedLanguage)
+    : "en";
+}
+
+/** Compact header switcher options — flag + ISO code keeps width ~80px. */
+const HEADER_LANG_OPTIONS: ReadonlyArray<{ value: UiLanguage; label: string }> = [
+  { value: "auto", label: "🌐 Auto" },
+  { value: "en", label: "🇬🇧 EN" },
+  { value: "uk", label: "🇺🇦 UK" },
+  { value: "ru", label: "🇷🇺 RU" },
+  { value: "de", label: "🇩🇪 DE" },
+  { value: "es", label: "🇪🇸 ES" },
+  { value: "fr", label: "🇫🇷 FR" },
+  { value: "pl", label: "🇵🇱 PL" },
+];
 
 export default function App() {
   const [settings, setSettings] = useState<AppSettings>(defaultAppSettings);
@@ -83,6 +112,29 @@ export default function App() {
     return deps.whisperCliFound && deps.whisperModelReady;
   }, [deps, settings.outputDir, settings.apiKey, settings.transcriptionMode]);
 
+  // Bridge `settings.uiLanguage` → i18next. Runs after settings hydrate
+  // (so the very first render already uses the persisted language) and on
+  // any subsequent change from either switcher.
+  useEffect(() => {
+    if (!settingsHydrated) return;
+    const lang = settings.uiLanguage;
+    globalThis.__v2tUiLanguage = lang === "auto" ? undefined : lang;
+    const target = lang === "auto" ? resolveAutoLanguage() : lang;
+    if (i18next.language !== target) {
+      void i18next.changeLanguage(target);
+    }
+  }, [settingsHydrated, settings.uiLanguage]);
+
+  // Persist immediately when language changes — both switchers (header +
+  // Settings) call this. Language is a meta-setting, sticky-on-click feels
+  // right; user shouldn't have to press the Settings panel's Save button.
+  const handleLanguageChange = useCallback(
+    async (next: UiLanguage) => {
+      await persistSettings({ ...settingsRef.current, uiLanguage: next });
+    },
+    [],
+  );
+
   async function handleSave() {
     setSaving(true);
     setToast(null);
@@ -125,6 +177,19 @@ export default function App() {
         <h1>Video to Text</h1>
         <p className="tagline">v2t — portable video / audio → text</p>
         <div className="app-header-actions">
+          <select
+            className="app-lang-select"
+            data-testid="header-language-switcher"
+            aria-label="UI language"
+            value={settings.uiLanguage}
+            onChange={(e) => void handleLanguageChange(e.target.value as UiLanguage)}
+          >
+            {HEADER_LANG_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             className="ghost"
@@ -204,6 +269,7 @@ export default function App() {
           onSave={() => void handleSave()}
           onPersistSettings={(s) => persistSettings(s)}
           onRefreshReadiness={() => void refreshDeps(settingsRef.current)}
+          onLanguageChange={(lang) => void handleLanguageChange(lang)}
           saving={saving}
         />
       </div>
