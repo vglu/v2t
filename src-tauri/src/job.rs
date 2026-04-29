@@ -16,6 +16,7 @@ use crate::settings::{AppSettings, TranscriptionMode};
 use crate::transcribe;
 use crate::whisper_catalog;
 use crate::whisper_local;
+use crate::yt_dlp_metadata;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,6 +71,41 @@ fn emit_progress(app: &tauri::AppHandle, job_id: &str, phase: &str, message: &st
     };
     let _ = app.emit("queue-job-progress", &payload);
     session_log::try_append(app, Some(job_id), phase, message);
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SubtaskStatusPayload {
+    job_id: String,
+    subtask_index: u32,
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+/// Emit one per-subtask status transition. UI listens for these to flip the
+/// row icon between ▶ running / ✓ done / ⏭ skipped / ✗ error. `subtask_index`
+/// is 1-based and matches the playlist index reported by `playlist-resolved`
+/// (or simply `1` for single-video URLs).
+fn emit_subtask_status(
+    app: &tauri::AppHandle,
+    job_id: &str,
+    subtask_index: u32,
+    status: &'static str,
+    reason: Option<String>,
+) {
+    let payload = SubtaskStatusPayload {
+        job_id: job_id.to_string(),
+        subtask_index,
+        status,
+        reason: reason.clone(),
+    };
+    let _ = app.emit("subtask-status", &payload);
+    let log_msg = match &payload.reason {
+        Some(r) if !r.is_empty() => format!("subtask {subtask_index}: {status} ({r})"),
+        _ => format!("subtask {subtask_index}: {status}"),
+    };
+    session_log::try_append(app, Some(job_id), "subtask", &log_msg);
 }
 
 fn require_output_dir(settings: &AppSettings) -> Result<PathBuf, String> {
@@ -219,6 +255,60 @@ pub async fn run_process_queue_item(
 
     emit_progress(&app, &job_id, "prepare", "Preparing audio (yt-dlp / ffmpeg)…");
 
+    // Pre-resolve playlist metadata before download so the UI can render the
+    // per-video subtask list (titles + clickable links) up-front. Best-effort:
+    // any failure (private playlist, single video, no internet, yt-dlp version
+    // mismatch) is logged and silently ignored — pipeline continues unchanged.
+    if (source_kind == "url" || pipeline::is_http_url(&source)) && !cancel.is_cancelled() {
+        if let Some(yt_dlp) =
+            deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp")
+        {
+            match yt_dlp_metadata::resolve_playlist_metadata(
+                &yt_dlp,
+                &source,
+                settings.cookies_from_browser.yt_dlp_arg(),
+                settings.yt_dlp_js_runtimes.as_deref(),
+                &cancel,
+            )
+            .await
+            {
+                Ok(info) => {
+                    let subtasks = yt_dlp_metadata::entries_to_subtasks(&info);
+                    if !subtasks.is_empty() {
+                        let payload = yt_dlp_metadata::PlaylistResolvedPayload {
+                            job_id: job_id.clone(),
+                            playlist_title: info.title.clone(),
+                            subtasks,
+                        };
+                        let _ = app.emit("playlist-resolved", &payload);
+                        let title_str = info
+                            .title
+                            .as_deref()
+                            .map(|t| format!(" \"{t}\""))
+                            .unwrap_or_default();
+                        emit_progress(
+                            &app,
+                            &job_id,
+                            "playlist",
+                            &format!(
+                                "Resolved playlist{title_str} ({} videos)",
+                                payload.subtasks.len()
+                            ),
+                        );
+                    }
+                }
+                Err(e) => {
+                    pipeline::emit_pipeline_text(
+                        &app,
+                        &job_id,
+                        "yt-dlp-meta",
+                        &format!("Pre-resolve skipped: {e}"),
+                    );
+                }
+            }
+        }
+    }
+
     let audio_format_for_yt_dlp =
         if settings.keep_downloaded_audio && (source_kind == "url" || pipeline::is_http_url(&source)) {
             Some(settings.downloaded_audio_format)
@@ -308,6 +398,13 @@ pub async fn run_process_queue_item(
                                 "Track {track}/{n_tracks}: using existing transcript (resume)",
                             ),
                         );
+                        emit_subtask_status(
+                            &app,
+                            &job_id,
+                            track,
+                            "skipped",
+                            Some("already done".to_string()),
+                        );
                         skip_transcribe = true;
                     }
                 }
@@ -374,6 +471,13 @@ pub async fn run_process_queue_item(
                             "Track {track}/{n_tracks}: using existing transcript (resume)",
                         ),
                     );
+                    emit_subtask_status(
+                        &app,
+                        &job_id,
+                        track,
+                        "skipped",
+                        Some("already done".to_string()),
+                    );
                     last_transcript = Some(dest_path);
                     continue;
                 }
@@ -388,8 +492,9 @@ pub async fn run_process_queue_item(
                 "Transcribing track {track}/{n_tracks} (splitting if file is large)…",
             ),
         );
+        emit_subtask_status(&app, &job_id, track, "running", None);
 
-        let text = match settings.transcription_mode {
+        let transcribe_result: Result<String, String> = match settings.transcription_mode {
             TranscriptionMode::HttpApi => {
                 transcribe::transcribe_wav_maybe_split(
                     wav_path,
@@ -401,65 +506,87 @@ pub async fn run_process_queue_item(
                     lang,
                     &cancel,
                 )
-                .await?
+                .await
             }
             TranscriptionMode::LocalWhisper => {
-                let models_dir = model_download::resolve_models_dir(
-                    &app,
-                    settings.whisper_models_dir.as_deref(),
-                )?;
-                std::fs::create_dir_all(&models_dir)
-                    .map_err(|e| format!("create models dir: {e}"))?;
-                let entry = whisper_catalog::catalog_entry(&settings.whisper_model).ok_or_else(|| {
-                    format!(
-                        "Unknown whisper model '{}' (pick a model in Settings)",
-                        settings.whisper_model
-                    )
-                })?;
-                let model_path = models_dir.join(entry.file_name);
-                if !model_path.is_file() {
-                    emit_progress(
+                async {
+                    let models_dir = model_download::resolve_models_dir(
+                        &app,
+                        settings.whisper_models_dir.as_deref(),
+                    )?;
+                    std::fs::create_dir_all(&models_dir)
+                        .map_err(|e| format!("create models dir: {e}"))?;
+                    let entry = whisper_catalog::catalog_entry(&settings.whisper_model)
+                        .ok_or_else(|| {
+                            format!(
+                                "Unknown whisper model '{}' (pick a model in Settings)",
+                                settings.whisper_model
+                            )
+                        })?;
+                    let model_path = models_dir.join(entry.file_name);
+                    if !model_path.is_file() {
+                        emit_progress(
+                            &app,
+                            &job_id,
+                            "model",
+                            &format!(
+                                "Downloading ggml model '{}' (~{} MiB)…",
+                                entry.id, entry.size_mib
+                            ),
+                        );
+                        model_download::download_whisper_model_file(&app, entry, &models_dir)
+                            .await?;
+                    } else if !model_download::file_matches_sha1(&model_path, entry.sha1_hex)? {
+                        return Err(format!(
+                            "Model file {} failed SHA-1 check. Delete it and download again.",
+                            model_path.display()
+                        ));
+                    }
+                    let cli =
+                        deps::resolve_whisper_cli_path(settings.whisper_cli_path.as_deref())
+                            .ok_or_else(|| {
+                                "whisper-cli not found. Build whisper.cpp, set path in Settings, or place whisper-cli (or main) next to the app.".to_string()
+                            })?;
+                    whisper_local::transcribe_wav_maybe_split_whisper(
+                        wav_path,
+                        &cli,
+                        &model_path,
+                        &ffmpeg_pb,
+                        &work_dir,
+                        lang,
+                        &cancel,
                         &app,
                         &job_id,
-                        "model",
-                        &format!(
-                            "Downloading ggml model '{}' (~{} MiB)…",
-                            entry.id, entry.size_mib
-                        ),
-                    );
-                    model_download::download_whisper_model_file(&app, entry, &models_dir).await?;
-                } else if !model_download::file_matches_sha1(&model_path, entry.sha1_hex)? {
-                    return Err(format!(
-                        "Model file {} failed SHA-1 check. Delete it and download again.",
-                        model_path.display()
-                    ));
+                    )
+                    .await
                 }
-                let cli = deps::resolve_whisper_cli_path(settings.whisper_cli_path.as_deref())
-                    .ok_or_else(|| {
-                        "whisper-cli not found. Build whisper.cpp, set path in Settings, or place whisper-cli (or main) next to the app.".to_string()
-                    })?;
-                whisper_local::transcribe_wav_maybe_split_whisper(
-                    wav_path,
-                    &cli,
-                    &model_path,
-                    &ffmpeg_pb,
-                    &work_dir,
-                    lang,
-                    &cancel,
-                    &app,
-                    &job_id,
-                )
-                .await?
+                .await
             }
             TranscriptionMode::BrowserWhisper => {
-                return Err("Browser Whisper handled earlier".to_string());
+                Err("Browser Whisper handled earlier".to_string())
+            }
+        };
+
+        let text = match transcribe_result {
+            Ok(t) => t,
+            Err(e) => {
+                // Cancellations are not "errors" from the subtask's perspective — the
+                // queue is being torn down. Don't flip the row to ✗.
+                if e != pipeline::JOB_CANCELLED_MSG {
+                    emit_subtask_status(&app, &job_id, track, "error", Some(e.clone()));
+                }
+                return Err(e);
             }
         };
 
         emit_progress(&app, &job_id, "save", &format!("Writing transcript {track}/{n_tracks}…"));
 
-        fs::write(&dest_path, text.as_bytes())
-            .map_err(|e| format!("Failed to write transcript: {e}"))?;
+        if let Err(e) = fs::write(&dest_path, text.as_bytes()) {
+            let msg = format!("Failed to write transcript: {e}");
+            emit_subtask_status(&app, &job_id, track, "error", Some(msg.clone()));
+            return Err(msg);
+        }
+        emit_subtask_status(&app, &job_id, track, "done", None);
         last_transcript = Some(dest_path);
     }
 

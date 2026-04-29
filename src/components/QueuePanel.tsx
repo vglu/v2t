@@ -16,9 +16,15 @@ import {
   parseInputLines,
   shortLabel,
 } from "../lib/queueUtils";
-import type { JobProgressSnapshot, QueueJob } from "../types/queue";
+import type {
+  JobProgressSnapshot,
+  QueueJob,
+  SubtaskState,
+  SubtaskStatus,
+} from "../types/queue";
 import type { AppSettings } from "../types/settings";
 import { JobProgressBar } from "./JobProgressBar";
+import { SubtaskList } from "./SubtaskList";
 
 type Props = {
   settings: AppSettings;
@@ -156,6 +162,8 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
   useEffect(() => {
     let unlistenProgress: (() => void) | undefined;
     let unlistenPipeline: (() => void) | undefined;
+    let unlistenPlaylist: (() => void) | undefined;
+    let unlistenSubtask: (() => void) | undefined;
     const ac = new AbortController();
     void import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
@@ -191,12 +199,73 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           if (ac.signal.aborted) return;
           appendLog(`[${ev.payload.label}] ${ev.payload.message}`);
         });
-        return [u1, u2] as const;
+        const u3 = await listen<{
+          jobId: string;
+          playlistTitle?: string | null;
+          subtasks: Array<{
+            id: string;
+            index: number;
+            title: string;
+            originalUrl: string;
+          }>;
+        }>("playlist-resolved", (ev) => {
+          if (ac.signal.aborted) return;
+          const { jobId, playlistTitle, subtasks } = ev.payload;
+          if (!jobId || !Array.isArray(subtasks) || subtasks.length === 0) return;
+          const initial: SubtaskState[] = subtasks.map((s) => ({
+            id: s.id,
+            index: s.index,
+            title: s.title,
+            originalUrl: s.originalUrl,
+            status: "pending",
+          }));
+          setJobs((prev) =>
+            prev.map((j) =>
+              j.id === jobId
+                ? {
+                    ...j,
+                    playlistTitle: playlistTitle ?? undefined,
+                    subtasks: initial,
+                  }
+                : j,
+            ),
+          );
+        });
+        const u4 = await listen<{
+          jobId: string;
+          subtaskIndex: number;
+          status: SubtaskStatus;
+          reason?: string | null;
+        }>("subtask-status", (ev) => {
+          if (ac.signal.aborted) return;
+          const { jobId, subtaskIndex, status, reason } = ev.payload;
+          if (!jobId || !subtaskIndex) return;
+          setJobs((prev) =>
+            prev.map((j) => {
+              if (j.id !== jobId || !j.subtasks) return j;
+              return {
+                ...j,
+                subtasks: j.subtasks.map((s) =>
+                  s.index === subtaskIndex
+                    ? {
+                        ...s,
+                        status,
+                        reason: reason ?? undefined,
+                      }
+                    : s,
+                ),
+              };
+            }),
+          );
+        });
+        return [u1, u2, u3, u4] as const;
       })
-      .then((pair) => {
-        if (!ac.signal.aborted && pair) {
-          unlistenProgress = pair[0];
-          unlistenPipeline = pair[1];
+      .then((tuple) => {
+        if (!ac.signal.aborted && tuple) {
+          unlistenProgress = tuple[0];
+          unlistenPipeline = tuple[1];
+          unlistenPlaylist = tuple[2];
+          unlistenSubtask = tuple[3];
         }
       })
       .catch(() => {
@@ -206,6 +275,8 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
       ac.abort();
       unlistenProgress?.();
       unlistenPipeline?.();
+      unlistenPlaylist?.();
+      unlistenSubtask?.();
     };
   }, [appendLog]);
 
@@ -476,6 +547,34 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
     }
   }
 
+  const openSubtaskLink = useCallback(
+    async (url: string) => {
+      try {
+        const { openUrl } = await import("@tauri-apps/plugin-opener");
+        await openUrl(url);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        appendLog(`Could not open link: ${msg}`);
+      }
+    },
+    [appendLog],
+  );
+
+  const retrySubtask = useCallback(
+    (subtask: SubtaskState) => {
+      const cleanUrl = stripPlaylistParams(subtask.originalUrl);
+      addJobs([
+        {
+          kind: "url" as const,
+          source: cleanUrl,
+          displayLabel: shortLabel(`Retry: ${subtask.title}`),
+        },
+      ]);
+      appendLog(`Retry enqueued: ${subtask.title}`);
+    },
+    [addJobs, appendLog],
+  );
+
   const queueEmpty = jobs.length === 0;
 
   const visibleLogLines = useMemo(() => {
@@ -597,6 +696,8 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
                     outPath={outPath}
                     onReveal={revealTranscriptInFolder}
                     onOpen={openTranscriptFile}
+                    onOpenSubtaskLink={openSubtaskLink}
+                    onRetrySubtask={retrySubtask}
                   />
                 );
               })
@@ -652,6 +753,8 @@ type FragmentRowProps = {
   outPath: string | null | undefined;
   onReveal: (p: string) => void;
   onOpen: (p: string) => void;
+  onOpenSubtaskLink: (url: string) => void;
+  onRetrySubtask: (subtask: SubtaskState) => void;
 };
 
 function FragmentRow({
@@ -661,13 +764,23 @@ function FragmentRow({
   outPath,
   onReveal,
   onOpen,
+  onOpenSubtaskLink,
+  onRetrySubtask,
 }: FragmentRowProps) {
-  const showProgress =
-    job.status === "running" && progress != null;
+  const showProgress = job.status === "running" && progress != null;
+  const subtasks = job.subtasks;
+  const showSubtasks =
+    Array.isArray(subtasks) &&
+    subtasks.length > 0 &&
+    (job.status === "running" || job.status === "error");
+  const headerLabel =
+    subtasks && subtasks.length > 0
+      ? `${job.playlistTitle?.trim() || job.displayLabel} (${subtasks.length} videos)`
+      : job.displayLabel;
   return (
     <>
       <tr data-testid="queue-row">
-        <td title={job.source}>{job.displayLabel}</td>
+        <td title={job.source}>{headerLabel}</td>
         <td>{job.kind}</td>
         <td>
           <div className="queue-status-cell">
@@ -711,6 +824,34 @@ function FragmentRow({
           </td>
         </tr>
       ) : null}
+      {showSubtasks && subtasks ? (
+        <tr className="queue-progress-row" data-testid="queue-subtasks-row">
+          <td colSpan={4}>
+            <SubtaskList
+              subtasks={subtasks}
+              activeIndex={progress?.subtaskIndex}
+              onOpen={onOpenSubtaskLink}
+              onRetry={onRetrySubtask}
+            />
+          </td>
+        </tr>
+      ) : null}
     </>
   );
+}
+
+/** Strip `list=` and friends from a YouTube watch URL so retry never re-fans
+ * out into the whole playlist. yt-dlp's `youtube_watch_url_should_use_no_playlist`
+ * (pipeline.rs) catches the same case server-side, but doing it here too is
+ * defense in depth and gives the user a cleaner-looking URL in the queue. */
+export function stripPlaylistParams(url: string): string {
+  try {
+    const u = new URL(url);
+    u.searchParams.delete("list");
+    u.searchParams.delete("index");
+    u.searchParams.delete("start_radio");
+    return u.toString();
+  } catch {
+    return url;
+  }
 }

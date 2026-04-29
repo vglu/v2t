@@ -17,6 +17,20 @@ export type JobProgressSnapshot = {
   subtaskPercent?: number;
 };
 
+/** One video inside a YouTube playlist, after pre-resolve. */
+export type SubtaskStatus = "pending" | "running" | "done" | "skipped" | "error";
+
+export type SubtaskState = {
+  id: string;
+  /** 1-based playlist index (matches `subtask_index` in `subtask-status` events). */
+  index: number;
+  title: string;
+  originalUrl: string;
+  status: SubtaskStatus;
+  /** Reason for `skipped` (e.g. "already done") or `error` (the failure message). */
+  reason?: string;
+};
+
 export type QueueJob = {
   id: string;
   kind: QueueJobKind;
@@ -27,4 +41,8 @@ export type QueueJob = {
   detail?: string;
   /** Filled when status is `done` — path to the primary .txt transcript */
   transcriptPath?: string | null;
+  /** Resolved playlist title from `playlist-resolved` (URL jobs only). */
+  playlistTitle?: string;
+  /** Resolved playlist entries; populated by `playlist-resolved`, then mutated by `subtask-status` events. */
+  subtasks?: SubtaskState[];
 };

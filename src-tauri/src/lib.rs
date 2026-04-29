@@ -20,6 +20,7 @@ mod whisper_catalog;
 mod whisper_local;
 #[cfg(target_os = "macos")]
 mod whisper_bottle_macos;
+mod yt_dlp_metadata;
 mod yt_dlp_progress;
 
 use cancel_registry::JobCancelRegistry;

@@ -2,6 +2,17 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.5.0] - 2026-04-29
+
+### Добавлено
+
+- **Имена плейлиста и список subtasks под джобой** (Wave 4 / J2). Перед скачиванием запускается pre-resolve `yt-dlp --flat-playlist --dump-single-json --encoding utf-8 -- <url>` (новый модуль `yt_dlp_metadata`); полученные `title` / `entries` уходят в UI новым событием `playlist-resolved`. В заголовке джобы отображается `<playlist title> (N videos)`, под прогресс-баром — список роликов с реальными именами вместо id. Pre-resolve полностью best-effort: ошибка (приватный плейлист, single video, нет интернета, yt-dlp version mismatch) логируется в фазе `yt-dlp-meta` и не прерывает основной pipeline.
+- **Per-subtask статус-иконки** (J3): `⏸ pending` / `▶ running` / `✓ done` / `⏭ skipped` / `✗ error`. Бэкенд эмитит новое событие `subtask-status` (поля `subtaskIndex`, `status`, `reason`) на старте/успехе/ошибке транскрипции каждого ролика, плюс отдельно при resume (`skipped`, reason `already done` — серым, не как ошибка). Активный по `queue-job-progress.subtaskIndex` ролик подсвечивается ▶ даже если бэк ещё не прислал явный `running`.
+- **Кликабельные ссылки на ролики**: заголовок subtask открывается в системном браузере через `tauri-plugin-opener::openUrl`.
+- **Retry per-item**: на упавшем ролике появляется кнопка `↻ retry`, которая ставит в очередь новую URL-джобу с очищенным от `list=` / `index=` / `start_radio=` watch-URL — текущий плейлист не тревожится. Хелпер `stripPlaylistParams` повторяет защиту, которую `youtube_watch_url_should_use_no_playlist` уже даёт на бэкенде (defense in depth).
+- Новые компоненты `SubtaskList.tsx`, `SubtaskRow.tsx`, CSS-блок `.subtask-list` / `.subtask-row*` (collapsible-ready под ≥132 ролика, max-height со скроллом).
+- Тесты: 6 новых rust-кейсов для `yt_dlp_metadata` (playlist с entries, single-video shape, fallback на watch-URL и id, авто-индекс по позиции, broken JSON).
+
 ## [1.5.0-rc3] - 2026-04-29
 
 ### Добавлено
