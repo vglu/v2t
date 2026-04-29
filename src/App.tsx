@@ -180,24 +180,33 @@ export default function App() {
         </div>
       ) : null}
 
-      {activeTab === "queue" ? (
-        <main className="main-workspace" role="tabpanel" aria-labelledby="tab-queue">
-          <QueuePanel settings={settings} readinessComplete={readinessComplete} />
-        </main>
-      ) : null}
+      {/* Both panels stay mounted so QueuePanel's local state (jobs, log,
+          subtask progress) and Tauri event listeners survive a tab switch.
+          Backend work runs in Rust and would continue regardless, but the
+          UI used to lose visibility of it on every navigation. */}
+      <main
+        className="main-workspace"
+        role="tabpanel"
+        aria-labelledby="tab-queue"
+        hidden={activeTab !== "queue"}
+      >
+        <QueuePanel settings={settings} readinessComplete={readinessComplete} />
+      </main>
 
-      {activeTab === "settings" ? (
-        <div role="tabpanel" aria-labelledby="tab-settings">
-          <SettingsPanel
-            settings={settings}
-            onChange={setSettings}
-            onSave={() => void handleSave()}
-            onPersistSettings={(s) => persistSettings(s)}
-            onRefreshReadiness={() => void refreshDeps(settingsRef.current)}
-            saving={saving}
-          />
-        </div>
-      ) : null}
+      <div
+        role="tabpanel"
+        aria-labelledby="tab-settings"
+        hidden={activeTab !== "settings"}
+      >
+        <SettingsPanel
+          settings={settings}
+          onChange={setSettings}
+          onSave={() => void handleSave()}
+          onPersistSettings={(s) => persistSettings(s)}
+          onRefreshReadiness={() => void refreshDeps(settingsRef.current)}
+          saving={saving}
+        />
+      </div>
 
       <OnboardingWizard
         open={wizardOpen}
