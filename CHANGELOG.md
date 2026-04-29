@@ -2,6 +2,19 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.5.0-rc2] - 2026-04-29
+
+### Добавлено
+
+- **GPU acceleration для local Whisper** (Windows): новая настройка `whisperAcceleration` (`Auto` / `CUDA` / `Vulkan` / `CPU`). На NVIDIA RTX-class GPU `large-v3-turbo` работает ~10-20× быстрее CPU. Расширен `tools.manifest.json` (whisper.cpp v1.8.4 cuBLAS и Vulkan-сборки), скачивание выбирает нужный zip по выбранному backend и распаковывает в per-variant директорию (`whisper-cpp-cublas`, `whisper-cpp-vulkan`, `whisper-cpp-cpu`) — варианты могут сосуществовать.
+- **Авто-детект GPU** (`gpu_detect.rs`): WMI-запрос `Win32_VideoController` через PowerShell, классификация Nvidia/Amd/Intel/None, новая Tauri-команда `detect_gpu`. На macOS / Linux команда возвращает `None` (фолбэк на CPU). Хинт показывается в Settings и в шаге Local Whisper мастера первого запуска.
+- **CPU fallback** в `whisper_local.rs`: если `whisper-cli` падает с типичной ошибкой инициализации GPU (`cudaGetDeviceCount`, `cuBLAS`, `failed to initialize Vulkan`, …) и установлен CPU-вариант — текущий трек автоматически перезапускается на CPU-build, в лог уходит сообщение `[whisper] GPU init failed, falling back to CPU`.
+- В мастере первого запуска при найденной NVIDIA — ненавязчивая отметка «Enable CUDA acceleration (recommended)» в шаге Local Whisper.
+
+### Изменено
+
+- В манифесте `whisper_zip` → `whisper_zip_cpu` (плюс новые `whisper_zip_cublas` / `whisper_zip_vulkan`); `schema_version` поднят до `2`. Для CPU-bundle хэш SHA-256 проверяется как раньше; для cuBLAS / Vulkan upstream-zip пока без хэша (можно вписать позже как для FFmpeg-BtbN).
+
 ## [1.5.0-rc1] - 2026-04-29
 
 ### Добавлено

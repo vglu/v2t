@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   defaultDocumentsDir,
   defaultWhisperModelsDir,
+  detectGpu,
   downloadMediaTools,
   downloadWhisperCli,
   downloadWhisperModel,
@@ -10,7 +11,14 @@ import {
   listWhisperModels,
 } from "../lib/invokeSafe";
 import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
-import type { AppSettings, CookiesFromBrowser, TranscriptionMode, WhisperModelMeta } from "../types/settings";
+import type {
+  AppSettings,
+  CookiesFromBrowser,
+  GpuInfo,
+  TranscriptionMode,
+  WhisperAcceleration,
+  WhisperModelMeta,
+} from "../types/settings";
 
 type Props = {
   settings: AppSettings;
@@ -69,6 +77,12 @@ export function SettingsPanel({
   const isMac = useMemo(() => isProbablyMac(), []);
   const isLinux = useMemo(() => isProbablyLinux(), []);
   const showManagedToolDownloads = isWin || isMac;
+
+  const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null);
+  useEffect(() => {
+    if (!isWin) return;
+    void detectGpu().then(setGpuInfo);
+  }, [isWin]);
 
   useEffect(() => {
     void listWhisperModels().then((m) => {
@@ -206,7 +220,7 @@ export function SettingsPanel({
     setWhisperCliInstallSuccess(false);
     setWhisperCliDlProgress(null);
     try {
-      const p = await downloadWhisperCli();
+      const p = await downloadWhisperCli(isWin ? settings.whisperAcceleration : undefined);
       await onPersistSettings({ ...settings, whisperCliPath: p.whisperCliPath });
       setWhisperCliInstallSuccess(true);
       onRefreshReadiness?.();
@@ -450,6 +464,64 @@ export function SettingsPanel({
                 </div>
               </label>
             </div>
+
+            {isWin ? (
+              <div className="settings-step-card" data-testid="whisper-acceleration-card">
+                <p className="settings-step-title">1.5 · Whisper acceleration (Windows)</p>
+                <p className="hint settings-step-body">
+                  Picks which whisper.cpp build to download. <strong>CUDA</strong> needs an NVIDIA GPU
+                  (10-20× faster on RTX-class hardware). <strong>Vulkan</strong> works on most NVIDIA /
+                  AMD / Intel GPUs (8-15×). <strong>CPU</strong> is the safe baseline. Changing this
+                  does not auto-redownload; click <strong>Re-download whisper-cli</strong> below to
+                  fetch the matching bundle.
+                </p>
+                {gpuInfo ? (
+                  <p className="hint settings-step-body" data-testid="gpu-detect-hint">
+                    Detected: {gpuInfo.kind === "none"
+                      ? "no discrete GPU recognized"
+                      : `${gpuInfo.kind.toUpperCase()} (${gpuInfo.names.join(", ") || "unknown adapter"})`}
+                    {gpuInfo.kind === "nvidia"
+                      ? " — Auto will pick CUDA."
+                      : gpuInfo.kind === "none"
+                        ? " — Auto stays on CPU."
+                        : " — Auto stays on CPU; pick Vulkan manually if drivers are current."}
+                  </p>
+                ) : null}
+                <div
+                  className="onboarding-radio-group"
+                  role="radiogroup"
+                  aria-label="Whisper acceleration"
+                >
+                  {(
+                    [
+                      ["auto", "Auto (recommended)"],
+                      ["cuda", "CUDA — NVIDIA only"],
+                      ["vulkan", "Vulkan — NVIDIA / AMD / Intel"],
+                      ["cpu", "CPU — safe baseline"],
+                    ] as ReadonlyArray<[WhisperAcceleration, string]>
+                  ).map(([val, label]) => (
+                    <label className="onboarding-radio" key={val}>
+                      <input
+                        type="radio"
+                        name="whisper-acceleration"
+                        checked={settings.whisperAcceleration === val}
+                        onChange={() => onChange({ ...settings, whisperAcceleration: val })}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="row-gap mt-xs">
+                  <button
+                    type="button"
+                    disabled={whisperCliDlBusy || saving}
+                    onClick={() => void onDownloadWhisperCliSetup()}
+                  >
+                    {whisperCliDlBusy ? "Working…" : "Re-download whisper-cli for selected backend"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             <div className="settings-step-card">
               <p className="settings-step-title">2 · GGML model (.bin)</p>

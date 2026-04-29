@@ -2,6 +2,7 @@ mod api_key_store;
 mod audio_save;
 mod cancel_registry;
 mod deps;
+mod gpu_detect;
 mod job;
 mod model_download;
 mod output_template;
@@ -26,7 +27,7 @@ use session_log::SessionLog;
 use std::path::PathBuf;
 use tauri::Manager;
 use job::{BrowserTrackInfo, ProcessQueueItemOutcome, ProcessQueueItemResult};
-use settings::AppSettings;
+use settings::{AppSettings, WhisperAcceleration};
 use tokio_util::sync::CancellationToken;
 
 #[tauri::command]
@@ -209,8 +210,15 @@ async fn download_media_tools(
 #[tauri::command]
 async fn download_whisper_cli(
     app: tauri::AppHandle,
+    acceleration: Option<WhisperAcceleration>,
 ) -> Result<tool_download::DownloadedWhisperCli, String> {
-    tool_download::download_whisper_cli_managed(&app).await
+    let acc = acceleration.unwrap_or_default();
+    tool_download::download_whisper_cli_managed(&app, acc).await
+}
+
+#[tauri::command]
+fn detect_gpu() -> gpu_detect::GpuInfo {
+    gpu_detect::detect_gpu()
 }
 
 #[tauri::command]
@@ -273,6 +281,7 @@ pub fn run() {
             default_documents_dir,
             download_media_tools,
             download_whisper_cli,
+            detect_gpu,
             install_deno,
             session_log_append_ui,
             open_session_log

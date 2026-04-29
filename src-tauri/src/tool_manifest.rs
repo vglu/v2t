@@ -24,7 +24,9 @@ struct ToolsManifestFile {
 struct WindowsSection {
     yt_dlp_exe: ToolDownloadEntry,
     ffmpeg_zip: ToolDownloadEntry,
-    whisper_zip: ToolDownloadEntry,
+    whisper_zip_cpu: ToolDownloadEntry,
+    whisper_zip_cublas: ToolDownloadEntry,
+    whisper_zip_vulkan: ToolDownloadEntry,
 }
 
 #[derive(Debug, Deserialize)]
@@ -38,7 +40,9 @@ struct MacosSection {
 pub struct ToolsManifest {
     pub windows_yt_dlp_exe: ToolDownloadEntry,
     pub windows_ffmpeg_zip: ToolDownloadEntry,
-    pub windows_whisper_zip: ToolDownloadEntry,
+    pub windows_whisper_zip_cpu: ToolDownloadEntry,
+    pub windows_whisper_zip_cublas: ToolDownloadEntry,
+    pub windows_whisper_zip_vulkan: ToolDownloadEntry,
     pub macos_yt_dlp: ToolDownloadEntry,
     pub macos_ffmpeg_darwin_arm64: ToolDownloadEntry,
     pub macos_ffmpeg_darwin_x64: ToolDownloadEntry,
@@ -54,7 +58,9 @@ pub fn tools_manifest() -> &'static ToolsManifest {
         ToolsManifest {
             windows_yt_dlp_exe: f.windows.yt_dlp_exe,
             windows_ffmpeg_zip: f.windows.ffmpeg_zip,
-            windows_whisper_zip: f.windows.whisper_zip,
+            windows_whisper_zip_cpu: f.windows.whisper_zip_cpu,
+            windows_whisper_zip_cublas: f.windows.whisper_zip_cublas,
+            windows_whisper_zip_vulkan: f.windows.whisper_zip_vulkan,
             macos_yt_dlp: f.macos.yt_dlp,
             macos_ffmpeg_darwin_arm64: f.macos.ffmpeg_darwin_arm64,
             macos_ffmpeg_darwin_x64: f.macos.ffmpeg_darwin_x64,
@@ -70,7 +76,11 @@ mod tests {
     fn embedded_manifest_parses() {
         let m = tools_manifest();
         assert!(!m.windows_yt_dlp_exe.url.is_empty());
-        assert!(!m.windows_whisper_zip.sha256.is_empty());
+        assert!(!m.windows_whisper_zip_cpu.sha256.is_empty());
         assert!(!m.macos_yt_dlp.sha256.is_empty());
+        // GPU variants ship with empty sha256 today (upstream re-uploads can shift digests),
+        // but the URLs must always be present.
+        assert!(m.windows_whisper_zip_cublas.url.contains("whisper-cublas"));
+        assert!(m.windows_whisper_zip_vulkan.url.contains("whisper-vulkan"));
     }
 }

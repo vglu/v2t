@@ -42,6 +42,17 @@ pub enum CookiesFromBrowser {
     Disabled,
 }
 
+/// Backend used by `whisper-cli`. `Auto` picks CUDA if NVIDIA is detected, else CPU.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum WhisperAcceleration {
+    #[default]
+    Auto,
+    Cuda,
+    Vulkan,
+    Cpu,
+}
+
 /// Audio format for saved downloaded audio.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
@@ -131,6 +142,9 @@ pub struct AppSettings {
     /// Browser for yt-dlp `--cookies-from-browser` (helps with age-gated YouTube / TikTok).
     #[serde(default)]
     pub cookies_from_browser: CookiesFromBrowser,
+    /// `local Whisper` backend (CPU vs CUDA vs Vulkan). `Auto` resolves based on detected GPU.
+    #[serde(default)]
+    pub whisper_acceleration: WhisperAcceleration,
 }
 
 impl Default for AppSettings {
@@ -156,6 +170,7 @@ impl Default for AppSettings {
             whisper_models_dir: None,
             whisper_model: default_whisper_model_id(),
             cookies_from_browser: CookiesFromBrowser::Auto,
+            whisper_acceleration: WhisperAcceleration::Auto,
         }
     }
 }

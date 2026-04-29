@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "windows": {
     "yt_dlp_exe": {
       "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp.exe",
@@ -9,9 +9,17 @@
       "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
       "sha256": ""
     },
-    "whisper_zip": {
+    "whisper_zip_cpu": {
       "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.4/whisper-bin-x64.zip",
       "sha256": "74f973345cb52ef5ba3ec9e7e7af8e48cc8c71722d1528603b80588a11f82e3e"
+    },
+    "whisper_zip_cublas": {
+      "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.4/whisper-cublas-12.4.0-bin-x64.zip",
+      "sha256": ""
+    },
+    "whisper_zip_vulkan": {
+      "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.4/whisper-vulkan-bin-x64.zip",
+      "sha256": ""
     }
   },
   "macos": {

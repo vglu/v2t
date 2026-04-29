@@ -9,7 +9,9 @@ import type {
   DependencyReport,
   DownloadedMediaTools,
   DownloadedWhisperCli,
+  GpuInfo,
   InstalledDeno,
+  WhisperAcceleration,
   WhisperModelMeta,
 } from "../types/settings";
 
@@ -146,9 +148,22 @@ export async function downloadMediaTools(): Promise<DownloadedMediaTools> {
   return await invoke<DownloadedMediaTools>("download_media_tools");
 }
 
-export async function downloadWhisperCli(): Promise<DownloadedWhisperCli> {
+export async function downloadWhisperCli(
+  acceleration?: WhisperAcceleration,
+): Promise<DownloadedWhisperCli> {
   const { invoke } = await import("@tauri-apps/api/core");
-  return await invoke<DownloadedWhisperCli>("download_whisper_cli");
+  return await invoke<DownloadedWhisperCli>("download_whisper_cli", {
+    acceleration: acceleration ?? null,
+  });
+}
+
+export async function detectGpu(): Promise<GpuInfo | null> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<GpuInfo>("detect_gpu");
+  } catch {
+    return null;
+  }
 }
 
 export async function installDeno(): Promise<InstalledDeno> {

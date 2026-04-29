@@ -9,6 +9,13 @@ export type CookiesFromBrowser = "auto" | "chrome" | "brave" | "edge" | "firefox
 /** Audio format when saving downloaded audio. "original" = no re-encode. */
 export type DownloadedAudioFormat = "original" | "mp3" | "m4a";
 
+/** Local Whisper backend: "auto" picks CUDA on NVIDIA, else CPU. */
+export type WhisperAcceleration = "auto" | "cuda" | "vulkan" | "cpu";
+
+/** Result of `Win32_VideoController` classification (Windows) or empty (macOS / Linux). */
+export type GpuKind = "nvidia" | "amd" | "intel" | "none";
+export type GpuInfo = { kind: GpuKind; names: string[] };
+
 export type AppSettings = {
   outputDir: string | null;
   filenameTemplate: string;
@@ -39,6 +46,8 @@ export type AppSettings = {
   whisperModelsDir: string | null;
   /** Catalog id: tiny, base, small, … */
   whisperModel: string;
+  /** Local Whisper backend (Windows only — macOS uses Metal via Homebrew bottle). */
+  whisperAcceleration: WhisperAcceleration;
 };
 
 export const defaultAppSettings: AppSettings = {
@@ -62,6 +71,7 @@ export const defaultAppSettings: AppSettings = {
   whisperCliPath: null,
   whisperModelsDir: null,
   whisperModel: "base",
+  whisperAcceleration: "auto",
 };
 
 export type DependencyReport = {

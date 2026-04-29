@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   defaultDocumentsDir,
   defaultWhisperModelsDir,
+  detectGpu,
   downloadMediaTools,
   downloadWhisperCli,
   downloadWhisperModel,
@@ -10,7 +11,7 @@ import {
   listWhisperModels,
 } from "../lib/invokeSafe";
 import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
-import type { AppSettings, CookiesFromBrowser, TranscriptionMode, WhisperModelMeta } from "../types/settings";
+import type { AppSettings, CookiesFromBrowser, GpuInfo, TranscriptionMode, WhisperModelMeta } from "../types/settings";
 
 const TOTAL_STEPS = 6;
 
@@ -141,6 +142,12 @@ export function OnboardingWizard({
   const isMac = useMemo(() => isProbablyMac(), []);
   const isLinux = useMemo(() => isProbablyLinux(), []);
   const showManagedToolDownloads = isWin || isMac;
+
+  const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null);
+  useEffect(() => {
+    if (!wizardOpen || !isWin) return;
+    void detectGpu().then(setGpuInfo);
+  }, [wizardOpen, isWin]);
 
   useEffect(() => {
     if (wizardOpen && !prevOpen.current) {
@@ -374,7 +381,7 @@ export function OnboardingWizard({
     setWhisperCliLineMsg(null);
     setWhisperCliProgress(null);
     try {
-      const p = await downloadWhisperCli();
+      const p = await downloadWhisperCli(isWin ? settings.whisperAcceleration : undefined);
       await persistSettings({ ...settings, whisperCliPath: p.whisperCliPath });
       patchSettings({ whisperCliPath: p.whisperCliPath });
       setWhisperCliSuccess(true);
@@ -816,6 +823,28 @@ export function OnboardingWizard({
                   Optional path if the binary is not next to <code>v2t</code>. Use the setup button (Windows/macOS)
                   or <strong>Pick file…</strong> for <code>whisper-cli.exe</code> / <code>whisper-cli</code>.
                 </p>
+                {isWin && gpuInfo?.kind === "nvidia" ? (
+                  <div
+                    className="onboarding-tip onboarding-info-callout"
+                    data-testid="onboarding-cuda-hint"
+                  >
+                    <p>
+                      <strong>NVIDIA GPU found</strong> ({gpuInfo.names[0] ?? "discrete"}). The CUDA build
+                      runs Whisper 10-20× faster than CPU. We will download the cuBLAS bundle by default —
+                      change this in <strong>Settings → Whisper acceleration</strong> if needed.
+                    </p>
+                    <label className="onboarding-radio">
+                      <input
+                        type="checkbox"
+                        checked={settings.whisperAcceleration !== "cpu"}
+                        onChange={(e) =>
+                          patchSettings({ whisperAcceleration: e.target.checked ? "auto" : "cpu" })
+                        }
+                      />
+                      <span>Enable CUDA acceleration (recommended)</span>
+                    </label>
+                  </div>
+                ) : null}
                 {isLinux ? (
                   <div className="onboarding-tip onboarding-info-callout onboarding-linux-whisper-block">
                     <p>

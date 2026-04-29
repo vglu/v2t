@@ -18,6 +18,8 @@ use tauri::Manager;
 #[cfg(any(windows, target_os = "macos"))]
 use crate::tool_manifest::tools_manifest;
 
+use crate::settings::WhisperAcceleration;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ToolDownloadProgress {
@@ -108,19 +110,28 @@ pub async fn download_managed_media_tools(
     }
 }
 
-/// **Windows:** downloads and extracts the official `whisper-bin-x64.zip` (DLLs + `whisper-cli.exe`)
-/// into `app_data_dir/v2t/bin/whisper-cpp/`.
+/// Variant-aware install of `whisper-cli`.
 ///
-/// **macOS:** no official CLI zip in releases; we search `PATH` via `/usr/bin/which` (`whisper-cli`,
-/// `whisper`, then `main`), then Homebrew keg paths (`opt/whisper-cpp/bin/`, Linuxbrew, etc.).
+/// **Windows:** downloads and extracts the official whisper.cpp zip for the requested
+/// `acceleration` into `app_data_dir/v2t/bin/<variant>/`. Variants:
+/// - `Auto` → resolves to `Cuda` if NVIDIA is detected, else `Cpu`.
+/// - `Cpu` → `whisper-bin-x64.zip` (CPU baseline).
+/// - `Cuda` → `whisper-cublas-12.4.0-bin-x64.zip` (NVIDIA, ships cuBLAS DLLs).
+/// - `Vulkan` → `whisper-vulkan-bin-x64.zip` (NVIDIA / AMD / Intel via Vulkan).
+///
+/// **macOS:** no official CLI zip in upstream releases; we install the Homebrew bottle
+/// (or fall back to PATH search). `acceleration` is ignored — Apple Silicon already uses
+/// Metal automatically through the bottled binary.
 ///
 /// **Linux:** not supported here — use distro packages or build from source.
 pub async fn download_whisper_cli_managed(
     _app: &AppHandle,
+    _acceleration: WhisperAcceleration,
 ) -> Result<DownloadedWhisperCli, String> {
     #[cfg(windows)]
     {
-        return download_whisper_cli_windows(_app).await;
+        let resolved = resolve_whisper_acceleration(_acceleration);
+        return download_whisper_cli_windows(_app, resolved).await;
     }
     #[cfg(target_os = "macos")]
     {
@@ -133,6 +144,40 @@ pub async fn download_whisper_cli_managed(
                 .to_string(),
         )
     }
+}
+
+/// Resolve `Auto` against the current host: NVIDIA → CUDA, otherwise CPU. CUDA/Vulkan/CPU
+/// pass through unchanged. Vulkan is never auto-selected — the user opts in explicitly.
+pub fn resolve_whisper_acceleration(req: WhisperAcceleration) -> WhisperAcceleration {
+    match req {
+        WhisperAcceleration::Auto => match crate::gpu_detect::detect_gpu().kind {
+            crate::gpu_detect::GpuKind::Nvidia => WhisperAcceleration::Cuda,
+            _ => WhisperAcceleration::Cpu,
+        },
+        other => other,
+    }
+}
+
+/// Subdirectory under `app_data_dir/v2t/bin/` for each variant. Multiple variants can
+/// coexist so L3 fallback can find the CPU build even when the active one is CUDA.
+pub fn whisper_variant_subdir(acc: WhisperAcceleration) -> &'static str {
+    match acc {
+        WhisperAcceleration::Auto | WhisperAcceleration::Cuda => "whisper-cpp-cublas",
+        WhisperAcceleration::Vulkan => "whisper-cpp-vulkan",
+        WhisperAcceleration::Cpu => "whisper-cpp-cpu",
+    }
+}
+
+/// `Some(path)` if a previously-installed CPU variant is present (for L3 fallback).
+pub fn locate_installed_cpu_whisper_cli(app: &AppHandle) -> Option<PathBuf> {
+    let base = managed_bin_dir(app).ok()?;
+    let exe_name = if cfg!(windows) { "whisper-cli.exe" } else { "whisper-cli" };
+    let candidates = [
+        base.join(whisper_variant_subdir(WhisperAcceleration::Cpu)).join(exe_name),
+        // Legacy installs (pre-1.5.0-rc2) extracted to "whisper-cpp/" without a variant suffix.
+        base.join("whisper-cpp").join(exe_name),
+    ];
+    candidates.into_iter().find(|p| p.is_file())
 }
 
 /// Download Deno into the managed bin dir so yt-dlp can use it as JS runtime.
@@ -260,22 +305,35 @@ async fn install_deno_inner(app: &AppHandle) -> Result<InstalledDeno, String> {
 }
 
 #[cfg(windows)]
-async fn download_whisper_cli_windows(app: &AppHandle) -> Result<DownloadedWhisperCli, String> {
+async fn download_whisper_cli_windows(
+    app: &AppHandle,
+    acceleration: WhisperAcceleration,
+) -> Result<DownloadedWhisperCli, String> {
     let base = managed_bin_dir(app)?;
     std::fs::create_dir_all(&base).map_err(|e| format!("create bin dir: {e}"))?;
-    let dest_dir = base.join("whisper-cpp");
+    let subdir = whisper_variant_subdir(acceleration);
+    let dest_dir = base.join(subdir);
     if dest_dir.exists() {
         let _ = std::fs::remove_dir_all(&dest_dir);
     }
-    std::fs::create_dir_all(&dest_dir).map_err(|e| format!("create whisper-cpp dir: {e}"))?;
+    std::fs::create_dir_all(&dest_dir).map_err(|e| format!("create {subdir} dir: {e}"))?;
 
     let tmp_zip = std::env::temp_dir().join(format!(
-        "v2t-whisper-cpp-{}.zip",
+        "v2t-whisper-{subdir}-{}.zip",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis())
             .unwrap_or(0)
     ));
+
+    let m = tools_manifest();
+    let (entry, label) = match acceleration {
+        WhisperAcceleration::Cuda | WhisperAcceleration::Auto => {
+            (&m.windows_whisper_zip_cublas, "CUDA / cuBLAS")
+        }
+        WhisperAcceleration::Vulkan => (&m.windows_whisper_zip_vulkan, "Vulkan"),
+        WhisperAcceleration::Cpu => (&m.windows_whisper_zip_cpu, "CPU"),
+    };
 
     emit(
         app,
@@ -284,17 +342,18 @@ async fn download_whisper_cli_windows(app: &AppHandle) -> Result<DownloadedWhisp
             phase: "downloading".to_string(),
             bytes_received: 0,
             total_bytes: None,
-            message: "Downloading whisper.cpp Windows bundle (ggml-org/whisper.cpp, MIT)…".to_string(),
+            message: format!(
+                "Downloading whisper.cpp Windows bundle ({label}, ggml-org/whisper.cpp, MIT)…"
+            ),
         },
     );
 
-    let m = tools_manifest();
     download_file_streaming(
         app,
-        &m.windows_whisper_zip.url,
+        &entry.url,
         &tmp_zip,
         "whisper-cli",
-        &m.windows_whisper_zip.sha256,
+        &entry.sha256,
     )
     .await?;
 

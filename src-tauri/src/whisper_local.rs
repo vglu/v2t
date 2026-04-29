@@ -31,6 +31,25 @@ fn safe_job_token(job_id: &str) -> String {
         .collect()
 }
 
+/// Heuristics: identify whisper.cpp stderr lines that indicate the GPU backend failed
+/// to initialize (driver mismatch, CUDA missing, Vulkan loader gone) so we can fall back
+/// to a previously-installed CPU build instead of failing the whole queue item.
+pub(crate) fn looks_like_gpu_init_failure(stderr: &str) -> bool {
+    let s = stderr.to_ascii_lowercase();
+    const NEEDLES: &[&str] = &[
+        "cudagetdevicecount",
+        "cuda error",
+        "cuda driver",
+        "cublas",
+        "no cuda-capable device",
+        "failed to initialize vulkan",
+        "vulkan: failed",
+        "vk_error",
+        "vulkan loader",
+    ];
+    NEEDLES.iter().any(|n| s.contains(n))
+}
+
 /// Parse a line like `whisper_print_progress_callback: 10% done` or `45%`.
 fn parse_whisper_progress_pct(line: &str) -> Option<u8> {
     let pos = line.find('%')?;
@@ -202,13 +221,45 @@ async fn transcribe_one_wav(
         lang,
     ];
 
-    let out = run_whisper_cli_with_progress(cli, &args, WHISPER_TIMEOUT, cancel, app, job_id).await?;
+    let mut out =
+        run_whisper_cli_with_progress(cli, &args, WHISPER_TIMEOUT, cancel, app, job_id).await?;
     if !out.status.success() {
-        return Err(format!(
-            "whisper-cli failed (exit {}): {}",
-            out.status.code().unwrap_or(-1),
-            pipeline::tail_stderr(&out.stderr)
-        ));
+        let stderr_text = String::from_utf8_lossy(&out.stderr).to_string();
+        if looks_like_gpu_init_failure(&stderr_text) {
+            if let Some(cpu_cli) = crate::tool_download::locate_installed_cpu_whisper_cli(app) {
+                if cpu_cli != cli {
+                    let msg = format!(
+                        "[whisper] GPU init failed (driver/SDK mismatch?), falling back to CPU build at {}",
+                        cpu_cli.display()
+                    );
+                    let _ = app.emit(
+                        "queue-job-progress",
+                        &QueueJobProgressEmit {
+                            job_id: job_id.to_string(),
+                            phase: "whisper".to_string(),
+                            message: msg.clone(),
+                        },
+                    );
+                    session_log::try_append(app, Some(job_id), "whisper", &msg);
+                    out = run_whisper_cli_with_progress(
+                        &cpu_cli,
+                        &args,
+                        WHISPER_TIMEOUT,
+                        cancel,
+                        app,
+                        job_id,
+                    )
+                    .await?;
+                }
+            }
+        }
+        if !out.status.success() {
+            return Err(format!(
+                "whisper-cli failed (exit {}): {}",
+                out.status.code().unwrap_or(-1),
+                pipeline::tail_stderr(&out.stderr)
+            ));
+        }
     }
 
     let read_path = out_base.with_extension("txt");
@@ -364,5 +415,32 @@ mod tests {
         );
         assert_eq!(parse_whisper_progress_pct("progress 45%"), Some(45));
         assert_eq!(parse_whisper_progress_pct("no percent here"), None);
+    }
+
+    #[test]
+    fn detects_cuda_init_failure() {
+        assert!(looks_like_gpu_init_failure(
+            "ggml_cuda_init: cudaGetDeviceCount returned 35"
+        ));
+        assert!(looks_like_gpu_init_failure(
+            "CUDA error: no CUDA-capable device is detected"
+        ));
+        assert!(looks_like_gpu_init_failure("cuBLAS error 7"));
+    }
+
+    #[test]
+    fn detects_vulkan_init_failure() {
+        assert!(looks_like_gpu_init_failure(
+            "ggml_vulkan: failed to initialize Vulkan"
+        ));
+        assert!(looks_like_gpu_init_failure("vulkan loader missing"));
+    }
+
+    #[test]
+    fn ignores_unrelated_errors() {
+        assert!(!looks_like_gpu_init_failure("no model file"));
+        assert!(!looks_like_gpu_init_failure(
+            "error: input audio file not found"
+        ));
     }
 }
