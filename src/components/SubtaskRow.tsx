@@ -19,15 +19,22 @@ const STATUS_ICON: Record<SubtaskStatus, string> = {
   error: "✗",
 };
 
+/** Distinguishes the subtitle fast-path from a Whisper transcription. The
+ * backend signals it by setting `reason` to "from subs (<lang>)" on the final
+ * `done` event; we swap the ✓ icon for 📝 so the user can see at a glance which
+ * tracks were resolved without running Whisper. */
+const SUBS_REASON_RE = /^from subs\b/i;
+
 export function SubtaskRow({ subtask, isActive, onOpen, onRetry }: Props) {
   const effectiveStatus: SubtaskStatus =
     subtask.status === "pending" && isActive ? "running" : subtask.status;
-  const icon = STATUS_ICON[effectiveStatus];
   const reason = subtask.reason?.trim();
+  const fromSubs = effectiveStatus === "done" && reason != null && SUBS_REASON_RE.test(reason);
+  const icon = fromSubs ? "📝" : STATUS_ICON[effectiveStatus];
 
   return (
     <li
-      className={`subtask-row subtask-row--${effectiveStatus}`}
+      className={`subtask-row subtask-row--${effectiveStatus}${fromSubs ? " subtask-row--from-subs" : ""}`}
       data-testid={`subtask-row-${subtask.index}`}
     >
       <span className="subtask-icon" aria-hidden>

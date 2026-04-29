@@ -16,6 +16,10 @@ fn default_whisper_model_id() -> String {
     "base".to_string()
 }
 
+fn default_subtitle_priority_langs() -> Vec<String> {
+    vec!["uk".to_string(), "ru".to_string(), "en".to_string()]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum TranscriptionMode {
@@ -145,6 +149,20 @@ pub struct AppSettings {
     /// `local Whisper` backend (CPU vs CUDA vs Vulkan). `Auto` resolves based on detected GPU.
     #[serde(default)]
     pub whisper_acceleration: WhisperAcceleration,
+    /// When a YouTube video has manual subtitles in a priority language, fetch
+    /// them via yt-dlp and skip the download + Whisper passes entirely.
+    /// Auto-generated captions are intentionally never used (lower quality than
+    /// Whisper-medium for non-English).
+    #[serde(default)]
+    pub use_subtitles_when_available: bool,
+    /// Priority order for picking which manual subtitle track to fetch.
+    /// First match wins; missing field deserializes to `["uk", "ru", "en"]`.
+    #[serde(default = "default_subtitle_priority_langs")]
+    pub subtitle_priority_langs: Vec<String>,
+    /// When the subtitle fast-path runs, also save the raw `.srt` file
+    /// next to the `.txt` transcript (preserves timings).
+    #[serde(default)]
+    pub keep_srt: bool,
 }
 
 impl Default for AppSettings {
@@ -171,6 +189,9 @@ impl Default for AppSettings {
             whisper_model: default_whisper_model_id(),
             cookies_from_browser: CookiesFromBrowser::Auto,
             whisper_acceleration: WhisperAcceleration::Auto,
+            use_subtitles_when_available: false,
+            subtitle_priority_langs: default_subtitle_priority_langs(),
+            keep_srt: false,
         }
     }
 }
@@ -244,5 +265,17 @@ mod tests {
         let json = r#"{"outputDir":null,"filenameTemplate":"{title}_{date}.txt","ffmpegPath":null,"ytDlpPath":null,"deleteAudioAfter":true,"apiBaseUrl":"https://api.openai.com/v1","apiModel":"whisper-1","apiKey":"","language":null,"recursiveFolderScan":false}"#;
         let s: AppSettings = serde_json::from_str(json).unwrap();
         assert!(s.onboarding_completed);
+    }
+
+    #[test]
+    fn missing_subtitle_fields_use_defaults() {
+        let json = r#"{"outputDir":null,"filenameTemplate":"{title}_{date}.txt","ffmpegPath":null,"ytDlpPath":null,"deleteAudioAfter":true,"apiBaseUrl":"https://api.openai.com/v1","apiModel":"whisper-1","apiKey":"","language":null,"recursiveFolderScan":false}"#;
+        let s: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(!s.use_subtitles_when_available);
+        assert_eq!(
+            s.subtitle_priority_langs,
+            vec!["uk".to_string(), "ru".to_string(), "en".to_string()]
+        );
+        assert!(!s.keep_srt);
     }
 }

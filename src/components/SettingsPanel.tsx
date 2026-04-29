@@ -994,6 +994,59 @@ export function SettingsPanel({
         </p>
       </label>
 
+      <p className="settings-section-title">Subtitles fast-path</p>
+      <p className="hint">
+        For YouTube videos with <strong>manual</strong> subtitles in a priority language, fetch the
+        SRT directly via yt-dlp and skip download + Whisper. <strong>Auto-generated</strong>{" "}
+        captions are intentionally ignored (lower quality than Whisper-medium for non-English).
+        Single-video URLs only — pure-playlist URLs continue to download + transcribe normally.
+      </p>
+      <label className="field checkbox">
+        <input
+          type="checkbox"
+          data-testid="use-subtitles-toggle"
+          checked={settings.useSubtitlesWhenAvailable}
+          onChange={(e) =>
+            onChange({ ...settings, useSubtitlesWhenAvailable: e.target.checked })
+          }
+        />
+        <span>Use subtitles when available (skip Whisper)</span>
+      </label>
+      {settings.useSubtitlesWhenAvailable ? (
+        <>
+          <label className="field">
+            <span>Priority languages (comma-separated ISO codes)</span>
+            <input
+              type="text"
+              data-testid="subtitle-priority-langs"
+              value={settings.subtitlePriorityLangs.join(", ")}
+              onChange={(e) =>
+                onChange({
+                  ...settings,
+                  subtitlePriorityLangs: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter((s) => s.length > 0),
+                })
+              }
+              placeholder="uk, ru, en"
+            />
+            <p className="hint">
+              First match wins. Regional variants are matched (e.g. <code>en</code> matches{" "}
+              <code>en-US</code>).
+            </p>
+          </label>
+          <label className="field checkbox">
+            <input
+              type="checkbox"
+              checked={settings.keepSrt}
+              onChange={(e) => onChange({ ...settings, keepSrt: e.target.checked })}
+            />
+            <span>Also save the original .srt next to the .txt transcript</span>
+          </label>
+        </>
+      ) : null}
+
       <button type="button" className="primary" disabled={saving} onClick={onSave}>
         {saving ? "Saving…" : "Save settings"}
       </button>

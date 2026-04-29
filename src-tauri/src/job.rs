@@ -13,6 +13,7 @@ use crate::output_template;
 use crate::pipeline;
 use crate::session_log;
 use crate::settings::{AppSettings, TranscriptionMode};
+use crate::subs;
 use crate::transcribe;
 use crate::whisper_catalog;
 use crate::whisper_local;
@@ -303,6 +304,48 @@ pub async fn run_process_queue_item(
                         &job_id,
                         "yt-dlp-meta",
                         &format!("Pre-resolve skipped: {e}"),
+                    );
+                }
+            }
+        }
+    }
+
+    // K (Wave 5): YouTube subtitle fast-path. When the user has opted in and the
+    // video has manual subs in a priority language, fetch the SRT directly and
+    // skip download + Whisper. Single-video URLs only — pure-playlist URLs would
+    // need per-entry probes that are not worth the round-trips on a 100-item list.
+    if (source_kind == "url" || pipeline::is_http_url(&source))
+        && settings.use_subtitles_when_available
+        && !subs::is_pure_playlist_url(&source)
+        && !cancel.is_cancelled()
+    {
+        if let Some(yt_dlp) =
+            deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp")
+        {
+            match try_subs_fast_path(
+                &app,
+                &job_id,
+                job_index,
+                &source,
+                &display_label,
+                &date,
+                &settings,
+                &out_dir,
+                &yt_dlp,
+                &cancel,
+            )
+            .await
+            {
+                Ok(Some(outcome)) => return Ok(outcome),
+                Ok(None) => {
+                    // No manual subs in priority langs — fall through to normal pipeline.
+                }
+                Err(e) => {
+                    pipeline::emit_pipeline_text(
+                        &app,
+                        &job_id,
+                        "subs",
+                        &format!("Subtitle fast-path skipped: {e}"),
                     );
                 }
             }
@@ -723,4 +766,148 @@ async fn save_downloaded_audio(
         }
     }
 
+}
+
+/// Attempt the subtitle fast-path for a single-video URL.
+/// `Ok(Some(Done))` — fast-path completed and wrote the transcript.
+/// `Ok(None)` — no usable manual subs; caller falls through to the normal pipeline.
+/// `Err(_)` — actual write / I/O failure that should bubble up.
+#[allow(clippy::too_many_arguments)]
+async fn try_subs_fast_path(
+    app: &tauri::AppHandle,
+    job_id: &str,
+    job_index: u32,
+    source: &str,
+    display_label: &str,
+    date: &str,
+    settings: &AppSettings,
+    out_dir: &Path,
+    yt_dlp: &Path,
+    cancel: &CancellationToken,
+) -> Result<Option<ProcessQueueItemOutcome>, String> {
+    let cookies = settings.cookies_from_browser.yt_dlp_arg();
+    let js = settings.yt_dlp_js_runtimes.as_deref();
+
+    emit_progress(app, job_id, "subs", "Probing subtitles…");
+    let probe = match subs::probe_subs(yt_dlp, source, cookies, js, cancel).await {
+        Ok(p) => p,
+        Err(e) => {
+            // Best-effort: don't fail the job, just log and let the caller fall back.
+            return Err(e);
+        }
+    };
+
+    let Some(lang) = subs::pick_priority_lang(&settings.subtitle_priority_langs, &probe) else {
+        pipeline::emit_pipeline_text(
+            app,
+            job_id,
+            "subs",
+            "No manual subtitles in priority languages — falling back to download + Whisper.",
+        );
+        return Ok(None);
+    };
+
+    if cancel.is_cancelled() {
+        return Err(pipeline::JOB_CANCELLED_MSG.to_string());
+    }
+
+    emit_progress(
+        app,
+        job_id,
+        "subs",
+        &format!("Found manual subtitles ({lang}) — fetching…"),
+    );
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let work_dir = std::env::temp_dir().join(format!("v2t-subs-{nanos}"));
+
+    let srt_path =
+        match subs::download_srt(yt_dlp, source, &lang, &work_dir, cookies, js, cancel).await {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = fs::remove_dir_all(&work_dir);
+                return Err(e);
+            }
+        };
+
+    let srt_text = match fs::read_to_string(&srt_path) {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = fs::remove_dir_all(&work_dir);
+            return Err(format!("Failed to read .srt: {e}"));
+        }
+    };
+    let plain = subs::srt_to_plain_text(&srt_text);
+    if plain.trim().is_empty() {
+        let _ = fs::remove_dir_all(&work_dir);
+        return Err("Subtitle file converted to empty text — falling back".to_string());
+    }
+
+    let track = 1u32;
+    let filename = output_template::format_output_filename(
+        &settings.filename_template,
+        display_label,
+        date,
+        job_index,
+        track,
+        source,
+        "txt",
+    );
+    let dest_path = out_dir.join(&filename);
+    if let Some(parent) = dest_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create_dir_all: {e}"))?;
+    }
+    if let Err(e) = fs::write(&dest_path, plain.as_bytes()) {
+        let _ = fs::remove_dir_all(&work_dir);
+        return Err(format!("Failed to write transcript: {e}"));
+    }
+
+    if settings.keep_srt {
+        let srt_filename = output_template::format_output_filename(
+            &settings.filename_template,
+            display_label,
+            date,
+            job_index,
+            track,
+            source,
+            "srt",
+        );
+        let srt_dest = out_dir.join(&srt_filename);
+        if let Err(e) = fs::copy(&srt_path, &srt_dest) {
+            pipeline::emit_pipeline_text(
+                app,
+                job_id,
+                "subs",
+                &format!("Could not save .srt next to transcript: {e}"),
+            );
+        }
+    }
+
+    let _ = fs::remove_dir_all(&work_dir);
+
+    emit_subtask_status(
+        app,
+        job_id,
+        track,
+        "done",
+        Some(format!("from subs ({lang})")),
+    );
+
+    let transcript_path = dest_path
+        .canonicalize()
+        .map_err(|e| e.to_string())?
+        .to_str()
+        .ok_or("Transcript path UTF-8")?
+        .to_string();
+
+    let summary = format!("Saved (subs {lang}): {transcript_path}");
+    emit_progress(app, job_id, "done", &summary);
+
+    Ok(Some(ProcessQueueItemOutcome::Done {
+        transcript_path,
+        summary,
+    }))
 }

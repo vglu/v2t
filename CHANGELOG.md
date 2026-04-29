@@ -2,6 +2,15 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.6.0] - 2026-04-29
+
+### Добавлено
+
+- **Subtitles fast-path для YouTube** (Wave 5 / K). Новые настройки `useSubtitlesWhenAvailable` (default `false`), `subtitlePriorityLangs` (default `["uk", "ru", "en"]`), `keepSrt` (default `false`). Когда настройка включена и у одиночного видео есть **ручные** субтитры в одном из приоритетных языков, pipeline пропускает скачивание + Whisper и сразу забирает `.srt` через `yt-dlp --write-subs --skip-download --convert-subs srt --no-write-auto-subs`, конвертирует в plain text и сохраняет как обычный транскрипт. Auto-generated captions намеренно игнорируются (на UA/RU они стабильно хуже Whisper-medium). Plain-playlist URL'ы (`youtube.com/playlist?list=...`) пропускают fast-path и идут обычным маршрутом — пер-видео probe для 100-элементного плейлиста не оправдан.
+- Новый модуль `subs.rs`: `probe_subs` (`yt-dlp --skip-download --dump-json`), `pick_priority_lang` (exact + regional prefix matching), `download_srt`, `srt_to_plain_text` (вырезает индексы, тайминги, inline `<i>`/`{\an8}` теги; склеивает многострочные cue'ы пробелом, разделяет cue'ы переводом строки). Любая ошибка fast-path логируется в фазе `subs` и pipeline продолжается обычным путём — для пользователя это просто медленнее, не fatal.
+- В UI: секция Settings → "Subtitles fast-path" с тогглом, инпутом приоритетных языков и опцией keep-srt. В `SubtaskRow` для статуса `done` с reason `from subs (<lang>)` иконка ✓ заменяется на 📝 — видно, какие ролики транскрибированы из субтитров без Whisper.
+- Тесты: 16 новых rust-кейсов в `subs::tests` (probe parser, выбор языка с приоритетами и regional prefix, srt parser с CRLF / Unicode / inline-тегами / пустыми cue'ами, `is_pure_playlist_url` детектор), 1 новый settings-test (default langs при отсутствии поля), 1 новый vitest для секции Settings.
+
 ## [1.5.0] - 2026-04-29
 
 ### Добавлено

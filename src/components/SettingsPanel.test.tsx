@@ -39,4 +39,30 @@ describe("SettingsPanel", () => {
       ).toBeVisible();
     });
   });
+
+  it("toggling subtitles fast-path reveals priority langs and keep-srt", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsPanel
+        settings={defaultAppSettings}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onPersistSettings={vi.fn().mockResolvedValue(undefined)}
+        saving={false}
+      />,
+    );
+    expect(screen.queryByTestId("subtitle-priority-langs")).toBeNull();
+
+    render(
+      <SettingsPanel
+        settings={{ ...defaultAppSettings, useSubtitlesWhenAvailable: true }}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onPersistSettings={vi.fn().mockResolvedValue(undefined)}
+        saving={false}
+      />,
+    );
+    const langInput = screen.getByTestId("subtitle-priority-langs") as HTMLInputElement;
+    expect(langInput.value).toBe("uk, ru, en");
+  });
 });

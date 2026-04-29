@@ -11,6 +11,7 @@ mod process_kill;
 mod scan;
 mod session_log;
 mod settings;
+mod subs;
 mod temp_cleanup;
 mod tool_download;
 #[cfg(any(windows, target_os = "macos"))]

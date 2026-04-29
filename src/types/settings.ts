@@ -48,6 +48,13 @@ export type AppSettings = {
   whisperModel: string;
   /** Local Whisper backend (Windows only — macOS uses Metal via Homebrew bottle). */
   whisperAcceleration: WhisperAcceleration;
+  /** When a YouTube video has manual subtitles in a priority language, fetch them
+   * via yt-dlp and skip the download + Whisper passes entirely. */
+  useSubtitlesWhenAvailable: boolean;
+  /** Priority order for picking the manual subtitle track. First match wins. */
+  subtitlePriorityLangs: string[];
+  /** When the subtitle fast-path runs, also save the raw `.srt` next to `.txt`. */
+  keepSrt: boolean;
 };
 
 export const defaultAppSettings: AppSettings = {
@@ -72,6 +79,9 @@ export const defaultAppSettings: AppSettings = {
   whisperModelsDir: null,
   whisperModel: "base",
   whisperAcceleration: "auto",
+  useSubtitlesWhenAvailable: false,
+  subtitlePriorityLangs: ["uk", "ru", "en"],
+  keepSrt: false,
 };
 
 export type DependencyReport = {
