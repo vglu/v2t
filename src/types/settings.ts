@@ -23,7 +23,8 @@ export type UiLanguage =
   | "de"
   | "es"
   | "fr"
-  | "pl";
+  | "pl"
+  | "pt";
 
 /** Result of `Win32_VideoController` classification (Windows) or empty (macOS / Linux). */
 export type GpuKind = "nvidia" | "amd" | "intel" | "none";

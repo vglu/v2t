@@ -43,6 +43,7 @@ const HEADER_LANG_OPTIONS: ReadonlyArray<{ value: UiLanguage; label: string }> =
   { value: "es", label: "🇪🇸 ES" },
   { value: "fr", label: "🇫🇷 FR" },
   { value: "pl", label: "🇵🇱 PL" },
+  { value: "pt", label: "🇵🇹 PT" },
 ];
 
 export default function App() {

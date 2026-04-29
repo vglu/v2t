@@ -622,7 +622,7 @@ Release v1.6.0.
 
 | OQ | Решение PO |
 |----|------------|
-| OQ-1 | **7 локалей**: `en, uk, ru, de, es, fr, pl`. Marginal cost N-го языка ≈ ноль через local Ollama bot. |
+| OQ-1 | **8 локалей**: `en, uk, ru, de, es, fr, pl, pt`. Marginal cost N-го языка ≈ ноль через local Ollama bot. |
 | OQ-2 | Default `uiLanguage = auto`, fallback `en` |
 | OQ-3 | **Header (компактный, ~80px) + Settings (полный с хинтом)** |
 | OQ-4 | `react-i18next` |
@@ -697,8 +697,8 @@ Release v1.6.0.
 - Адаптировать `src/config.ts`:
   - `REPO_ROOT` остаётся (3 уровня вверх).
   - **Удалить** `AUDIT_FILE` (NumbersM-специфика). Заменить на `LOCALE_SOURCE_DIR = src/locales/en/`.
-  - **`TARGET_LOCALES`** = `['uk', 'ru', 'de', 'es', 'fr', 'pl']`.
-  - **`LOCALE_LABELS`** — добавить `pl: 'Polish (polski)'`.
+  - **`TARGET_LOCALES`** = `['uk', 'ru', 'de', 'es', 'fr', 'pl', 'pt']`.
+  - **`LOCALE_LABELS`** — добавить `pl: 'Polish (polski)'` и `pt: 'Portuguese (português)'`.
   - **`BRAND_GLOSSARY`** — заменить на v2t-glossary (см. BA-доку, секция «Решение PO: использовать локальный Ollama translation-bot»).
   - **`NAMESPACE_HINTS`** — заменить на v2t namespaces:
     ```typescript
@@ -726,12 +726,12 @@ Release v1.6.0.
   1. `curl http://localhost:11434/api/tags` — Ollama жив.
   2. `ollama list | grep -i qwen` — Qwen2.5-Coder pulled.
   3. `npm --prefix scripts/translation-bot run smoke` — 5 строк × 6 локалей ≈ 5 минут sanity, валидирует prompt + connection.
-- Запуск: `npm --prefix scripts/translation-bot run run:all` в **foreground** (не background — bot длинный, ~6 часов на 600 строк × 6 локалей; логи нужны).
+- Запуск: `npm --prefix scripts/translation-bot run run:all` в **foreground** (не background — bot длинный, ~7 часов на 600 строк × 7 целевых локалей; логи нужны).
 - По завершении — отчёт в чат: количество, warnings (`GLOSSARY_LOST`, `PLACEHOLDER_DRIFT`, `LENGTH_OUT_OF_BAND`, etc.) per-locale.
 
 **M3d — review & merge**
 - PO читает `output/drafts/uk/*.draft.json` внимательно (он UA-нативный, AC-4 в BA-доке).
-- Для остальных 5 локалей — **quick scan**: смотрим только записи с warning != null. Если warning'и пустые / минорные — merge без чтения каждой строки.
+- Для остальных 6 локалей — **quick scan**: смотрим только записи с warning != null. Если warning'и пустые / минорные — merge без чтения каждой строки.
 - Merge: для каждой локали L, для каждого namespace N, скопировать `output/drafts/L/N.draft.json` → `src/locales/L/N.json`, при необходимости отредактировав отдельные значения вручную.
 - Скрипт `scripts/merge-drafts.mjs` (опционально) — копирует все drafts разом, можно потом переоткрывать diff'ы вручную.
 
@@ -778,7 +778,7 @@ Release v1.6.0.
 
 **Новые:**
 - `src/i18n/index.ts`, `src/i18n/types.ts`, `src/i18n/customDetector.ts`.
-- `src/locales/{en,uk,ru,de,es,fr,pl}/{common,onboarding,settings,queue,readiness}.json` — 7 локалей × 5 namespaces = 35 файлов.
+- `src/locales/{en,uk,ru,de,es,fr,pl,pt}/{common,onboarding,settings,queue,readiness}.json` — 8 локалей × 5 namespaces = 40 файлов.
 - `src/i18n/__tests__/i18n.switch.test.tsx`.
 - `scripts/check-i18n-keys.mjs` (CI-чек).
 - `scripts/translation-bot/` — копия из `D:\Projects\NumbersM\scripts\translation-bot\` с адаптированными `config.ts` и `prompt.ts` (и при необходимости `audit.ts` / `output.ts` для per-namespace структуры).
@@ -815,7 +815,7 @@ npm run check:i18n
 ## 6.4. Acceptance
 
 - [ ] `react-i18next` установлен; типы строго типизированные (`t("typo")` падает в TS).
-- [ ] `src/locales/{en,uk,ru,de,es,fr,pl}/*.json` содержат все ключи, объединение перекрывает 100% UI-строк.
+- [ ] `src/locales/{en,uk,ru,de,es,fr,pl,pt}/*.json` содержат все ключи, объединение перекрывает 100% UI-строк.
 - [ ] CI-чек `npm run check:i18n` проходит (errors при отсутствующих ключах в **любой** target-локали).
 - [ ] Поле `uiLanguage` (8 вариантов) сохраняется в `settings.json`, переживает перезапуск.
 - [ ] Default = `auto`; на украинской Windows показывается UA, на остальных — EN.

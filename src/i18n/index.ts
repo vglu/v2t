@@ -23,7 +23,7 @@ import LanguageDetector from "i18next-browser-languagedetector";
 import { resources } from "./resources";
 import { settingsDetector } from "./customDetector";
 
-export const SUPPORTED_LANGUAGES = ["en", "uk", "ru", "de", "es", "fr", "pl"] as const;
+export const SUPPORTED_LANGUAGES = ["en", "uk", "ru", "de", "es", "fr", "pl", "pt"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 export const I18N_NAMESPACES = [
   "common",

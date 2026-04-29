@@ -45,6 +45,7 @@ const FULL_LANG_OPTIONS: ReadonlyArray<{ value: UiLanguage; label: string }> = [
   { value: "es", label: "Español" },
   { value: "fr", label: "Français" },
   { value: "pl", label: "Polski" },
+  { value: "pt", label: "Português" },
 ];
 
 export function SettingsPanel({

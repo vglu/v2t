@@ -72,6 +72,7 @@ pub enum UiLanguage {
     Es,
     Fr,
     Pl,
+    Pt,
 }
 
 /// Audio format for saved downloaded audio.
