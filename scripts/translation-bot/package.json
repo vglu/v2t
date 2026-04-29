@@ -1,0 +1,18 @@
+{
+  "name": "@v2t/translation-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-Ollama UI string translator for v2t. Adapted from NumbersM W1B — standalone, NOT a workspace member.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "smoke": "tsx src/index.ts smoke",
+    "run:all": "tsx src/index.ts run --all",
+    "status": "tsx src/index.ts status"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "@types/node": "^22.0.0"
+  }
+}

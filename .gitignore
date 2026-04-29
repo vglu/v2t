@@ -73,3 +73,9 @@ coverage/
 *.tmp
 *.temp
 .cache/
+
+# Translation bot artifacts (drafts + state + logs are local; node_modules is per-bot)
+scripts/translation-bot/state/
+scripts/translation-bot/output/
+scripts/translation-bot/logs/
+scripts/translation-bot/node_modules/
