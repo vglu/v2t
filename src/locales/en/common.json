@@ -1,1 +1,17 @@
-{}
+{
+  "tagline": "v2t — portable video / audio → text",
+  "tab": {
+    "queue": "Queue",
+    "settings": "Settings"
+  },
+  "header": {
+    "lang_aria": "UI language",
+    "setup_guide_label": "Setup guide",
+    "setup_guide_title": "Short setup walkthrough",
+    "setup_guide_aria": "Open setup guide"
+  },
+  "toast": {
+    "saved": "Settings saved.",
+    "save_failed": "Could not save settings."
+  }
+}

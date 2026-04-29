@@ -1,1 +1,77 @@
-{}
+{
+  "title": "Queue",
+  "panel_aria": "Queue",
+  "empty_hint": {
+    "ready_when_you_are": "<strong>Ready when you are.</strong> Drop files or folders here, paste video links, or use the buttons below — then press <strong>Start queue</strong>.",
+    "finish_setup_first": "<strong>Finish setup first.</strong> Follow the checklist above (green dots). Open <strong>Settings</strong> if anything is missing, or use <strong>Setup guide</strong> for a short tour."
+  },
+  "drop_zone": "Drop files or folders here (native drop uses system paths).",
+  "btn": {
+    "add_files": "Add files…",
+    "add_folder": "Add folder…",
+    "add_urls": "Add URLs",
+    "start": "Start queue",
+    "stop": "Stop queue",
+    "clear_done": "Clear done",
+    "clear_all": "Clear all"
+  },
+  "url_field": {
+    "label": "URLs (one per line)",
+    "placeholder": "https://www.youtube.com/watch?v=…"
+  },
+  "table": {
+    "label_header": "Label",
+    "kind_header": "Kind",
+    "status_header": "Status",
+    "actions_header": "Actions",
+    "no_jobs": "No jobs yet"
+  },
+  "log": {
+    "show": "Show log ▾",
+    "hide": "Hide log ▴",
+    "show_percents": "Show download %",
+    "open_file": "Open log file",
+    "copy": "Copy",
+    "empty": "…"
+  },
+  "msg": {
+    "added_paths_drop": "Added {{count}} path(s) from drop",
+    "added_urls": "Added {{count}} URL(s)",
+    "added_files_picker": "Added {{count}} file(s) from picker",
+    "queue_already_running": "Queue is already running",
+    "nothing_to_run": "Nothing to run (no pending jobs)",
+    "starting_queue": "Starting queue ({{count}} job(s))",
+    "queue_stopped": "Queue stopped (remaining jobs cancelled)",
+    "queue_idle": "Queue idle",
+    "stop_requested": "Stop requested — killing current step if possible; remaining jobs will be cancelled",
+    "scanning_folder": "Scanning folder: {{path}}",
+    "no_media_found": "No media files found (or scan failed)",
+    "enqueued_folder": "Enqueued {{count}} file(s) from folder",
+    "log_copied": "Log copied to clipboard",
+    "cleared_done": "Cleared finished jobs",
+    "cleared_all": "Cleared queue",
+    "running": "Run: {{label}}",
+    "stopped_label": "Stopped: {{label}}",
+    "error_label": "Error: {{detail}} — {{label}}",
+    "error_no_label": "Error: {{detail}}",
+    "retry_enqueued": "Retry enqueued: {{title}}",
+    "session_log_unavailable": "Could not open session log file (run inside the app or log unavailable)"
+  },
+  "error": {
+    "open_folder": "Could not open folder: {{message}}",
+    "open_file": "Could not open file: {{message}}",
+    "open_link": "Could not open link: {{message}}",
+    "stopped_by_user": "Stopped by user",
+    "process_failed": "process_queue_item failed",
+    "output_dir_required": "Choose output folder in Settings"
+  },
+  "subtask": {
+    "retry_label": "↻ retry",
+    "retry_aria": "Retry this video",
+    "retry_title": "Retry this video"
+  },
+  "actions": {
+    "show_in_folder": "Show in folder",
+    "open_file": "Open file"
+  }
+}

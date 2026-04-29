@@ -1,1 +1,67 @@
-{}
+{
+  "title": "Before you start",
+  "panel_aria": "Setup checklist",
+  "sub": {
+    "all_ok": "All set — add files or URLs below and press Start queue.",
+    "needs_work": "Complete the checklist (we detect tools and files automatically)."
+  },
+  "mode_hint": {
+    "local": "Mode: <strong>Local Whisper</strong> — cloud API key is not required.",
+    "browser": "Mode: <strong>In-app Whisper</strong> — WASM in the UI layer; no API key or whisper-cli (ffmpeg / yt-dlp still required for URLs).",
+    "cloud": "Mode: <strong>Cloud API</strong> — whisper-cli and ggml model are not required."
+  },
+  "tools_unknown": "Tools: unknown (run inside the desktop app to detect ffmpeg / yt-dlp)",
+  "tool_hint": "Tip: in <strong>Settings</strong> — on Windows or macOS use <strong>Download ffmpeg & yt-dlp for me</strong>, or install manually.",
+  "open_settings_btn": "Open Settings",
+  "row": {
+    "ffmpeg": {
+      "label": "ffmpeg",
+      "hint_checking": "Checking… (run inside the desktop app)",
+      "hint_ok": "Found — audio can be normalized.",
+      "hint_missing": "Missing — install from Settings or place next to the app."
+    },
+    "ytdlp": {
+      "label": "yt-dlp",
+      "hint_checking": "Checking…",
+      "hint_ok": "Found — URLs can be downloaded.",
+      "hint_missing": "Missing — install from Settings or place next to the app."
+    },
+    "output": {
+      "label": "Output folder",
+      "hint_missing": "Not set — choose a folder in the setup guide or Settings.",
+      "hint_documents": "Set — using Documents (default). Transcripts save here.",
+      "hint_custom": "Set — transcripts will save here."
+    },
+    "whisper_cli": {
+      "label": "whisper-cli (executable)",
+      "hint_checking": "Checking…",
+      "hint_ok": "Found — local engine ready.",
+      "hint_missing": "Missing — pick whisper-cli in Settings (or put whisper-cli / main next to the app)."
+    },
+    "ggml": {
+      "label": "Whisper model (.bin)",
+      "hint_checking": "Checking…",
+      "hint_ok": "Verified on disk (SHA-1) — ready for offline transcription.",
+      "hint_missing": "Missing or checksum mismatch — use Download / verify model in Settings or setup."
+    },
+    "wasm_whisper": {
+      "label": "In-app Whisper (WASM)",
+      "hint": "Runs in the app (Transformers.js). First job may download the model; no API key or whisper-cli."
+    },
+    "api_key": {
+      "label": "Cloud API key",
+      "hint_ok": "Saved in OS secure storage — cloud transcription ready.",
+      "hint_missing": "Missing — add your key in the setup guide or Settings (not used for Local Whisper)."
+    }
+  },
+  "deps_bar": {
+    "tools_unknown": "Tools: unknown (run inside Tauri to detect ffmpeg / yt-dlp)",
+    "status_ok": "ok",
+    "status_missing": "missing",
+    "status_no": "no",
+    "ffmpeg_label": "ffmpeg:",
+    "ytdlp_label": "yt-dlp:",
+    "whisper_label": "whisper-cli:",
+    "ggml_label": "ggml:"
+  }
+}

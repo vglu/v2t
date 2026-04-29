@@ -1,1 +1,127 @@
-{}
+{
+  "step_label": "Step {{current}} of {{total}}",
+  "modal_aria": "Onboarding wizard",
+  "step_title": {
+    "welcome": "Welcome",
+    "output": "Output folder",
+    "tools": "ffmpeg & yt-dlp",
+    "transcription": "Transcription",
+    "cloud": "Cloud API",
+    "local": "Local Whisper",
+    "browser": "In-app Whisper",
+    "later": "Finish in Settings",
+    "run": "Run jobs"
+  },
+  "btn": {
+    "back": "Back",
+    "next": "Next",
+    "skip": "Skip setup",
+    "done": "Done",
+    "saving": "Saving…",
+    "open_settings": "Open Settings",
+    "close_aria": "Close"
+  },
+  "checklist_tip": "The checklist on the main screen updates as you go.",
+  "welcome": {
+    "intro": "<strong>Video to Text</strong> turns video, audio, and links into text files. A short setup walks you through tools, transcription, and the queue."
+  },
+  "output": {
+    "intro": "Choose where <strong>.txt</strong> transcripts are saved. <strong>Documents</strong> is the default and matches the checklist when selected.",
+    "current_folder_label": "Current folder",
+    "not_set_placeholder": "Not set",
+    "use_documents": "Use Documents",
+    "browse": "Browse…",
+    "error_pick_folder": "Pick a folder with Browse, or use Use Documents (recommended).",
+    "tip_documents_set": "Using your Documents folder — this will show as ready in \"Before you start\".",
+    "tip_custom_set": "Custom folder — it will show as set once you continue.",
+    "tip_use_documents": "Tip: Use Documents unless you need another location."
+  },
+  "tools": {
+    "intro": "URL downloads need <strong>ffmpeg</strong> and <strong>yt-dlp</strong> on this computer.",
+    "btn_install": "Install ffmpeg & yt-dlp for me",
+    "btn_installing": "Downloading…",
+    "install_success": "<strong>All set.</strong> ffmpeg and yt-dlp are installed; paths were saved. The checklist above should show them as found.",
+    "tip_manual": "Or install manually and set paths later in <strong>Settings</strong>.",
+    "linux_hint": "On Linux install <code>ffmpeg</code> and <code>yt-dlp</code> with your package manager, then set paths in <strong>Settings</strong>.",
+    "js_runtimes_label": "yt-dlp JS runtimes (optional)",
+    "js_runtimes_aria": "yt-dlp JavaScript runtimes for EJS",
+    "js_runtimes_placeholder": "e.g. deno — see yt-dlp wiki (EJS)",
+    "common_label": "Common:",
+    "js_runtimes_tip": "If YouTube fails with \"no supported JavaScript runtime\", install Deno or Node and set this to the runtime name yt-dlp expects (often <code>deno</code>).",
+    "btn_install_deno": "Download & install Deno for me",
+    "btn_install_deno_busy": "Installing…",
+    "deno_success": "<strong>Done.</strong> Deno installed; JS runtimes set to <code>deno</code>.",
+    "cookies_label": "Browser cookies for YouTube / TikTok",
+    "cookies_aria": "Browser to read cookies from",
+    "cookies_options": {
+      "auto": "Auto (Edge on Windows, Chrome on macOS, Firefox on Linux)",
+      "chrome": "Chrome",
+      "brave": "Brave",
+      "edge": "Edge",
+      "firefox": "Firefox",
+      "none": "Disabled"
+    },
+    "cookies_tip": "yt-dlp reads cookies from your browser so age-restricted or login-required videos work. Make sure you're logged in to YouTube / TikTok in that browser. <strong>Firefox is strongly recommended on Windows</strong> — Chrome, Brave and Edge use app-bound cookie encryption (Chrome 127+) that yt-dlp cannot decrypt, even when the browser is closed."
+  },
+  "mode": {
+    "intro": "How should transcripts be produced?",
+    "group_aria": "Transcription mode",
+    "cloud": "<strong>Cloud (HTTP API)</strong> — OpenAI-compatible <code>/audio/transcriptions</code>, needs an API key.",
+    "local": "<strong>Local Whisper</strong> — <code>whisper.cpp</code> on this PC, no API key; download a model on the next step.",
+    "browser": "<strong>In-app Whisper</strong> — runs in the app (WASM), no API key and no <code>whisper-cli</code>; model downloads on first use.",
+    "later": "<strong>Decide in Settings later</strong> — skip API/model setup for now."
+  },
+  "browser_step": {
+    "intro": "<strong>In-app Whisper</strong> uses Transformers.js in the app. You still need ffmpeg / yt-dlp for links; transcription itself stays on-device in the webview.",
+    "model_size_label": "Model size",
+    "model_aria": "In-app Whisper model size",
+    "model_option": "{{id}} — ~{{sizeMib}} MiB (browser, approximate)",
+    "tip": "Labels match the local catalog; ggml <code>.bin</code> files are not used in this mode."
+  },
+  "cloud_step": {
+    "intro": "Enter your cloud provider details. The key is stored in the OS secure store, not in plain text.",
+    "api_url_label": "API base URL",
+    "api_model_label": "Model name",
+    "api_key_label": "API key",
+    "error_no_key": "Enter your API key to continue (or go back and choose another option).",
+    "tip_openai": "<strong>OpenAI example:</strong> <a>API keys</a>, base <code>https://api.openai.com/v1</code>, model <code>whisper-1</code>."
+  },
+  "local_step": {
+    "intro": "<strong>Local Whisper</strong> is separate from ffmpeg above. The app can <strong>download the ggml model</strong> for you. For <code>whisper-cli</code>: <strong>Windows</strong> — official <code>whisper-bin-x64.zip</code> from <a>ggml-org/whisper.cpp</a> (use the button below; includes DLLs). <strong>macOS</strong> — no CLI zip; the button searches <code>PATH</code> and Homebrew layouts, or use <strong>Pick file…</strong> after <code>brew install whisper-cpp</code>. <strong>Linux</strong> — install via your distro or build from source (see below); then set the path or use <strong>Pick file…</strong>. You can also put <code>whisper-cli</code> next to the app.",
+    "step_a_title": "Step A — whisper-cli",
+    "step_a_tip": "Optional path if the binary is not next to <code>v2t</code>. Use the setup button (Windows/macOS) or <strong>Pick file…</strong> for <code>whisper-cli.exe</code> / <code>whisper-cli</code>.",
+    "cuda_intro": "<strong>NVIDIA GPU found</strong> ({{name}}). The CUDA build runs Whisper 10-20× faster than CPU. We will download the cuBLAS bundle by default — change this in <strong>Settings → Whisper acceleration</strong> if needed.",
+    "cuda_default_name": "discrete",
+    "cuda_enable": "Enable CUDA acceleration (recommended)",
+    "linux_intro": "<strong>Linux:</strong> there is no download button here. Examples:",
+    "linux_li_ubuntu": "Ubuntu/Debian: <code>sudo apt install whisper-cpp</code> or build <a>whisper.cpp</a>",
+    "linux_li_fedora": "Fedora: <code>sudo dnf install whisper-cpp</code>",
+    "linux_li_arch": "Arch: <code>yay -S whisper-cpp</code> (AUR)",
+    "btn_download_win": "Download whisper-cli for me (Windows)",
+    "btn_find_mac": "Find whisper-cli (macOS)",
+    "btn_pick": "Pick file…",
+    "btn_working": "Working…",
+    "cli_success": "<strong>whisper-cli path saved.</strong> The checklist should update; continue with the model below.",
+    "cli_path_label": "Executable path",
+    "cli_path_placeholder": "Leave empty if whisper-cli sits next to the app",
+    "step_b_title": "Step B — model file",
+    "step_b_tip": "Choose size, then download. We verify SHA-1; when it matches, you will see a green confirmation below and the checklist item <strong>Whisper model (.bin)</strong> turns green.",
+    "models_dir_label": "Folder for .bin files",
+    "models_dir_default_placeholder": "Default: app data / models",
+    "browse": "Browse…",
+    "model_label": "Model",
+    "model_aria": "Whisper GGML model",
+    "model_option": "{{id}} — ~{{sizeMib}} MiB ({{fileName}})",
+    "btn_download_model": "Download / verify model",
+    "btn_downloading": "Downloading…",
+    "model_success": "<strong>Model ready.</strong> File is on disk and SHA-1 matches. The checklist should show a green dot for <strong>Whisper model (.bin)</strong>."
+  },
+  "later_step": {
+    "intro": "You can switch between <strong>HTTP API</strong>, <strong>Local Whisper</strong>, and <strong>In-app Whisper</strong>, set API keys, and download models anytime in <strong>Settings</strong>.",
+    "btn_open_settings": "Open Settings now"
+  },
+  "run_step": {
+    "intro": "Add files, folders, or paste links into the queue, then press <strong>Start queue</strong>.",
+    "tip": "If something fails, check the log at the bottom and the checklist above."
+  }
+}
