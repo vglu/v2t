@@ -970,12 +970,117 @@ button.queue-table-action-btn:hover:not(:disabled) {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: #8b8fa3;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+button.log-toggle {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: #c5c8d4;
+  text-transform: uppercase;
+}
+
+button.log-toggle:hover {
+  border-color: #3d4456;
+}
+
+.log-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #8b8fa3;
+  cursor: pointer;
+}
+
+.log-filter input[type="checkbox"] {
+  cursor: pointer;
+  margin: 0;
 }
 
 .log-header-actions {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.queue-progress-row > td {
+  padding: 0.35rem 0.6rem 0.6rem !important;
+  background: #14171f;
+  border-bottom: 1px solid #2a2e3a;
+}
+
+.job-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.job-progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: #c5c8d4;
+  align-items: baseline;
+}
+
+.job-progress-phase {
+  color: #8b8fa3;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+}
+
+.job-progress-counter {
+  color: #e8e8ec;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.job-progress-percent {
+  color: #4c6ef5;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.job-progress-tail {
+  color: #8b8fa3;
+  font-variant-numeric: tabular-nums;
+}
+
+progress.job-progress-bar {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 6px;
+  border: none;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #1a1d26;
+}
+
+progress.job-progress-bar::-webkit-progress-bar {
+  background: #1a1d26;
+  border-radius: 999px;
+}
+
+progress.job-progress-bar::-webkit-progress-value {
+  background: linear-gradient(90deg, #3b5bdb, #4c6ef5);
+  border-radius: 999px;
+  transition: width 120ms linear;
+}
+
+progress.job-progress-bar::-moz-progress-bar {
+  background: linear-gradient(90deg, #3b5bdb, #4c6ef5);
+  border-radius: 999px;
 }
 
 .log-body {

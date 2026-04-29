@@ -14,7 +14,7 @@ use crate::deps;
 use crate::process_kill;
 use crate::session_log;
 use crate::settings::DownloadedAudioFormat;
-use crate::yt_dlp_progress;
+use crate::yt_dlp_progress::{self, YtDlpEvent};
 
 pub const JOB_CANCELLED_MSG: &str = "Job cancelled";
 
@@ -273,14 +273,33 @@ struct QueueJobProgressEmit {
     job_id: String,
     phase: String,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    subtask_index: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    subtask_total: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    subtask_percent: Option<u8>,
+}
+
+/// Shared subtask state for paired stdout/stderr reader tasks. yt-dlp prints
+/// `Downloading item N of M` on one pipe and the matching `[download] N% …`
+/// progress on the same pipe shortly after, but a paranoid implementation has
+/// to handle the case where they end up on different pipes — sharing the
+/// counter keeps both readers consistent.
+#[derive(Default)]
+struct SubtaskState {
+    index: Option<u32>,
+    total: Option<u32>,
 }
 
 /// Spawn a task that reads `pipe` line-by-line, refreshing `last_activity` on every
-/// line, sending recognized progress lines through the queue-job-progress event,
+/// line, sending recognized progress events through the queue-job-progress channel
+/// (with subtask index/total/percent enriched from the shared `subtask_state`),
 /// and accumulating the full bytes for the caller (used for error tails).
 fn spawn_pipe_reader<R>(
     pipe: R,
     last_activity: Arc<Mutex<Instant>>,
+    subtask_state: Arc<Mutex<SubtaskState>>,
     emit_target: Option<(AppHandle, String)>,
     phase_label: String,
 ) -> tokio::task::JoinHandle<Vec<u8>>
@@ -302,12 +321,36 @@ where
                     }
                     full.extend_from_slice(line.as_bytes());
                     if let Some((app, jid)) = emit_target.as_ref() {
-                        if let Some(msg) = yt_dlp_progress::parse_yt_dlp_line(line.trim_end()) {
+                        if let Some(event) = yt_dlp_progress::parse_yt_dlp_line(line.trim_end()) {
+                            // Update shared subtask counters before emitting so the
+                            // payload always reflects the latest known item.
+                            if let YtDlpEvent::Item { n, total } = &event {
+                                if let Ok(mut s) = subtask_state.lock() {
+                                    s.index = Some(*n);
+                                    s.total = Some(*total);
+                                }
+                            }
+                            let (sub_index, sub_total) = match subtask_state.lock() {
+                                Ok(s) => (s.index, s.total),
+                                Err(p) => {
+                                    let g = p.into_inner();
+                                    (g.index, g.total)
+                                }
+                            };
+                            let sub_percent = match &event {
+                                YtDlpEvent::Progress { percent_bucket, .. } => Some(*percent_bucket),
+                                YtDlpEvent::Merger => Some(100),
+                                _ => None,
+                            };
+                            let msg = event.short_message();
                             if last_emitted.as_ref() != Some(&msg) {
                                 let payload = QueueJobProgressEmit {
                                     job_id: jid.clone(),
                                     phase: phase_label.clone(),
                                     message: msg.clone(),
+                                    subtask_index: sub_index,
+                                    subtask_total: sub_total,
+                                    subtask_percent: sub_percent,
                                 };
                                 let _ = app.emit("queue-job-progress", &payload);
                                 session_log::try_append(
@@ -375,17 +418,20 @@ pub(crate) async fn run_yt_dlp_streaming(
     let stdout = child.stdout.take().ok_or("yt-dlp: no stdout pipe")?;
 
     let last_activity: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
+    let subtask_state: Arc<Mutex<SubtaskState>> = Arc::new(Mutex::new(SubtaskState::default()));
     let emit_target = maybe_log.map(|(a, j)| (a.clone(), j.to_string()));
 
     let stdout_task = spawn_pipe_reader(
         stdout,
         last_activity.clone(),
+        subtask_state.clone(),
         emit_target.clone(),
         phase_label.to_string(),
     );
     let stderr_task = spawn_pipe_reader(
         stderr,
         last_activity.clone(),
+        subtask_state.clone(),
         emit_target.clone(),
         phase_label.to_string(),
     );

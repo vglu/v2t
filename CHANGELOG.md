@@ -2,6 +2,16 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.5.0-rc3] - 2026-04-29
+
+### Добавлено
+
+- **Структурный per-item progress в Queue** (Wave 3 / J1). Под карточкой работающей джобы — компактная строка `<phase> N/M  PERCENT%  <speed/ETA>` и линейный прогресс-бар, обновляются в реальном времени по `queue-job-progress`. Парсер yt-dlp теперь возвращает структурированный enum `YtDlpEvent` (`Item { n, total }`, `Progress { percent_bucket, tail }`, `ExtractAudio`, `Merger`); payload `queue-job-progress` расширен полями `subtaskIndex` / `subtaskTotal` / `subtaskPercent`. Stdout- и stderr-readers yt-dlp используют общий `SubtaskState`, поэтому индекс и общее число роликов корректно подтягиваются к каждому % события.
+- **Collapsible log + фильтр шума.** Лог-блок свёрнут по умолчанию (Show log ▾ / Hide log ▴). Чекбокс «Show download %» (default off) скрывает шумные `[yt-dlp] N% …` строки из видимой части лога — сами строки остаются в state и попадают в Open log file / Copy. Полный лог + sr-only-копия сохраняются для скрин-ридеров.
+- **Локальные файлы — basename без расширения** (J4). Drop, Add files, Add folder и folder-scan теперь показывают только имя файла без родительских каталогов и расширения; полный путь — в `title`. Новый хелпер `fileBasenameNoExt` обрабатывает Windows- и Unix-разделители, сохраняет dot-файлы (`.env`).
+- Новый компонент `JobProgressBar.tsx` (HTML `<progress>` со стилями), новый CSS-блок `.job-progress*` / `.queue-progress-row`.
+- Тесты: 5 новых vitest-кейсов для `fileBasenameNoExt`, 2 новых rust-теста для `YtDlpEvent::short_message` и обновлённые ассерты под новый shape парсера.
+
 ## [1.5.0-rc2] - 2026-04-29
 
 ### Добавлено

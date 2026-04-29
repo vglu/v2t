@@ -7,6 +7,16 @@ export type QueueJobStatus =
 
 export type QueueJobKind = "file" | "url" | "folder";
 
+/** Snapshot of the latest `queue-job-progress` event from the backend. */
+export type JobProgressSnapshot = {
+  phase: string;
+  message: string;
+  subtaskIndex?: number;
+  subtaskTotal?: number;
+  /** 0..=100, in 5%-buckets when coming from yt-dlp. */
+  subtaskPercent?: number;
+};
+
 export type QueueJob = {
   id: string;
   kind: QueueJobKind;

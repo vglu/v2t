@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   browserQueueJobFinish,
   cancelQueueJob,
@@ -10,9 +10,15 @@ import {
   sessionLogAppendUi,
 } from "../lib/invokeSafe";
 import { transcribeBrowserTracks } from "../lib/browserWhisper";
-import { newJobId, parseInputLines, shortLabel } from "../lib/queueUtils";
-import type { QueueJob } from "../types/queue";
+import {
+  fileBasenameNoExt,
+  newJobId,
+  parseInputLines,
+  shortLabel,
+} from "../lib/queueUtils";
+import type { JobProgressSnapshot, QueueJob } from "../types/queue";
 import type { AppSettings } from "../types/settings";
+import { JobProgressBar } from "./JobProgressBar";
 
 type Props = {
   settings: AppSettings;
@@ -21,6 +27,12 @@ type Props = {
 };
 
 const MAX_LOG = 200;
+
+/** Match a log line emitted from the queue-job-progress listener that carries
+ * a yt-dlp `[download] N% …` bucket. Used by the "Show download percentages"
+ * checkbox to filter out the noisy progress chatter while keeping everything
+ * else (item count, extract-audio, errors, etc.) visible. */
+const YT_DLP_PERCENT_LINE_RE = /^\[\d{2}:\d{2}:\d{2}\] \[yt-dlp(?:-video)?\] \d+%/;
 
 function IconRevealInFolder({ className }: { className?: string }) {
   return (
@@ -71,6 +83,11 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
   const [urlDraft, setUrlDraft] = useState("");
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [logLines, setLogLines] = useState<string[]>([]);
+  const [jobProgress, setJobProgress] = useState<
+    Record<string, JobProgressSnapshot>
+  >({});
+  const [logVisible, setLogVisible] = useState(false);
+  const [showDownloadPercents, setShowDownloadPercents] = useState(false);
   const runningRef = useRef(false);
   const stopRequestedRef = useRef(false);
   const currentJobIdRef = useRef<string | null>(null);
@@ -104,7 +121,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
       const items = paths.map((source) => ({
         kind: "file" as const,
         source,
-        displayLabel: shortLabel(source),
+        displayLabel: fileBasenameNoExt(source),
       }));
       addJobs(items);
       appendLog(`Added ${items.length} path(s) from drop`);
@@ -142,13 +159,30 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
     const ac = new AbortController();
     void import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
-        const u1 = await listen<{ phase: string; message: string }>(
-          "queue-job-progress",
-          (ev) => {
-            if (ac.signal.aborted) return;
-            appendLog(`[${ev.payload.phase}] ${ev.payload.message}`);
-          },
-        );
+        const u1 = await listen<{
+          jobId: string;
+          phase: string;
+          message: string;
+          subtaskIndex?: number;
+          subtaskTotal?: number;
+          subtaskPercent?: number;
+        }>("queue-job-progress", (ev) => {
+          if (ac.signal.aborted) return;
+          const p = ev.payload;
+          appendLog(`[${p.phase}] ${p.message}`);
+          if (p.jobId) {
+            setJobProgress((prev) => ({
+              ...prev,
+              [p.jobId]: {
+                phase: p.phase,
+                message: p.message,
+                subtaskIndex: p.subtaskIndex,
+                subtaskTotal: p.subtaskTotal,
+                subtaskPercent: p.subtaskPercent,
+              },
+            }));
+          }
+        });
         const u2 = await listen<{
           jobId: string;
           label: string;
@@ -202,7 +236,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
       files.map((source) => ({
         kind: "file" as const,
         source,
-        displayLabel: shortLabel(source),
+        displayLabel: fileBasenameNoExt(source),
       })),
     );
     appendLog(`Enqueued ${files.length} file(s) from folder`);
@@ -241,7 +275,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
       list.map((source) => ({
         kind: "file" as const,
         source,
-        displayLabel: shortLabel(source),
+        displayLabel: fileBasenameNoExt(source),
       })),
     );
     appendLog(`Added ${list.length} file(s) from picker`);
@@ -388,13 +422,25 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
   }
 
   function clearDone() {
-    setJobs((prev) => prev.filter((j) => j.status !== "done"));
+    let droppedIds: string[] = [];
+    setJobs((prev) => {
+      droppedIds = prev.filter((j) => j.status === "done").map((j) => j.id);
+      return prev.filter((j) => j.status !== "done");
+    });
+    if (droppedIds.length) {
+      setJobProgress((prev) => {
+        const next = { ...prev };
+        for (const id of droppedIds) delete next[id];
+        return next;
+      });
+    }
     appendLog("Cleared finished jobs");
   }
 
   function clearAll() {
     if (runningRef.current) return;
     setJobs([]);
+    setJobProgress({});
     appendLog("Cleared queue");
   }
 
@@ -431,6 +477,11 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
   }
 
   const queueEmpty = jobs.length === 0;
+
+  const visibleLogLines = useMemo(() => {
+    if (showDownloadPercents) return logLines;
+    return logLines.filter((l) => !YT_DLP_PERCENT_LINE_RE.test(l));
+  }, [logLines, showDownloadPercents]);
 
   return (
     <section className="queue-panel" aria-label="Queue">
@@ -535,45 +586,18 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
               jobs.map((j) => {
                 const outPath = j.transcriptPath;
                 const canOpenResult = j.status === "done" && Boolean(outPath?.trim());
+                const progress =
+                  j.status === "running" ? jobProgress[j.id] : undefined;
                 return (
-                  <tr key={j.id} data-testid="queue-row">
-                    <td title={j.source}>{j.displayLabel}</td>
-                    <td>{j.kind}</td>
-                    <td>
-                      <div className="queue-status-cell">
-                        {j.status === "done" ? (
-                          <span className="queue-status-check" aria-hidden>
-                            ✓
-                          </span>
-                        ) : null}
-                        <span data-testid={`job-status-${j.id}`}>{j.status}</span>
-                      </div>
-                    </td>
-                    <td className="queue-table-actions-cell">
-                      {canOpenResult && outPath ? (
-                        <div className="queue-table-actions-inner">
-                          <button
-                            type="button"
-                            className="queue-table-action-btn queue-table-action-btn--icon"
-                            title="Show in folder"
-                            aria-label="Show in folder"
-                            onClick={() => void revealTranscriptInFolder(outPath)}
-                          >
-                            <IconRevealInFolder className="queue-action-icon" />
-                          </button>
-                          <button
-                            type="button"
-                            className="queue-table-action-btn queue-table-action-btn--icon"
-                            title="Open file"
-                            aria-label="Open file"
-                            onClick={() => void openTranscriptFile(outPath)}
-                          >
-                            <IconOpenFile className="queue-action-icon" />
-                          </button>
-                        </div>
-                      ) : null}
-                    </td>
-                  </tr>
+                  <FragmentRow
+                    key={j.id}
+                    job={j}
+                    progress={progress}
+                    canOpenResult={canOpenResult}
+                    outPath={outPath}
+                    onReveal={revealTranscriptInFolder}
+                    onOpen={openTranscriptFile}
+                  />
                 );
               })
             )}
@@ -583,8 +607,24 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
 
       <div className="log-panel">
         <div className="log-header">
-          <span>Log</span>
+          <button
+            type="button"
+            className="log-toggle"
+            aria-expanded={logVisible}
+            aria-controls="queue-log-body"
+            onClick={() => setLogVisible((v) => !v)}
+          >
+            {logVisible ? "Hide log ▴" : "Show log ▾"}
+          </button>
           <div className="log-header-actions">
+            <label className="log-filter">
+              <input
+                type="checkbox"
+                checked={showDownloadPercents}
+                onChange={(e) => setShowDownloadPercents(e.target.checked)}
+              />
+              <span>Show download %</span>
+            </label>
             <button type="button" onClick={() => void openLogFile()}>
               Open log file
             </button>
@@ -593,10 +633,84 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
             </button>
           </div>
         </div>
-        <pre className="log-body" data-testid="queue-log">
-          {logLines.length === 0 ? "…" : logLines.join("\n")}
+        <pre
+          className={logVisible ? "log-body" : "log-body sr-only"}
+          id="queue-log-body"
+          data-testid="queue-log"
+        >
+          {visibleLogLines.length === 0 ? "…" : visibleLogLines.join("\n")}
         </pre>
       </div>
     </section>
+  );
+}
+
+type FragmentRowProps = {
+  job: QueueJob;
+  progress: JobProgressSnapshot | undefined;
+  canOpenResult: boolean;
+  outPath: string | null | undefined;
+  onReveal: (p: string) => void;
+  onOpen: (p: string) => void;
+};
+
+function FragmentRow({
+  job,
+  progress,
+  canOpenResult,
+  outPath,
+  onReveal,
+  onOpen,
+}: FragmentRowProps) {
+  const showProgress =
+    job.status === "running" && progress != null;
+  return (
+    <>
+      <tr data-testid="queue-row">
+        <td title={job.source}>{job.displayLabel}</td>
+        <td>{job.kind}</td>
+        <td>
+          <div className="queue-status-cell">
+            {job.status === "done" ? (
+              <span className="queue-status-check" aria-hidden>
+                ✓
+              </span>
+            ) : null}
+            <span data-testid={`job-status-${job.id}`}>{job.status}</span>
+          </div>
+        </td>
+        <td className="queue-table-actions-cell">
+          {canOpenResult && outPath ? (
+            <div className="queue-table-actions-inner">
+              <button
+                type="button"
+                className="queue-table-action-btn queue-table-action-btn--icon"
+                title="Show in folder"
+                aria-label="Show in folder"
+                onClick={() => onReveal(outPath)}
+              >
+                <IconRevealInFolder className="queue-action-icon" />
+              </button>
+              <button
+                type="button"
+                className="queue-table-action-btn queue-table-action-btn--icon"
+                title="Open file"
+                aria-label="Open file"
+                onClick={() => onOpen(outPath)}
+              >
+                <IconOpenFile className="queue-action-icon" />
+              </button>
+            </div>
+          ) : null}
+        </td>
+      </tr>
+      {showProgress && progress ? (
+        <tr className="queue-progress-row" data-testid="queue-progress-row">
+          <td colSpan={4}>
+            <JobProgressBar progress={progress} />
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 }
