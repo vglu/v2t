@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import {
   defaultDocumentsDir,
   defaultWhisperModelsDir,
@@ -31,23 +32,23 @@ type Props = {
   onClose: () => void;
 };
 
-function stepTitle(step: number, modeChoice: ModeChoice): string {
+function stepTitleKey(step: number, modeChoice: ModeChoice): string {
   switch (step) {
     case 0:
-      return "Welcome";
+      return "step_title.welcome";
     case 1:
-      return "Output folder";
+      return "step_title.output";
     case 2:
-      return "ffmpeg & yt-dlp";
+      return "step_title.tools";
     case 3:
-      return "Transcription";
+      return "step_title.transcription";
     case 4:
-      if (modeChoice === "cloud") return "Cloud API";
-      if (modeChoice === "local") return "Local Whisper";
-      if (modeChoice === "browser") return "In-app Whisper";
-      return "Finish in Settings";
+      if (modeChoice === "cloud") return "step_title.cloud";
+      if (modeChoice === "local") return "step_title.local";
+      if (modeChoice === "browser") return "step_title.browser";
+      return "step_title.later";
     case 5:
-      return "Run jobs";
+      return "step_title.run";
     default:
       return "";
   }
@@ -93,6 +94,7 @@ export function OnboardingWizard({
   onFinish,
   onClose,
 }: Props) {
+  const { t } = useTranslation("onboarding");
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [modeChoice, setModeChoice] = useState<ModeChoice>("cloud");
@@ -403,7 +405,7 @@ export function OnboardingWizard({
   async function goNext() {
     if (step === 1) {
       if (!settings.outputDir?.trim()) {
-        setOutputError("Pick a folder with Browse, or use Use Documents (recommended).");
+        setOutputError(t("output.error_pick_folder"));
         return;
       }
       setOutputError(null);
@@ -440,7 +442,7 @@ export function OnboardingWizard({
 
     if (step === 4 && modeChoice === "cloud") {
       if (!settings.apiKey?.trim()) {
-        setCloudError("Enter your API key to continue (or go back and choose another option).");
+        setCloudError(t("cloud_step.error_no_key"));
         return;
       }
       setCloudError(null);
@@ -490,7 +492,10 @@ export function OnboardingWizard({
     setStep((s) => Math.max(0, s - 1));
   }
 
-  const title = stepTitle(step, modeChoice);
+  const titleKey = stepTitleKey(step, modeChoice);
+  // `t` types are inferred from the typed CustomTypeOptions augmentation; the
+  // dynamic key needs a cast to satisfy the literal-union signature.
+  const title = titleKey ? (t as (k: string) => string)(titleKey) : "";
 
   const body = (() => {
     switch (step) {
@@ -498,52 +503,52 @@ export function OnboardingWizard({
         return (
           <>
             <p>
-              <strong>Video to Text</strong> turns video, audio, and links into text files. A short setup
-              walks you through tools, transcription, and the queue.
+              <Trans i18nKey="welcome.intro" t={t} components={{ strong: <strong /> }} />
             </p>
-            <p className="onboarding-tip">The checklist on the main screen updates as you go.</p>
+            <p className="onboarding-tip">{t("checklist_tip")}</p>
           </>
         );
       case 1:
         return (
           <>
             <p>
-              Choose where <strong>.txt</strong> transcripts are saved. <strong>Documents</strong> is the
-              default and matches the checklist when selected.
+              <Trans i18nKey="output.intro" t={t} components={{ strong: <strong /> }} />
             </p>
             <label className="field onboarding-field">
-              <span>Current folder</span>
+              <span>{t("output.current_folder_label")}</span>
               <input
                 type="text"
                 readOnly
                 value={settings.outputDir ?? ""}
-                placeholder="Not set"
+                placeholder={t("output.not_set_placeholder")}
               />
             </label>
             {outputError ? <p className="onboarding-error">{outputError}</p> : null}
             <div className="onboarding-row">
               <button type="button" disabled={busy} onClick={() => void useDocumentsAsOutput()}>
-                Use Documents
+                {t("output.use_documents")}
               </button>
               <button type="button" disabled={busy} onClick={() => void pickOutputFolder()}>
-                Browse…
+                {t("output.browse")}
               </button>
             </div>
             {pathsProbablyEqual(settings.outputDir, documentsPath) ? (
               <p className="onboarding-tip onboarding-success-hint">
-                Using your Documents folder — this will show as ready in &quot;Before you start&quot;.
+                {t("output.tip_documents_set")}
               </p>
             ) : settings.outputDir?.trim() ? (
-              <p className="onboarding-tip">Custom folder — it will show as set once you continue.</p>
+              <p className="onboarding-tip">{t("output.tip_custom_set")}</p>
             ) : (
-              <p className="onboarding-tip">Tip: Use Documents unless you need another location.</p>
+              <p className="onboarding-tip">{t("output.tip_use_documents")}</p>
             )}
           </>
         );
       case 2:
         return (
           <>
-            <p>URL downloads need <strong>ffmpeg</strong> and <strong>yt-dlp</strong> on this computer.</p>
+            <p>
+              <Trans i18nKey="tools.intro" t={t} components={{ strong: <strong /> }} />
+            </p>
             {showManagedToolDownloads ? (
               <div className="onboarding-block">
                 <button
@@ -552,7 +557,7 @@ export function OnboardingWizard({
                   disabled={toolDlBusy || busy}
                   onClick={() => void onDownloadMediaTools()}
                 >
-                  {toolDlBusy ? "Downloading…" : "Install ffmpeg & yt-dlp for me"}
+                  {toolDlBusy ? t("tools.btn_installing") : t("tools.btn_install")}
                 </button>
                 {toolDlProgress && toolDlProgress.total != null && toolDlProgress.total > 0 ? (
                   <div className="download-progress-wrap onboarding-progress">
@@ -564,37 +569,39 @@ export function OnboardingWizard({
                 ) : null}
                 {toolsInstallSuccess ? (
                   <WizardSuccessBanner>
-                    <strong>All set.</strong> ffmpeg and yt-dlp are installed; paths were saved. The checklist
-                    above should show them as found.
+                    <Trans i18nKey="tools.install_success" t={t} components={{ strong: <strong /> }} />
                   </WizardSuccessBanner>
                 ) : null}
                 {toolDlError ? <WizardErrorBanner>{toolDlError}</WizardErrorBanner> : null}
                 <p className="onboarding-tip">
-                  Or install manually and set paths later in <strong>Settings</strong>.
+                  <Trans i18nKey="tools.tip_manual" t={t} components={{ strong: <strong /> }} />
                 </p>
               </div>
             ) : (
               <p className="onboarding-tip">
-                On Linux install <code>ffmpeg</code> and <code>yt-dlp</code> with your package manager, then
-                set paths in <strong>Settings</strong>.
+                <Trans
+                  i18nKey="tools.linux_hint"
+                  t={t}
+                  components={{ strong: <strong />, code: <code /> }}
+                />
               </p>
             )}
             <div className="onboarding-block">
               <label className="field onboarding-field">
-                <span>yt-dlp JS runtimes (optional)</span>
+                <span>{t("tools.js_runtimes_label")}</span>
                 <input
                   type="text"
                   value={settings.ytDlpJsRuntimes ?? ""}
                   onChange={(e) => patchSettings({ ytDlpJsRuntimes: e.target.value.trim() || null })}
-                  placeholder="e.g. deno — see yt-dlp wiki (EJS)"
-                  aria-label="yt-dlp JavaScript runtimes for EJS"
+                  placeholder={t("tools.js_runtimes_placeholder")}
+                  aria-label={t("tools.js_runtimes_aria")}
                 />
                 <div
                   className="field-lang-examples"
                   role="group"
-                  aria-label="Insert JS runtime values"
+                  aria-label={t("tools.js_runtimes_aria")}
                 >
-                  <span className="field-lang-examples-label">Common:</span>
+                  <span className="field-lang-examples-label">{t("tools.common_label")}</span>
                   <button
                     type="button"
                     className="lang-code-chip"
@@ -619,8 +626,7 @@ export function OnboardingWizard({
                 </div>
               </label>
               <p className="onboarding-tip">
-                If YouTube fails with "no supported JavaScript runtime", install Deno or Node and set
-                this to the runtime name yt-dlp expects (often <code>deno</code>).
+                <Trans i18nKey="tools.js_runtimes_tip" t={t} components={{ code: <code /> }} />
               </p>
               {showManagedToolDownloads ? (
                 <>
@@ -630,7 +636,7 @@ export function OnboardingWizard({
                     disabled={denoDlBusy || busy}
                     onClick={() => void onInstallDeno()}
                   >
-                    {denoDlBusy ? "Installing…" : "Download & install Deno for me"}
+                    {denoDlBusy ? t("tools.btn_install_deno_busy") : t("tools.btn_install_deno")}
                   </button>
                   {denoDlProgress && denoDlProgress.total != null && denoDlProgress.total > 0 ? (
                     <div className="download-progress-wrap onboarding-progress">
@@ -642,7 +648,11 @@ export function OnboardingWizard({
                   ) : null}
                   {denoInstallSuccess ? (
                     <WizardSuccessBanner>
-                      <strong>Done.</strong> Deno installed; JS runtimes set to <code>deno</code>.
+                      <Trans
+                        i18nKey="tools.deno_success"
+                        t={t}
+                        components={{ strong: <strong />, code: <code /> }}
+                      />
                     </WizardSuccessBanner>
                   ) : null}
                   {denoDlError ? <WizardErrorBanner>{denoDlError}</WizardErrorBanner> : null}
@@ -651,26 +661,22 @@ export function OnboardingWizard({
             </div>
             <div className="onboarding-block">
               <label className="field onboarding-field">
-                <span>Browser cookies for YouTube / TikTok</span>
+                <span>{t("tools.cookies_label")}</span>
                 <select
-                  aria-label="Browser to read cookies from"
+                  aria-label={t("tools.cookies_aria")}
                   value={settings.cookiesFromBrowser}
                   onChange={(e) => patchSettings({ cookiesFromBrowser: e.target.value as CookiesFromBrowser })}
                 >
-                  <option value="auto">Auto (Edge on Windows, Chrome on macOS, Firefox on Linux)</option>
-                  <option value="chrome">Chrome</option>
-                  <option value="brave">Brave</option>
-                  <option value="edge">Edge</option>
-                  <option value="firefox">Firefox</option>
-                  <option value="none">Disabled</option>
+                  <option value="auto">{t("tools.cookies_options.auto")}</option>
+                  <option value="chrome">{t("tools.cookies_options.chrome")}</option>
+                  <option value="brave">{t("tools.cookies_options.brave")}</option>
+                  <option value="edge">{t("tools.cookies_options.edge")}</option>
+                  <option value="firefox">{t("tools.cookies_options.firefox")}</option>
+                  <option value="none">{t("tools.cookies_options.none")}</option>
                 </select>
               </label>
               <p className="onboarding-tip">
-                yt-dlp reads cookies from your browser so age-restricted or login-required videos work.
-                Make sure you're logged in to YouTube / TikTok in that browser.{" "}
-                <strong>Firefox is strongly recommended on Windows</strong> — Chrome, Brave and Edge
-                use app-bound cookie encryption (Chrome 127+) that yt-dlp cannot decrypt, even when
-                the browser is closed.
+                <Trans i18nKey="tools.cookies_tip" t={t} components={{ strong: <strong /> }} />
               </p>
             </div>
           </>
@@ -678,8 +684,8 @@ export function OnboardingWizard({
       case 3:
         return (
           <>
-            <p>How should transcripts be produced?</p>
-            <div className="onboarding-radio-group" role="radiogroup" aria-label="Transcription mode">
+            <p>{t("mode.intro")}</p>
+            <div className="onboarding-radio-group" role="radiogroup" aria-label={t("mode.group_aria")}>
               <label className="onboarding-radio">
                 <input
                   type="radio"
@@ -688,8 +694,11 @@ export function OnboardingWizard({
                   onChange={() => setModeChoice("cloud")}
                 />
                 <span>
-                  <strong>Cloud (HTTP API)</strong> — OpenAI-compatible <code>/audio/transcriptions</code>,
-                  needs an API key.
+                  <Trans
+                    i18nKey="mode.cloud"
+                    t={t}
+                    components={{ strong: <strong />, code: <code /> }}
+                  />
                 </span>
               </label>
               <label className="onboarding-radio">
@@ -700,8 +709,11 @@ export function OnboardingWizard({
                   onChange={() => setModeChoice("local")}
                 />
                 <span>
-                  <strong>Local Whisper</strong> — <code>whisper.cpp</code> on this PC, no API key; download
-                  a model on the next step.
+                  <Trans
+                    i18nKey="mode.local"
+                    t={t}
+                    components={{ strong: <strong />, code: <code /> }}
+                  />
                 </span>
               </label>
               <label className="onboarding-radio">
@@ -712,8 +724,11 @@ export function OnboardingWizard({
                   onChange={() => setModeChoice("browser")}
                 />
                 <span>
-                  <strong>In-app Whisper</strong> — runs in the app (WASM), no API key and no{" "}
-                  <code>whisper-cli</code>; model downloads on first use.
+                  <Trans
+                    i18nKey="mode.browser"
+                    t={t}
+                    components={{ strong: <strong />, code: <code /> }}
+                  />
                 </span>
               </label>
               <label className="onboarding-radio">
@@ -724,7 +739,7 @@ export function OnboardingWizard({
                   onChange={() => setModeChoice("later")}
                 />
                 <span>
-                  <strong>Decide in Settings later</strong> — skip API/model setup for now.
+                  <Trans i18nKey="mode.later" t={t} components={{ strong: <strong /> }} />
                 </span>
               </label>
             </div>
@@ -735,25 +750,24 @@ export function OnboardingWizard({
           return (
             <>
               <p>
-                <strong>In-app Whisper</strong> uses Transformers.js in the app. You still need ffmpeg / yt-dlp for
-                links; transcription itself stays on-device in the webview.
+                <Trans i18nKey="browser_step.intro" t={t} components={{ strong: <strong /> }} />
               </p>
               <label className="field onboarding-field">
-                <span>Model size</span>
+                <span>{t("browser_step.model_size_label")}</span>
                 <select
-                  aria-label="In-app Whisper model size"
+                  aria-label={t("browser_step.model_aria")}
                   value={settings.whisperModel}
                   onChange={(e) => patchSettings({ whisperModel: e.target.value })}
                 >
                   {whisperModels.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.id} — ~{m.sizeMib} MiB (browser, approximate)
+                      {t("browser_step.model_option", { id: m.id, sizeMib: m.sizeMib })}
                     </option>
                   ))}
                 </select>
               </label>
               <p className="onboarding-tip">
-                Labels match the local catalog; ggml <code>.bin</code> files are not used in this mode.
+                <Trans i18nKey="browser_step.tip" t={t} components={{ code: <code /> }} />
               </p>
             </>
           );
@@ -761,9 +775,9 @@ export function OnboardingWizard({
         if (modeChoice === "cloud") {
           return (
             <>
-              <p>Enter your cloud provider details. The key is stored in the OS secure store, not in plain text.</p>
+              <p>{t("cloud_step.intro")}</p>
               <label className="field onboarding-field">
-                <span>API base URL</span>
+                <span>{t("cloud_step.api_url_label")}</span>
                 <input
                   type="url"
                   value={settings.apiBaseUrl}
@@ -772,7 +786,7 @@ export function OnboardingWizard({
                 />
               </label>
               <label className="field onboarding-field">
-                <span>Model name</span>
+                <span>{t("cloud_step.api_model_label")}</span>
                 <input
                   type="text"
                   value={settings.apiModel}
@@ -781,7 +795,7 @@ export function OnboardingWizard({
                 />
               </label>
               <label className="field onboarding-field">
-                <span>API key</span>
+                <span>{t("cloud_step.api_key_label")}</span>
                 <input
                   type="password"
                   autoComplete="off"
@@ -791,11 +805,21 @@ export function OnboardingWizard({
               </label>
               {cloudError ? <p className="onboarding-error">{cloudError}</p> : null}
               <p className="onboarding-tip">
-                <strong>OpenAI example:</strong>{" "}
-                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">
-                  API keys
-                </a>
-                , base <code>https://api.openai.com/v1</code>, model <code>whisper-1</code>.
+                <Trans
+                  i18nKey="cloud_step.tip_openai"
+                  t={t}
+                  components={{
+                    strong: <strong />,
+                    code: <code />,
+                    a: (
+                      <a
+                        href="https://platform.openai.com/api-keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      />
+                    ),
+                  }}
+                />
               </p>
             </>
           );
@@ -804,24 +828,31 @@ export function OnboardingWizard({
           return (
             <>
               <p className="onboarding-tip onboarding-info-callout">
-                <strong>Local Whisper</strong> is separate from ffmpeg above. The app can{" "}
-                <strong>download the ggml model</strong> for you. For <code>whisper-cli</code>:{" "}
-                <strong>Windows</strong> — official <code>whisper-bin-x64.zip</code> from{" "}
-                <a href="https://github.com/ggml-org/whisper.cpp/releases" target="_blank" rel="noopener noreferrer">
-                  ggml-org/whisper.cpp
-                </a>{" "}
-                (use the button below; includes DLLs). <strong>macOS</strong> — no CLI zip; the button searches{" "}
-                <code>PATH</code> and Homebrew layouts, or use <strong>Pick file…</strong> after{" "}
-                <code>brew install whisper-cpp</code>. <strong>Linux</strong> — install via your distro or build from
-                source (see below); then set the path or use <strong>Pick file…</strong>. You can also put{" "}
-                <code>whisper-cli</code> next to the app.
+                <Trans
+                  i18nKey="local_step.intro"
+                  t={t}
+                  components={{
+                    strong: <strong />,
+                    code: <code />,
+                    a: (
+                      <a
+                        href="https://github.com/ggml-org/whisper.cpp/releases"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      />
+                    ),
+                  }}
+                />
               </p>
 
               <div className="onboarding-local-step">
-                <p className="onboarding-local-step-title">Step A — whisper-cli</p>
+                <p className="onboarding-local-step-title">{t("local_step.step_a_title")}</p>
                 <p className="onboarding-tip">
-                  Optional path if the binary is not next to <code>v2t</code>. Use the setup button (Windows/macOS)
-                  or <strong>Pick file…</strong> for <code>whisper-cli.exe</code> / <code>whisper-cli</code>.
+                  <Trans
+                    i18nKey="local_step.step_a_tip"
+                    t={t}
+                    components={{ strong: <strong />, code: <code /> }}
+                  />
                 </p>
                 {isWin && gpuInfo?.kind === "nvidia" ? (
                   <div
@@ -829,9 +860,12 @@ export function OnboardingWizard({
                     data-testid="onboarding-cuda-hint"
                   >
                     <p>
-                      <strong>NVIDIA GPU found</strong> ({gpuInfo.names[0] ?? "discrete"}). The CUDA build
-                      runs Whisper 10-20× faster than CPU. We will download the cuBLAS bundle by default —
-                      change this in <strong>Settings → Whisper acceleration</strong> if needed.
+                      <Trans
+                        i18nKey="local_step.cuda_intro"
+                        t={t}
+                        values={{ name: gpuInfo.names[0] ?? t("local_step.cuda_default_name") }}
+                        components={{ strong: <strong /> }}
+                      />
                     </p>
                     <label className="onboarding-radio">
                       <input
@@ -841,27 +875,45 @@ export function OnboardingWizard({
                           patchSettings({ whisperAcceleration: e.target.checked ? "auto" : "cpu" })
                         }
                       />
-                      <span>Enable CUDA acceleration (recommended)</span>
+                      <span>{t("local_step.cuda_enable")}</span>
                     </label>
                   </div>
                 ) : null}
                 {isLinux ? (
                   <div className="onboarding-tip onboarding-info-callout onboarding-linux-whisper-block">
                     <p>
-                      <strong>Linux:</strong> there is no download button here. Examples:
+                      <Trans i18nKey="local_step.linux_intro" t={t} components={{ strong: <strong /> }} />
                     </p>
                     <ul>
                       <li>
-                        Ubuntu/Debian: <code>sudo apt install whisper-cpp</code> or build{" "}
-                        <a href="https://github.com/ggml-org/whisper.cpp" target="_blank" rel="noopener noreferrer">
-                          whisper.cpp
-                        </a>
+                        <Trans
+                          i18nKey="local_step.linux_li_ubuntu"
+                          t={t}
+                          components={{
+                            code: <code />,
+                            a: (
+                              <a
+                                href="https://github.com/ggml-org/whisper.cpp"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              />
+                            ),
+                          }}
+                        />
                       </li>
                       <li>
-                        Fedora: <code>sudo dnf install whisper-cpp</code>
+                        <Trans
+                          i18nKey="local_step.linux_li_fedora"
+                          t={t}
+                          components={{ code: <code /> }}
+                        />
                       </li>
                       <li>
-                        Arch: <code>yay -S whisper-cpp</code> (AUR)
+                        <Trans
+                          i18nKey="local_step.linux_li_arch"
+                          t={t}
+                          components={{ code: <code /> }}
+                        />
                       </li>
                     </ul>
                   </div>
@@ -874,14 +926,14 @@ export function OnboardingWizard({
                       onClick={() => void onSetupWhisperCli()}
                     >
                       {whisperCliBusy
-                        ? "Working…"
+                        ? t("local_step.btn_working")
                         : isWin
-                          ? "Download whisper-cli for me (Windows)"
-                          : "Find whisper-cli (macOS)"}
+                          ? t("local_step.btn_download_win")
+                          : t("local_step.btn_find_mac")}
                     </button>
                   ) : null}
                   <button type="button" disabled={busy} onClick={() => void pickWhisperCliExecutable()}>
-                    Pick file…
+                    {t("local_step.btn_pick")}
                   </button>
                 </div>
                 {whisperCliProgress &&
@@ -896,13 +948,16 @@ export function OnboardingWizard({
                 ) : null}
                 {whisperCliSuccess ? (
                   <WizardSuccessBanner>
-                    <strong>whisper-cli path saved.</strong> The checklist should update; continue with the model
-                    below.
+                    <Trans
+                      i18nKey="local_step.cli_success"
+                      t={t}
+                      components={{ strong: <strong /> }}
+                    />
                   </WizardSuccessBanner>
                 ) : null}
                 {whisperCliError ? <WizardErrorBanner>{whisperCliError}</WizardErrorBanner> : null}
                 <label className="field onboarding-field">
-                  <span>Executable path</span>
+                  <span>{t("local_step.cli_path_label")}</span>
                   <div className="row-gap">
                     <input
                       type="text"
@@ -910,7 +965,7 @@ export function OnboardingWizard({
                       onChange={(e) =>
                         patchSettings({ whisperCliPath: e.target.value.trim() || null })
                       }
-                      placeholder="Leave empty if whisper-cli sits next to the app"
+                      placeholder={t("local_step.cli_path_placeholder")}
                       autoComplete="off"
                     />
                   </div>
@@ -918,29 +973,32 @@ export function OnboardingWizard({
               </div>
 
               <div className="onboarding-local-step">
-                <p className="onboarding-local-step-title">Step B — model file</p>
+                <p className="onboarding-local-step-title">{t("local_step.step_b_title")}</p>
                 <p className="onboarding-tip">
-                  Choose size, then download. We verify SHA-1; when it matches, you will see a green confirmation
-                  below and the checklist item <strong>Whisper model (.bin)</strong> turns green.
+                  <Trans
+                    i18nKey="local_step.step_b_tip"
+                    t={t}
+                    components={{ strong: <strong /> }}
+                  />
                 </p>
                 <label className="field onboarding-field">
-                  <span>Folder for .bin files</span>
+                  <span>{t("local_step.models_dir_label")}</span>
                   <div className="row-gap">
                     <input
                       type="text"
                       readOnly
                       value={settings.whisperModelsDir ?? ""}
-                      placeholder={defaultModelsPath ?? "Default: app data / models"}
+                      placeholder={defaultModelsPath ?? t("local_step.models_dir_default_placeholder")}
                     />
                     <button type="button" disabled={busy} onClick={() => void pickWhisperModelsDir()}>
-                      Browse…
+                      {t("local_step.browse")}
                     </button>
                   </div>
                 </label>
                 <label className="field onboarding-field">
-                  <span>Model</span>
+                  <span>{t("local_step.model_label")}</span>
                   <select
-                    aria-label="Whisper GGML model"
+                    aria-label={t("local_step.model_aria")}
                     value={settings.whisperModel}
                     onChange={(e) => {
                       patchSettings({ whisperModel: e.target.value });
@@ -950,13 +1008,17 @@ export function OnboardingWizard({
                   >
                     {whisperModels.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.id} — ~{m.sizeMib} MiB ({m.fileName})
+                        {t("local_step.model_option", {
+                          id: m.id,
+                          sizeMib: m.sizeMib,
+                          fileName: m.fileName,
+                        })}
                       </option>
                     ))}
                   </select>
                 </label>
                 <button type="button" disabled={modelDlBusy || busy} onClick={() => void onDownloadModel()}>
-                  {modelDlBusy ? "Downloading…" : "Download / verify model"}
+                  {modelDlBusy ? t("local_step.btn_downloading") : t("local_step.btn_download_model")}
                 </button>
                 {modelDlProgress && modelDlProgress.total != null && modelDlProgress.total > 0 ? (
                   <div className="download-progress-wrap onboarding-progress">
@@ -968,8 +1030,11 @@ export function OnboardingWizard({
                 ) : null}
                 {modelInstallSuccess ? (
                   <WizardSuccessBanner>
-                    <strong>Model ready.</strong> File is on disk and SHA-1 matches. The checklist should show a
-                    green dot for <strong>Whisper model (.bin)</strong>.
+                    <Trans
+                      i18nKey="local_step.model_success"
+                      t={t}
+                      components={{ strong: <strong /> }}
+                    />
                   </WizardSuccessBanner>
                 ) : null}
                 {modelDlError ? <WizardErrorBanner>{modelDlError}</WizardErrorBanner> : null}
@@ -980,11 +1045,10 @@ export function OnboardingWizard({
         return (
           <>
             <p>
-              You can switch between <strong>HTTP API</strong>, <strong>Local Whisper</strong>, and{" "}
-              <strong>In-app Whisper</strong>, set API keys, and download models anytime in <strong>Settings</strong>.
+              <Trans i18nKey="later_step.intro" t={t} components={{ strong: <strong /> }} />
             </p>
             <button type="button" className="ghost" disabled={busy} onClick={onOpenSettings}>
-              Open Settings now
+              {t("later_step.btn_open_settings")}
             </button>
           </>
         );
@@ -992,11 +1056,9 @@ export function OnboardingWizard({
         return (
           <>
             <p>
-              Add files, folders, or paste links into the queue, then press <strong>Start queue</strong>.
+              <Trans i18nKey="run_step.intro" t={t} components={{ strong: <strong /> }} />
             </p>
-            <p className="onboarding-tip">
-              If something fails, check the log at the bottom and the checklist above.
-            </p>
+            <p className="onboarding-tip">{t("run_step.tip")}</p>
           </>
         );
       default:
@@ -1019,7 +1081,7 @@ export function OnboardingWizard({
         data-testid="onboarding-wizard"
       >
         <p className="onboarding-step-label">
-          Step {step + 1} of {TOTAL_STEPS}
+          {t("step_label", { current: step + 1, total: TOTAL_STEPS })}
         </p>
         <h2 id="onboarding-title" className="onboarding-modal-title">
           {title}
@@ -1032,23 +1094,23 @@ export function OnboardingWizard({
               disabled={busy || toolDlBusy || modelDlBusy || whisperCliBusy}
               onClick={goBack}
             >
-              Back
+              {t("btn.back")}
             </button>
           ) : (
             <span />
           )}
           <div className="onboarding-actions-right">
             <button type="button" className="ghost" disabled={busy} onClick={() => void handleFinish()}>
-              Skip setup
+              {t("btn.skip")}
             </button>
             {step === 5 ? (
               <button type="button" disabled={busy} onClick={onOpenSettings}>
-                Open Settings
+                {t("btn.open_settings")}
               </button>
             ) : null}
             {last ? (
               <button type="button" className="primary" disabled={busy} onClick={() => void handleFinish()}>
-                {busy ? "Saving…" : "Done"}
+                {busy ? t("btn.saving") : t("btn.done")}
               </button>
             ) : (
               <button
@@ -1057,12 +1119,12 @@ export function OnboardingWizard({
                 disabled={nextDisabled}
                 onClick={() => void goNext()}
               >
-                Next
+                {t("btn.next")}
               </button>
             )}
           </div>
         </div>
-        <button type="button" className="onboarding-close" aria-label="Close" disabled={busy} onClick={onClose}>
+        <button type="button" className="onboarding-close" aria-label={t("btn.close_aria")} disabled={busy} onClick={onClose}>
           ×
         </button>
       </div>
