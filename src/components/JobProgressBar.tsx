@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { JobProgressSnapshot } from "../types/queue";
 
 type Props = {
@@ -6,6 +7,7 @@ type Props = {
 
 /** Compact one-line progress indicator: bar + N/M + percent + raw tail (speed/ETA). */
 export function JobProgressBar({ progress }: Props) {
+  const { t } = useTranslation("queue");
   const { phase, message, subtaskIndex, subtaskTotal, subtaskPercent } = progress;
   const hasSubtask = subtaskIndex != null && subtaskTotal != null;
   const percent = subtaskPercent ?? 0;
@@ -31,7 +33,7 @@ export function JobProgressBar({ progress }: Props) {
         className="job-progress-bar"
         max={100}
         value={percent}
-        aria-label={`${phase} progress`}
+        aria-label={t("progress_aria", { phase })}
       />
     </div>
   );

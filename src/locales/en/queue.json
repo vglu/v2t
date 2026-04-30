@@ -74,5 +74,6 @@
   "actions": {
     "show_in_folder": "Show in folder",
     "open_file": "Open file"
-  }
+  },
+  "progress_aria": "{{phase}} progress"
 }
