@@ -70,8 +70,12 @@ describe("QueuePanel", () => {
     render(
       <QueuePanel settings={settingsFixture} readinessComplete={true} />,
     );
+    // Class variant is the language-independent signal (text content varies
+    // per locale once M3d catalogs ship).
     expect(screen.getByTestId("queue-empty-hint")).toHaveClass("queue-empty-hint-ok");
-    expect(screen.getByText(/Ready when you are/i)).toBeInTheDocument();
+    expect(screen.getByTestId("queue-empty-hint")).not.toHaveClass(
+      "queue-empty-hint-warn",
+    );
   });
 
   it("shows setup warning when readiness is incomplete", () => {
@@ -81,7 +85,9 @@ describe("QueuePanel", () => {
     expect(screen.getByTestId("queue-empty-hint")).toHaveClass(
       "queue-empty-hint-warn",
     );
-    expect(screen.getByText(/Finish setup first/i)).toBeInTheDocument();
+    expect(screen.getByTestId("queue-empty-hint")).not.toHaveClass(
+      "queue-empty-hint-ok",
+    );
   });
 
   it("adds URLs and completes process_queue_item", async () => {
@@ -100,7 +106,14 @@ describe("QueuePanel", () => {
       const el = document.querySelector('[data-testid^="job-status-"]');
       expect(el?.textContent).toBe("done");
     });
-    expect(screen.getByTestId("queue-log").textContent).toMatch(/Queue idle/);
+    // After the queue finishes, the panel flips data-queue-running="false".
+    // Language-independent.
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-panel")).toHaveAttribute(
+        "data-queue-running",
+        "false",
+      );
+    });
   });
 
   it("stop cancels jobs not yet started after the first finishes", async () => {
@@ -155,6 +168,13 @@ describe("QueuePanel", () => {
       const texts = [...statusEls].map((el) => el.textContent);
       expect(texts).toEqual(["done", "cancelled"]);
     });
-    expect(screen.getByTestId("queue-log").textContent).toMatch(/Queue idle/);
+    // After the queue finishes, the panel flips data-queue-running="false".
+    // Language-independent.
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-panel")).toHaveAttribute(
+        "data-queue-running",
+        "false",
+      );
+    });
   });
 });

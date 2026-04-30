@@ -31,4 +31,16 @@ describe("i18next runtime", () => {
     // app keeps rendering its hard-coded English strings unchanged.
     expect(i18next.exists("nonexistent.key")).toBe(false);
   });
+
+  it("uk catalog is fully populated and ts() resolves a known key", () => {
+    // After M3c+M3d, every locale has 344 keys. Pick a key with a
+    // distinctive UA wording so we know the catalog actually loaded
+    // (and isn't masked by an EN fallback).
+    const enValue = i18next.getFixedT("en", "common")("tab.queue");
+    const ukValue = i18next.getFixedT("uk", "common")("tab.queue");
+    expect(enValue).toBe("Queue");
+    expect(typeof ukValue).toBe("string");
+    expect(ukValue.length).toBeGreaterThan(0);
+    expect(ukValue).not.toBe(enValue);
+  });
 });

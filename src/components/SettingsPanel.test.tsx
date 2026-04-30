@@ -35,9 +35,7 @@ describe("SettingsPanel", () => {
       />,
     );
     await waitFor(() => {
-      expect(
-        screen.getByText(/API key is saved in the OS credential store/i),
-      ).toBeVisible();
+      expect(screen.getByTestId("cloud-credential-store-hint")).toBeVisible();
     });
   });
 

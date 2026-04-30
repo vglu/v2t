@@ -4787,7 +4787,7 @@ dependencies = [
 
 [[package]]
 name = "v2t"
-version = "1.6.0"
+version = "1.7.0"
 dependencies = [
  "chrono",
  "flate2",

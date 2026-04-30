@@ -585,7 +585,12 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
   }, [logLines, showDownloadPercents]);
 
   return (
-    <section className="queue-panel" aria-label={t("panel_aria")}>
+    <section
+      className="queue-panel"
+      aria-label={t("panel_aria")}
+      data-testid="queue-panel"
+      data-queue-running={queueRunning ? "true" : "false"}
+    >
       <h2>{t("title")}</h2>
 
       {queueEmpty ? (

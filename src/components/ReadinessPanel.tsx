@@ -156,7 +156,12 @@ export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings
           </p>
         ) : null}
         {!allOk ? (
-          <button type="button" className="readiness-settings-btn" onClick={onOpenSettings}>
+          <button
+            type="button"
+            className="readiness-settings-btn"
+            data-testid="readiness-open-settings"
+            onClick={onOpenSettings}
+          >
             {t("open_settings_btn")}
           </button>
         ) : null}

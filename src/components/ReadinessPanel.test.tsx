@@ -73,7 +73,7 @@ describe("ReadinessPanel", () => {
       />,
     );
     expect(screen.getByTestId("readiness-tool-hint")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open Settings" }));
+    await user.click(screen.getByTestId("readiness-open-settings"));
     expect(fn).toHaveBeenCalledOnce();
   });
 });

@@ -2,6 +2,27 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.7.0] - 2026-04-30
+
+### Добавлено
+
+- **Локализация UI на 8 языках** (Wave 6 / M1-M7). Полный i18n-стек на `react-i18next` с типизированными ключами (`t("typo")` падает в TS), Vite glob-loader для авто-подхвата новых каталогов, custom detector завязанный на Tauri-backed `settings.json` (один источник правды). Каталоги — per-component: `src/locales/{en,uk,ru,de,es,fr,pl,pt}/{common,onboarding,settings,queue,readiness}.json` (8 локалей × 5 namespaces = 40 файлов, **344 ключа** на локаль = **2752 переведённых строк**).
+- **Двойной переключатель языка**: компактный `<select>` в header (~80px, флаг + ISO 2-буквы) и полный в Settings → секция «Language» (Українська, Polski, Português, …). Auto-режим (default) читает `navigator.language` и подбирает локаль; на непокрытом языке — fallback на EN. Поле `uiLanguage: UiLanguage` в `AppSettings` (Rust enum + TS union, 9 вариантов с auto), persist мгновенный без Save.
+- **Translation-bot, переиспользованный из NumbersM** (`scripts/translation-bot/`). Local Ollama (Qwen2.5-Coder:7b на RTX 3060 Ti, ~1.7s/строка) с adaptированным под v2t prompt'ом (Tauri desktop transcriber, technical audience, formal-you), v2t-glossary (yt-dlp, ffmpeg, Whisper, CUDA, mp3, …), валидация PLACEHOLDER_DRIFT / GLOSSARY_LOST / LENGTH_OUT_OF_BAND / CHECK_REQUESTED. Bot за 1ч13м (на 8GB VRAM RTX 3060 Ti) перевёл все 7 целевых локалей одной overnight-сессией; merge-script (`scripts/merge-i18n-drafts.mjs`) расфасовал flat-keys драфты в per-namespace catalogs. Драфты остаются в `output/drafts/` (gitignored) для повторного merge после правок.
+- **CI-gate `npm run check:i18n`** (`scripts/check-i18n-keys.mjs`) — проверяет, что каждый ключ из `en/*.json` присутствует и непуст в каждой целевой локали. Default — advisory; `CHECK_I18N_STRICT=1` блокирует build при пропусках.
+- Все 8 UI-компонентов (`OnboardingWizard` 1071 LOC, `SettingsPanel` 1055 LOC, `QueuePanel` 857 LOC, плюс `App.tsx`, `ReadinessPanel`, `DependencyBar`, `SubtaskRow`, `JobProgressBar`) переведены на `t("key")` / `<Trans i18nKey="..." components={{strong, code, a}}>`. Inline JSX-литералов длиннее двух слов в коде нет.
+
+### Изменено
+
+- Vitest setup (`src/test/setup.ts`) импортирует `./i18n` до component render — без этого `useTranslation()` возвращал raw keys и text-matchers ломались.
+- Все vitest-тесты переведены на `data-testid` / `data-attr` matchers — language-independent. Новые testid: `cloud-credential-store-hint`, `readiness-open-settings`, `queue-panel`, `data-queue-running` атрибут на queue-panel.
+- Header — табы получили `data-testid="tab-queue"` / `tab-settings` для устойчивых e2e-проверок.
+
+### Известные ограничения
+
+- Bot оставил ~428 advisory warnings в драфтах (CHECK_REQUESTED 25-29% в UA/PL — модель самопометила context-poor короткие ключи). UA + RU прошли human review; **DE/ES/FR/PL/PT** ждут bug-репортов от пользователей, которые там работают (MIT-проект, ограниченный bandwidth ревьюеров).
+- Backend (Rust) error messages и log-строки `[yt-dlp] X% …` / `[ffmpeg] …` намеренно остаются английскими — это технический поток, идёт в support-тикеты.
+
 ## [1.6.0] - 2026-04-29
 
 ### Добавлено

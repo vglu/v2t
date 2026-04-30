@@ -747,7 +747,9 @@ export function SettingsPanel({
                 <p className="hint help-details-warning">{t("cloud.where_key_warning")}</p>
               </div>
             </details>
-            <p className="hint">{t("cloud.credential_store_hint")}</p>
+            <p className="hint" data-testid="cloud-credential-store-hint">
+              {t("cloud.credential_store_hint")}
+            </p>
           </>
         )}
       </div>
