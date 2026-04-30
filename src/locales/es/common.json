@@ -1,0 +1,17 @@
+{
+  "tagline": "v2t — video / audio portátiles a texto",
+  "tab": {
+    "queue": "Cola",
+    "settings": "Configuración"
+  },
+  "header": {
+    "lang_aria": "Idioma de la interfaz",
+    "setup_guide_label": "Guía de configuración",
+    "setup_guide_title": "Guía rápida de configuración",
+    "setup_guide_aria": "Abrir guía de configuración"
+  },
+  "toast": {
+    "saved": "Configuraciones guardadas.",
+    "save_failed": "No se pudo guardar la configuración."
+  }
+}

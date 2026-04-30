@@ -1,0 +1,164 @@
+{
+  "title": "Paramètres",
+  "panel_aria": "Paramètres",
+  "section": {
+    "language": "Langue",
+    "output": "Sortie",
+    "transcription": "Transcription et modèles",
+    "media_tools": "Outils multimédias (ffmpeg, yt-dlp)",
+    "subtitles_fast_path": "Accélération des sous-titres",
+    "other": "Autres"
+  },
+  "language": {
+    "field_label": "Langue de l'interface utilisateur",
+    "select_aria": "Langue de l'interface utilisateur (complète)",
+    "hint": "<strong>Auto</strong> suit le paramètre régional de votre système d'exploitation (<code>navigator.language</code>) ; les autres options forcent une langue spécifique. Enregistré instantanément — pas besoin de cliquer sur Enregistrer en dessous. Le même interrupteur (compact, avec drapeau uniquement) se trouve dans l'en-tête supérieur droit."
+  },
+  "output": {
+    "folder_label": "Dossier de sortie (transcrits .txt)",
+    "folder_placeholder": "Non défini",
+    "browse": "Parcourir…",
+    "use_documents": "Utiliser les Documents",
+    "hint": "<strong>Utiliser les Documents</strong> définit le dossier \"Documents\" de votre système d'exploitation et enregistre les paramètres. Vous pouvez le modifier à tout moment avec Parcourir."
+  },
+  "transcription": {
+    "mode_label": "Mode de transcription",
+    "mode_aria": "Mode de transcription",
+    "mode_options": {
+      "http_api": "Cloud — API HTTP (Compatible avec OpenAI)",
+      "local": "Offline — Whisper locale (whisper.cpp)",
+      "browser": "Whisper (WASM / Transformers.js)"
+    },
+    "mode_summary": {
+      "local": "Aucune clé API. Vous avez besoin de l'exécutable whisper-cli et d'un modèle ggml .bin sur le disque. ⚠️CHECK",
+      "browser": "Aucune clé API ou whisper-cli. La transcription s'exécute dans l'application (WASM) ; choisissez la taille du modèle — le premier démarrage peut télécharger les poids.",
+      "cloud": "Utilisez votre clé API de fournisseur. whisper-cli et les modèles locaux ne sont pas utilisés."
+    },
+    "browser_warn": "Expérimental : nécessite une connexion Internet pour le premier téléchargement de modèle ; les fichiers audio longs peuvent être lents ou se terminer par manque de mémoire. Si cela échoue, passez à l'API Cloud ou au Whisper local. ⚠️CHECK",
+    "transcription_aria": "Paramètres de transcription"
+  },
+  "local_whisper": {
+    "step1_title": "1 · whisper-cli ( moteur )",
+    "step1_hint": "<strong>Windows:</strong> version officielle <code>whisper-bin-x64.zip</code> de <a>ggml-org/whisper.cpp</a> (MIT) — utilisez le bouton ci-dessous pour télécharger dans les données de l'application (inclut les DLLs). <strong>macOS:</strong> pas de zip CLI dans ces versions ; le bouton exécute <code>which whisper-cli</code> / <code>whisper</code> / <code>main</code> et scanne les chemins Homebrew, ou utilisez <strong>Sélectionner un fichier…</strong> après <code>brew install whisper-cpp</code>.",
+    "linux_intro": "<strong>Linux :</strong> cette application ne télécharge pas whisper-cli ici. Installez un paquet ou construisez à partir de la source, puis définissez le chemin ci-dessous ou utilisez <strong>Sélectionner un fichier…</strong>.",
+    "linux_li_ubuntu": "<strong>Ubuntu / Debian:</strong> <code>sudo apt install whisper-cpp</code> (si disponible dans votre version) ou construire à partir de <a>ggml-org/whisper.cpp</a>",
+    "linux_li_fedora": "<strong>Fédora :</strong> <code>sudo dnf install whisper-cpp</code> (nom du package peut varier)",
+    "linux_li_arch": "<strong>Arch:</strong> AUR par exemple <code>yay -S whisper-cpp</code>",
+    "btn_download_win": "Téléchargez whisper-cli pour moi (Windows)",
+    "btn_find_mac": "Trouver whisper-cli (macOS)",
+    "btn_pick_file": "Choisissez un fichier…",
+    "btn_working": "En cours…",
+    "path_field_label": "Chemin vers l'exécutable (facultatif si à côté de l'application)",
+    "path_placeholder": "whisper-cli.exe / whisper-cli — ou choisissez un fichier…",
+    "install_success": "<strong>Chemin de whisper-cli enregistré.</strong> La liste à cocher doit s'actualiser après le rafraîchissement. ⚠️CHECK",
+    "step15_title": "1,5 · Accélération Whisper (Windows)",
+    "step15_hint": "Choisissez la version de whisper.cpp à télécharger. <strong>CUDA</strong> nécessite un GPU NVIDIA (10-20× plus rapide sur les cartes graphiques RTX). <strong>Vulkan</strong> fonctionne sur la plupart des GPUs NVIDIA / AMD / Intel (8-15×). <strong>CPU</strong> est la base sûre. Changer cela ne redownloadera pas automatiquement ; cliquez sur <strong>Télécharger à nouveau whisper-cli</strong> ci-dessous pour obtenir le bundle correspondant.",
+    "gpu_detected_prefix": "Détection effectuée :",
+    "gpu_none": "Aucun GPU discret reconnu",
+    "gpu_unknown_adapter": "adaptateur inconnu",
+    "gpu_auto_nvidia": "— L'auto sélectionnera CUDA.",
+    "gpu_auto_none": "— L'auto reste sur le CPU.",
+    "gpu_auto_other": "Auto reste sur le CPU ; sélectionnez manuellement Vulkan si les pilotes sont à jour. ⚠️CHECK",
+    "accel_aria": "Accélération Whisper",
+    "accel": {
+      "auto": "Auto (recommandé)",
+      "cuda": "CUDA — NVIDIA seulement",
+      "vulkan": "Vulkan — NVIDIA / AMD / Intel",
+      "cpu": "CPU - base de sécurité"
+    },
+    "btn_redownload": "Re-télécharger whisper-cli pour le backend sélectionné",
+    "step2_title": "2 · Modèle GGML (.bin)",
+    "step2_hint": "Choisissez une taille de modèle, puis téléchargez-la. La liste de vérification devient verte lorsque le fichier existe et que la somme de contrôle SHA-1 correspond au catalogue (même vérification après le téléchargement).",
+    "models_dir_label": "Dossier pour les fichiers .bin",
+    "models_dir_placeholder_default": "Défaut : données de l'application / modèles",
+    "model_label": "Modèle",
+    "model_aria": "Whisper modèle GGML",
+    "model_option": "{{id}} — ~{{sizeMib}} Mo ({{fileName}})",
+    "btn_download_model": "Télécharger / vérifier le modèle",
+    "btn_downloading": "Téléchargement…",
+    "model_dl_msg_done": "Modèle prêt (vérifié SHA-1)."
+  },
+  "browser_whisper": {
+    "model_size_title": "Taille du modèle (navigateur)",
+    "model_size_hint": "Taille du modèle Whisper ⚠️CHECK",
+    "model_label": "Modèle",
+    "model_aria": "Taille du modèle Whisper dans l'application",
+    "model_option": "{{id}} — ~{{sizeMib}} Mo (navigateur, approximatif)"
+  },
+  "cloud": {
+    "api_url_label": "URL de base de l'API",
+    "api_model_label": "Nom du modèle API",
+    "api_key_label": "Clé API",
+    "where_key_summary": "Où puis-je obtenir une clé API ?",
+    "where_key_body_provider": "Utilisez un fournisseur avec une requête <code>POST …/audio/transcriptions</code> et un format JSON avec un champ <code>text</code>. ⚠️CHECK",
+    "where_key_body_openai": "<strong>OpenAI:</strong> <a>Clés API</a>, base <code>https://api.openai.com/v1</code>, modèle par exemple <code>whisper-1</code>.",
+    "where_key_warning": "Gardez la clé secrète : ne la partagez pas ou collez-la pas dans des chats publics ou des dépôts git. ⚠️CHECK",
+    "credential_store_hint": "La clé API est stockée dans le magasin de credentiels du système d'exploitation (Gestionnaire des identifiants Windows, Cléchain macOS, Service secret sur Linux). Le fichier de paramètres conserve uniquement les autres options (pas de clé en texte brut) ⚠️CHECK"
+  },
+  "media_tools": {
+    "win_hint": "<strong>Télécharger pour moi (Windows):</strong> télécharge <code>yt-dlp.exe</code> depuis les publications GitHub et un zip <strong>GPL</strong> FFmpeg de <a>BtbN/FFmpeg-Builds</a>, extrait <code>ffmpeg.exe</code> dans le dossier des données de votre application, puis enregistre les chemins dans les paramètres.",
+    "mac_hint": "<strong>Télécharger pour moi (macOS):</strong> télécharge <code>yt-dlp_macos</code> depuis les publications GitHub et un <code>ffmpeg</code> statique adapté à votre processeur (<a>ffmpeg-static</a>), enregistre les deux dans les données de l'application et met à jour les chemins. Si macOS les bloque, autorisez-les dans <strong>Sécurité et confidentialité</strong> ou nettoyez la quarantaine (<code>xattr -dr com.apple.quarantine …</code>).",
+    "btn_download": "Téléchargez ffmpeg et yt-dlp pour moi",
+    "btn_downloading": "Téléchargement…",
+    "linux_hint": "Le téléchargement en un clic est disponible uniquement sur <strong>Windows</strong> et <strong>macOS</strong>. Sur Linux, installez <code>ffmpeg</code> et <code>yt-dlp</code> (par exemple via le gestionnaire de paquets) et collez les chemins complets ci-dessous.",
+    "self_install_summary": "Je vais installer ffmpeg / yt-dlp moi-même",
+    "self_install_intro": "Placez <strong>ffmpeg</strong> et <strong>yt-dlp</strong> à côté de <code>v2t.exe</code> (ou dans un sous-dossier <code>bin</code>), ou entrez les chemins complets ici.",
+    "ffmpeg_path_label": "Chemin d'accès à ffmpeg (facultatif)",
+    "ytdlp_path_label": "Chemin d'accès à yt-dlp (facultatif)",
+    "auto_detect_placeholder": "Détection automatique si à côté de l'application",
+    "js_runtimes_label": "yt-dlp JS exécutables (facultatif)",
+    "js_runtimes_aria": "yt-dlp JavaScript runtimes pour EJS",
+    "js_runtimes_placeholder": "deno — voir la documentation de yt-dlp (EJS)",
+    "common_label": "Commun :",
+    "js_runtimes_hint": "Si YouTube échoue avec \"pas de runtime JavaScript pris en charge\", installez Deno ou Node et définissez cela sur le nom du runtime que yt-dlp attend (généralement <code>deno</code>).",
+    "btn_install_deno": "Télécharger et installer Deno pour moi",
+    "btn_install_deno_busy": "Installation…",
+    "deno_success": "<strong>Fait.</strong> Deno installé ; les environnements d'exécution JavaScript définis sur <code>deno</code>.",
+    "cookies_label": "Source des cookies pour yt-dlp (YouTube / TikTok age-gate)",
+    "cookies_aria": "Navigateur pour lire les cookies de",
+    "cookies_options": {
+      "auto": "Auto (Microsoft Edge sur Windows, Google Chrome sur macOS, Mozilla Firefox sur Linux)",
+      "chrome": "Chrome",
+      "brave": "Brave",
+      "edge": "Edge",
+      "firefox": "Firefox",
+      "none": "Désactivé — ne pas utiliser les cookies du navigateur"
+    },
+    "cookies_hint": "Transmet <code>--cookies-from-browser</code> à yt-dlp. Le navigateur doit être installé et vous devez être connecté à YouTube / TikTok dans celui-ci. **Chrome, Brave et Edge ont deux problèmes connus sous Windows :** (1) leur base de données de cookies est verrouillée tandis que le navigateur est en cours d'exécution — fermez-le d'abord ; (2) depuis Chrome 127+, les cookies sont chiffrés avec une chiffrement lié à l'application (DPAPI) que yt-dlp ne peut pas déchiffrer même lorsque le navigateur est fermé (<a>problème #10927</a>). **Firefox est la meilleure option** — connectez-vous là-bas et sélectionnez Firefox.",
+    "tools_msg_done": "ffmpeg et yt-dlp enregistrés dans les données de l'application et les chemins mis à jour."
+  },
+  "filename_template_label": "Modèle de nom de fichier",
+  "filename_template_placeholder": "{title}_{date}_{index}_t{track}.txt",
+  "delete_audio_after": "Supprimer l'audio temporaire après le succès",
+  "keep_video": "Enregistrer la vidéo téléchargée dans le dossier de sortie (tâches URL — deuxième passe yt-dlp, meilleure qualité mp4)",
+  "keep_audio": "Enregistrer l'audio téléchargé dans le dossier de sortie (tâches URL + vidéos locales — extraits via ffmpeg)",
+  "audio_format": {
+    "label": "Format audio",
+    "original": "Original (meilleure qualité audio / copie de flux, pas de réencodage)",
+    "m4a": "m4a (AAC)",
+    "mp3": "mp3"
+  },
+  "recursive_scan": "Recherche récursive des dossiers (inclus les sous-dossiers)",
+  "language_iso": {
+    "label": "Langue (facultatif, code ISO)",
+    "placeholder": "auto",
+    "examples_label": "Exemples :",
+    "ru_chip": "ru Chip",
+    "ru_desc": "(Russe)",
+    "uk_chip": "uk ⚠️CHECK",
+    "uk_desc": "(Ukrainien)",
+    "en_chip": "en chip",
+    "en_desc": "Clé API ⚠️CHECK",
+    "hint": "Or any other ISO 639-1 code (e.g. <code>de</code>, <code>fr</code>, <code>pl</code>)"
+  },
+  "subtitles": {
+    "intro": "Pour les vidéos YouTube avec des sous-titres <strong>manuals</strong> dans une langue prioritaire, récupérez directement l'SRT via yt-dlp et sautez le téléchargement + Whisper. Les <strong>captions générées automatiquement</strong> sont intentionnellement ignorées (inférieures en qualité à Whisper-medium pour les non-anglais). URL de vidéo unique uniquement — les URL de listes de lecture continuent à télécharger et transcrire normalement.",
+    "toggle": "Utiliser les sous-titres quand disponibles (sauter Whisper)",
+    "priority_label": "Priorités linguistiques (codes ISO séparés par des virgules)",
+    "priority_placeholder": "uk, ru, en",
+    "priority_hint": "Priorité des sous-titres ⚠️CHECK",
+    "keep_srt": "Également enregistrer le fichier .srt original à côté du transcrit .txt ⚠️CHECK"
+  },
+  "btn_save": "Enregistrer les paramètres",
+  "btn_saving": "Sauvegarde…"
+}

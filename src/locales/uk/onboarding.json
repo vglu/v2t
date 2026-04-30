@@ -1,0 +1,127 @@
+{
+  "step_label": "Крок {{current}} з {{total}}",
+  "modal_aria": "Вітаємо вас в налаштування програми v2t!",
+  "step_title": {
+    "welcome": "Ласкаво просимо ⚠️CHECK",
+    "output": "Вибіркулятор файлів ⚠️CHECK",
+    "tools": "ffmpeg та yt-dlp",
+    "transcription": "Транскрипція",
+    "cloud": "Cloud API",
+    "local": "Локальний Whisper",
+    "browser": "Утиліта Whisper в майбутньому проекті v2t.",
+    "later": "Завершити в налаштуваннях",
+    "run": "Запустити завдання ⚠️CHECK"
+  },
+  "btn": {
+    "back": "Назад",
+    "next": "Далі",
+    "skip": "Пропустити настройку ⚠️CHECK",
+    "done": "Готово",
+    "saving": "Збереження…",
+    "open_settings": "Відкрийте налаштування",
+    "close_aria": "Закрити"
+  },
+  "checklist_tip": "Перелік на головному екрані оновлюється під час роботи.",
+  "welcome": {
+    "intro": "<strong>Video to Text</strong> перетворює відео, аудіо та посилання на текстові файли. Краткий настройка проводить вас через інструменти, транскрипцію та чергу."
+  },
+  "output": {
+    "intro": "Оберіть, де зберігатися транскрипти у форматі <strong>.txt</strong>. За замовчуванням вибирається <strong>Документи</strong>, що збігається зі списком завдань при виборі.",
+    "current_folder_label": "Поточна папка",
+    "not_set_placeholder": "Не встановлено ⚠️CHECK",
+    "use_documents": "Використовувати документи",
+    "browse": "Перегляд…",
+    "error_pick_folder": "Оберіть теку за допомогою кнопки «Browse», або використовуйте «Documents» (рекомендовано).",
+    "tip_documents_set": "Використовуйте папку Документи — це з'явиться як готовий у \"Перед тим, як почати\".",
+    "tip_custom_set": "Власна папка — вона буде показана як встановлена, коли ви продовжите.",
+    "tip_use_documents": "Підказка: Використовуйте Документи, якщо не потрібна інша локація."
+  },
+  "tools": {
+    "intro": "URL завантаження вимагають <strong>ffmpeg</strong> та <strong>yt-dlp</strong> на цьому комп'ютері.",
+    "btn_install": "Встановити ffmpeg & yt-dlp для мене",
+    "btn_installing": "Завантаження…",
+    "install_success": "Все готово. ffmpeg та yt-dlp встановлені; шляхи збережені. Перелік вище повинен показувати їх як знайдені.",
+    "tip_manual": "Встановіть вручну і налаштуйте шляхи пізніше у <strong>Налаштуваннях</strong>.",
+    "linux_hint": "У Linux встановіть <code>ffmpeg</code> та <code>yt-dlp</code> за допомогою вашого пакетного менеджера, а потім налаштуйте шляхи у <strong>Налаштуваннях</strong>.",
+    "js_runtimes_label": "JS рунти для yt-dlp (відповідно)",
+    "js_runtimes_aria": "JavaScript виконавачі для EJS ⚠️CHECK",
+    "js_runtimes_placeholder": "deno — дивіться вiquipедію про yt-dlp (EJS) ⚠️CHECK",
+    "common_label": "Зазвичай:",
+    "js_runtimes_tip": "Якщо YouTube не працює з повідомленням \"немає підтриманого JavaScript runtime\", встановіть Deno або Node та задайте це ім'я робочого середовища, яке очікує yt-dlp (зазвичай <code>deno</code>).",
+    "btn_install_deno": "Завантажити та встановити Deno для мене",
+    "btn_install_deno_busy": "Встановлення…",
+    "deno_success": "<strong>Зроблено.</strong> Deno встановлений; JS розуміння налаштовані на <code>deno</code>.",
+    "cookies_label": "Cookies браузера для YouTube / TikTok",
+    "cookies_aria": "Чтоб зчитати cookie-файли з браузера",
+    "cookies_options": {
+      "auto": "Автоматичний вибір (Edge на Windows, Chrome на macOS, Firefox на Linux)",
+      "chrome": "Chrome",
+      "brave": "Brave",
+      "edge": "Edge",
+      "firefox": "Firefox",
+      "none": "Вимкнено"
+    },
+    "cookies_tip": "yt-dlp читає cookies з вашого браузера, щоб відео з обмеженнями по віці або необхідною увійденою уважали працювали. Переконайтеся, що у цьому браузері ви увійшли на YouTube / TikTok. <strong>Firefox сильно рекомендований на Windows</strong> — Chrome, Brave і Edge використовують шифрування cookies прив'язане до додатку (Chrome 127+), яке yt-dlp не може дешифрувати, навіть коли браузер закритий."
+  },
+  "mode": {
+    "intro": "Як виробляти транскрипти? ⚠️CHECK",
+    "group_aria": "Режим перекладу ⚠️CHECK",
+    "cloud": "<strong>Хмарний режим (API через HTTP)</strong> — використовується для передачі аудіо до OpenAI та отримання текстової транскрипції. Необхідний API ключ.",
+    "local": "<strong>Локальний Whisper</strong> — <code>whisper.cpp</code> на цьому ПК, без API ключа; завантажити модель у наступному кроку.",
+    "browser": "<strong>Whisper в майбутньому додатку</strong> — працює у додатку (WASM), без API ключа та <code>whisper-cli</code>; моделі завантажуються при першому використанні.",
+    "later": "Встановіть пізніше ⚠️CHECK"
+  },
+  "browser_step": {
+    "intro": "<strong>Whisper в додатку</strong> використовує Transformers.js у додатку. Ви все ще потрібно мають ffmpeg / yt-dlp для посилань; сама транскрипція залишається на пристрої у веб-перегляді.",
+    "model_size_label": "Розмір моделі ⚠️CHECK",
+    "model_aria": "Розмір моделі Whisper в додатку",
+    "model_option": "{{id}} — ~{{sizeMib}} МБ (браузер, приблизне)",
+    "tip": "Метадані <code>.bin</code> файлів ggml не використовуються у цьому режимі. ⚠️CHECK"
+  },
+  "cloud_step": {
+    "intro": "Введіть деталі вашого провайдера хмарних послуг. Ключ зберігається в безпечному сховищі операційної системи, а не у простому тексті.",
+    "api_url_label": "URL базового API",
+    "api_model_label": "Назва моделі ⚠️CHECK",
+    "api_key_label": "Ключ API",
+    "error_no_key": "Введіть ваш API ключ для продовження (або поверніться назад і виберіть іншу опцію).",
+    "tip_openai": "<strong>Приклад OpenAI:</strong> <a>API ключі</a>, базовий <code>https://api.openai.com/v1</code>, модель <code>whisper-1</code>."
+  },
+  "local_step": {
+    "intro": "<strong>Локальний Whisper</strong> є окремим від ffmpeg. Програма може <strong>завантажити модель ggml</strong> для вас. Для <code>whisper-cli</code>: <strong>Windows</strong> — офіційний <code>whisper-bin-x64.zip</code> з <a>ggml-org/whisper.cpp</a> (використовуйте кнопку нижче; включає DLLи). <strong>macOS</strong> — немає CLI zip; кнопка шукає <code>PATH</code> та розташування Homebrew, або використовуйте <strong>Виберіть файл…</strong> після <code>brew install whisper-cpp</code>. <strong>Linux</strong> — встановлюйте через ваш дистрибутив або будьте створюйте з нуля (подивіться нижче); потім встановіть шлях або використовуйте <strong>Виберіть файл…</strong>. Ви також можете помістити <code>whisper-cli</code> рядом з програмою.",
+    "step_a_title": "Крок А — whisper-cli",
+    "step_a_tip": "Необхідний шлях, якщо бінарний файл не знаходиться рядом з <code>v2t</code>. Використовуйте кнопку налаштування (Windows/macOS) або <strong>Виберіть файл…</strong> для <code>whisper-cli.exe</code> / <code>whisper-cli</code>.",
+    "cuda_intro": "<strong>Знайдено NVIDIA GPU</strong> ({{name}}). Сборка CUDA працює 10-20 разів швидше за CPU. За замовчуванням ми завантажимо пакет cuBLAS — змініть це в <strong>Налаштування → Усиління Whisper</strong>, якщо потрібно.",
+    "cuda_default_name": "дискретний",
+    "cuda_enable": "Увімкнути акселерацію CUDA (рекомендовано)",
+    "linux_intro": "<strong>Linux:</strong> тут немає кнопки для завантаження. Приклади:",
+    "linux_li_ubuntu": "Ubuntu/Debian: <code>sudo apt install whisper-cpp</code> або побудова <a>whisper.cpp</a> ⚠️CHECK",
+    "linux_li_fedora": "Fedora: <code>sudo dnf install whisper-cpp</code>",
+    "linux_li_arch": "Arch: <code>yay -S whisper-cpp</code> (AUR)",
+    "btn_download_win": "Завантажити whisper-cli для мене (Windows)",
+    "btn_find_mac": "Знайдіть whisper-cli (macOS) ⚠️CHECK",
+    "btn_pick": "Оберіть файл…",
+    "btn_working": "Робота...",
+    "cli_success": "<strong>Шлях до whisper-cli збережено.</strong> Перевірочний список повинен оновитися; продовжуйте з моделлю нижче.",
+    "cli_path_label": "Шлях до виконавчого файлу",
+    "cli_path_placeholder": "Якщо whisper-cli знаходиться рядом з програмою",
+    "step_b_title": "Крок B — файл моделі",
+    "step_b_tip": "Виберіть розмір, потім завантажте. Ми перевіряємо SHA-1; коли вони збігаються, ви побачите зелену підтвердження нижче і пункт списку <strong>Модель Whisper (.bin)</strong> стане зеленим. ⚠️CHECK",
+    "models_dir_label": "Папка для файлів .bin",
+    "models_dir_default_placeholder": "Заголовок: Встановлення моделей\n\nДопомога: Будь ласка, введіть шлях до директорії з моделями.",
+    "browse": "Перегляд…",
+    "model_label": "Модель",
+    "model_aria": "Модель Whisper GGML",
+    "model_option": "{{id}} — ~{{sizeMib}} МБ ({{fileName}})",
+    "btn_download_model": "Завантажити / перевірити модель",
+    "btn_downloading": "Завантаження…",
+    "model_success": "<strong>Модель готова.</strong> Файл на диску і SHA-1 відповідає. Перевірочний список повинен показати зелений краплю для <strong>моделі Whisper (.bin)</strong>."
+  },
+  "later_step": {
+    "intro": "Ви можете перемикатися між <strong>HTTP API</strong>, <strong>Локальною Whisper</strong> та <strong>Whisper в додатку</strong>, встановлювати ключі API та завантажувати моделі у будь-який час у <strong>Налаштуваннях</strong>.",
+    "btn_open_settings": "Відкрийте налаштування зараз"
+  },
+  "run_step": {
+    "intro": "Додайте файли або папки або вставте посилання у чергу, потім натисніть <strong>Почати чергу</strong>.",
+    "tip": "Якщо щось пішло не так, перевір лог на кшталт нижче та список перевірок вище. ⚠️CHECK"
+  }
+}

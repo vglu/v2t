@@ -1,0 +1,127 @@
+{
+  "step_label": "Schritt {{current}} von {{total}}",
+  "modal_aria": "Willkommen zum Setup-Assistenten",
+  "step_title": {
+    "welcome": "Willkommen",
+    "output": "Ausgabeordner",
+    "tools": "ffmpeg & yt-dlp",
+    "transcription": "Transkription",
+    "cloud": "Cloud-API",
+    "local": "Lokaler Whisper",
+    "browser": "In-App Whisper",
+    "later": "Fertigstellen in den Einstellungen",
+    "run": "Führe Aufgaben aus"
+  },
+  "btn": {
+    "back": "Zurück",
+    "next": "Weiter →",
+    "skip": "Überspringen der Einrichtung",
+    "done": "Fertig",
+    "saving": "Speichern…",
+    "open_settings": "Öffne Einstellungen",
+    "close_aria": "Schließen"
+  },
+  "checklist_tip": "Die Liste auf der Hauptseite aktualisiert sich während des Prozesses.",
+  "welcome": {
+    "intro": "<strong>Video to Text</strong> wandelt Videos, Audios und Links in Textdateien um. Ein kurzer Setup führt dich durch Werkzeuge, Transkription und die Warteschlange."
+  },
+  "output": {
+    "intro": "Wählen Sie, wo die <strong>.txt</strong>-Transkripte gespeichert werden. \"Dokumente\" ist der Standard und passt zur Liste, wenn ausgewählt.",
+    "current_folder_label": "Aktuelles Verzeichnis",
+    "not_set_placeholder": "Nicht gesetzt ⚠️CHECK",
+    "use_documents": "Verwenden Sie Dokumente",
+    "browse": "Durchsuchen…",
+    "error_pick_folder": "Wählen Sie einen Ordner mit „Durchsuchen“, oder verwenden Sie „Dokumente“ (empfohlen).",
+    "tip_documents_set": "Verwenden Sie Ihr Dokumentenordner – dies wird als bereit angezeigt, bevor Sie beginnen.",
+    "tip_custom_set": "Benutzerdefinierter Ordner – er wird angezeigt, sobald Sie fortfahren.",
+    "tip_use_documents": "Tipp: Verwenden Sie Dokumente, es sei denn, Sie benötigen eine andere Position."
+  },
+  "tools": {
+    "intro": "URL-Downloads benötigen <strong>ffmpeg</strong> und <strong>yt-dlp</strong> auf diesem Computer.",
+    "btn_install": "Installieren Sie ffmpeg und yt-dlp für mich ⚠️CHECK",
+    "btn_installing": "Herunterladen…",
+    "install_success": "<strong>Alles gut gelaufen.</strong> ffmpeg und yt-dlp sind installiert; die Pfade wurden gespeichert. Die Aufzählung darüber sollte sie als gefunden anzeigen. ⚠️CHECK",
+    "tip_manual": "Installieren Sie manuell und legen Sie die Pfade später in den <strong>Einstellungen</strong> fest.",
+    "linux_hint": "Installieren Sie auf Linux <code>ffmpeg</code> und <code>yt-dlp</code> mit Ihrem Paketmanager und legen Sie die Pfade in den <strong>Einstellungen</strong> fest. ⚠️CHECK",
+    "js_runtimes_label": "yt-dlp JavaScript-Runtimes (optional)",
+    "js_runtimes_aria": "yt-dlp JavaScript Laufzeitumgebung für EJS",
+    "js_runtimes_placeholder": "deno — siehe yt-dlp Wiki (EJS)",
+    "common_label": "Allgemein:",
+    "js_runtimes_tip": "Wenn YouTube mit \"kein unterstützter JavaScript-Runtime\" fehlschlägt, installieren Sie entweder Deno oder Node und setzen Sie dies auf den Namen der Runtime, die yt-dlp erwartet (meist <code>deno</code>). ⚠️CHECK",
+    "btn_install_deno": "Deno herunterladen und installieren Sie für mich ⚠️CHECK",
+    "btn_install_deno_busy": "Installieren…",
+    "deno_success": "<strong>Fertig.</strong> Deno installiert; JS-Runtimes auf <code>deno</code> gesetzt.",
+    "cookies_label": "Browser-Cookies für YouTube / TikTok",
+    "cookies_aria": "Browser, um Cookies zu lesen",
+    "cookies_options": {
+      "auto": "Automatisch (Edge unter Windows, Chrome unter macOS, Firefox unter Linux)",
+      "chrome": "Chrome",
+      "brave": "Brave",
+      "edge": "Microsoft Edge",
+      "firefox": "Firefox",
+      "none": "Deaktiviert"
+    },
+    "cookies_tip": "yt-dlp liest Cookies von Ihrem Browser, damit Sie mit Altersbeschränkungen oder anmeldung erforderlichen Videos arbeiten können. Stellen Sie sicher, dass Sie sich in YouTube / TikTok in diesem Browser angemeldet haben. <strong>Firefox wird auf Windows stark empfohlen</strong> — Chrome, Brave und Edge verwenden app-basierte Cookie-Verschlüsselung (Chrome 127+), die yt-dlp nicht entschlüsseln kann, auch wenn der Browser geschlossen ist."
+  },
+  "mode": {
+    "intro": "Wie sollen Transkripte generiert werden?",
+    "group_aria": "Transkriptionmodus",
+    "cloud": "<strong>Cloud (HTTP-API)</strong> — OpenAI-kompatibler <code>/audio/transcriptions</code>, benötigt einen API-Key.",
+    "local": "<strong>Lokale Whisper</strong> — <code>whisper.cpp</code> auf diesem Computer, ohne API-Schlüssel; laden Sie im nächsten Schritt ein Modell herunter. ⚠️CHECK",
+    "browser": "<strong>Integrierte Whisper</strong> — läuft im App (WASM), ohne API-Key und ohne <code>whisper-cli</code>; das Modell wird beim ersten Benutzerzugriff heruntergeladen.",
+    "later": "<strong>Einstellungen später entscheiden</strong> — API-/Modellsetup jetzt überspringen."
+  },
+  "browser_step": {
+    "intro": "<strong>In-App Whisper</strong> verwendet Transformers.js im App. Sie benötigen immer noch ffmpeg / yt-dlp für Links; die Transkription bleibt auf dem Gerät im Webview. ⚠️CHECK",
+    "model_size_label": "Modellgröße",
+    "model_aria": "Größe des Whisper-Modells in der App",
+    "model_option": "{{id}} — ~{{sizeMib}} MiB (Browser, ungefähr)",
+    "tip": "Labels passen zum lokalen Katalog; ggml-<code>.bin</code>-Dateien werden in diesem Modus nicht verwendet. ⚠️CHECK"
+  },
+  "cloud_step": {
+    "intro": "Geben Sie Ihre Details für Ihren Cloudanbieter ein. Der Schlüssel wird im sicheren Speicher des Betriebssystems gespeichert und nicht im Klartext.",
+    "api_url_label": "API Basis-URL",
+    "api_model_label": "Modellname",
+    "api_key_label": "API-Schlüssel",
+    "error_no_key": "Geben Sie Ihre API-Schlüssel ein, um fortzufahren (oder zurückgehen und eine andere Option auszuwählen).",
+    "tip_openai": "<strong>OpenAI Beispiel:</strong> <a>API-Schlüssel</a>, Basis-<code>https://api.openai.com/v1</code>, Modell <code>whisper-1</code>."
+  },
+  "local_step": {
+    "intro": "<strong>Lokaler Whisper</strong> ist unabhängig von ffmpeg. Das App kann den ggml-Modell für Sie <strong>herunterladen</strong>. Für <code>whisper-cli</code>: **Windows** — offizielle <code>whisper-bin-x64.zip</code> von <a>ggml-org/whisper.cpp</a> (Nutzen Sie den Button unten; enthält DLLs). **macOS** — keine CLI-Zip; der Button sucht im <code>PATH</code> und Homebrew-Layouts, oder verwenden Sie **Datei auswählen…** nach <code>brew install whisper-cpp</code>. **Linux** — über Ihre Distribution installieren oder Quelle kompilieren (siehe unten); dann den Pfad setzen oder **Datei auswählen…** verwenden. Sie können auch <code>whisper-cli</code> neben der App platzieren.",
+    "step_a_title": "Schritt A — whisper-cli",
+    "step_a_tip": "Optionale Pfadangabe, wenn der Binärdatei neben <code>v2t</code> liegt. Verwenden Sie den Setup-Button (Windows/macOS) oder <strong>Datei auswählen…</strong> für <code>whisper-cli.exe</code> / <code>whisper-cli</code>.",
+    "cuda_intro": "<strong>NVIDIA GPU gefunden</strong> ({{name}}). Die CUDA-Build läuft Whisper 10-20-fach schneller als CPU. Wir laden den cuBLAS-Bundle standardmäßig herunter — ändern Sie dies in <strong>Einstellungen → Whisper-Acceleration</strong>, wenn nötig.",
+    "cuda_default_name": "diskret",
+    "cuda_enable": "Aktivieren Sie die CUDA-Acceleration (empfohlen)",
+    "linux_intro": "<strong>Linux:</strong> Hier ist kein Download-Button. Beispiele:",
+    "linux_li_ubuntu": "Ubuntu/Debian: <code>sudo apt install whisper-cpp</code> oder bauen Sie <a>whisper.cpp</a> ⚠️CHECK",
+    "linux_li_fedora": "Fedora: <code>sudo dnf install whisper-cpp</code>",
+    "linux_li_arch": "Arch: <code>yay -S whisper-cpp</code> (AUR)",
+    "btn_download_win": "Laden Sie whisper-cli für mich herunter (Windows)",
+    "btn_find_mac": "Suchen Sie whisper-cli (macOS) ⚠️CHECK",
+    "btn_pick": "Wählen Sie eine Datei…",
+    "btn_working": "Arbeitet…",
+    "cli_success": "<strong>Whisper-cli-Pfad gespeichert.</strong> Die Aufzählung sollte aktualisiert werden; fahren Sie mit dem Modell fort.",
+    "cli_path_label": "Pfad zum Ausführbarendatei",
+    "cli_path_placeholder": "Lassen Sie Whisper-cli neben der App liegen ⚠️CHECK",
+    "step_b_title": "Schritt B — Modelldatei",
+    "step_b_tip": "Wählen Sie die Größe aus und laden Sie danach herunter. Wir überprüfen den SHA-1-Hash; wenn er übereinstimmt, wird eine grüne Bestätigung unten angezeigt und das Kontrollkästchen <strong>Whisper-Modell (.bin)</strong> grün werden. ⚠️CHECK",
+    "models_dir_label": "Ordner für .bin-Dateien",
+    "models_dir_default_placeholder": "Standard: Anwendungsdaten / Modelle",
+    "browse": "Durchsuchen…",
+    "model_label": "Modell",
+    "model_aria": "Whisper GGML-Modell",
+    "model_option": "{{id}} — ~{{sizeMib}} MiB ({{fileName}})",
+    "btn_download_model": "Herunterladen / Überprüfen des Modells",
+    "btn_downloading": "Lade herunter…",
+    "model_success": "<strong>Modell bereit.</strong> Datei ist auf dem Laufwerk und die SHA-1-Summe stimmt überein. Das Kontrollkästchen sollte für den <strong>Whisper-Modell (.bin)</strong> einen grünen Punkt anzeigen."
+  },
+  "later_step": {
+    "intro": "Sie können zwischen der <strong>HTTP-API</strong>, der <strong>Lokalen Whisper</strong> und der <strong>App-basierten Whisper</strong> wechseln, API-Schlüssel setzen und Modelle jederzeit in den <strong>Einstellungen</strong> herunterladen.",
+    "btn_open_settings": "Öffne Einstellungen jetzt"
+  },
+  "run_step": {
+    "intro": "Fügen Sie Dateien, Ordner oder Links in die Warteschlange ein, dann drücken Sie <strong>Anfang der Warteschlange</strong>.",
+    "tip": "Wenn etwas schlägt fehl, überprüfen Sie den Protokollunterteil am Ende und die Liste oben. ⚠️CHECK"
+  }
+}

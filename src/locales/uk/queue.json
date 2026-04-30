@@ -1,0 +1,79 @@
+{
+  "title": "Очередь",
+  "panel_aria": "Очередь",
+  "empty_hint": {
+    "ready_when_you_are": "Готовий, коли ви готові. Випадкайте файли або папки сюди, копіюйте посилання на відео чи скористайтесь кнопками нижче — потім натисніть <strong>Почати чергу</strong>.",
+    "finish_setup_first": "Вперше завершіть налаштування. Следуйте списку перевірки (зелені точки). Відкрийте <strong>Налаштування</strong>, якщо є недостатнє, або використовуйте <strong>Посібник налаштувань</strong> для короткої походження."
+  },
+  "drop_zone": "Завантажте файли або теки сюди (нативне відкриття використовує системні шляхи).",
+  "btn": {
+    "add_files": "Додати файли…",
+    "add_folder": "Додати папку…",
+    "add_urls": "Додати URL-адреси",
+    "start": "Запустити чергу",
+    "stop": "Зупинити чергу",
+    "clear_done": "Очистити завершені ⚠️CHECK",
+    "clear_all": "Очистити все"
+  },
+  "url_field": {
+    "label": "URLs (один на рядок)",
+    "placeholder": "Вставте URL відео або аудіо ⚠️CHECK"
+  },
+  "table": {
+    "label_header": "Мітка",
+    "kind_header": "Тип ⚠️CHECK",
+    "status_header": "Статус",
+    "actions_header": "Дії",
+    "no_jobs": "Немає завдань ще ⚠️CHECK",
+    "playlist_header": "{{title}} ({{count}} відео)"
+  },
+  "log": {
+    "show": "Показати лог ▾",
+    "hide": "Сховати лог ▴",
+    "show_percents": "Показати вантаження %",
+    "open_file": "Відкрити файл журналу ⚠️CHECK",
+    "copy": "Копіювати",
+    "empty": "Queue is empty."
+  },
+  "msg": {
+    "added_paths_drop": "Додано {{count}} шлях(и) з перетягування ⚠️CHECK",
+    "added_urls": "Додано {{count}} URL(ів)",
+    "added_files_picker": "Додано {{count}} файл(ів) з вибору ⚠️CHECK",
+    "queue_already_running": "Очередь вже запущена ⚠️CHECK",
+    "nothing_to_run": "Нічого не запускати (немає очікуваних завдань)",
+    "starting_queue": "Початок черги ({{count}} завдання(в))",
+    "queue_stopped": "Очередь зупинена (останні завдання скасовано)",
+    "queue_idle": "Очередь пуста",
+    "stop_requested": "Запитання на перерву — завершуємо поточний крок, якщо можливо; решта роботи буде скасована.",
+    "scanning_folder": "Сканирую папку: {{path}}",
+    "no_media_found": "Не знайдено медіа-файли (або сканування не вдалось) ⚠️CHECK",
+    "enqueued_folder": "В черзі {{count}} файл(ів) з папки",
+    "log_copied": "Лог скопійовано в буфер обміну",
+    "cleared_done": "Очищені завдання ⚠️CHECK",
+    "cleared_all": "Очищено чергу ⚠️CHECK",
+    "running": "Виконати: {{label}}",
+    "stopped_label": "Зупинено: {{label}}",
+    "error_label": "Помилка: {{detail}} — {{label}}",
+    "error_no_label": "Помилка: {{detail}}",
+    "retry_enqueued": "Повторити в черзі: {{title}}",
+    "session_log_unavailable": "Не вдалося відкрити файл журналу сесії (запустіть за межами програми або журнал недоступний)"
+  },
+  "error": {
+    "open_folder": "Не вдалося відкрити теку: {{message}}",
+    "open_file": "Не вдалося відкрити файл: {{message}}",
+    "open_link": "Не вдалося відкрити посилання: {{message}}",
+    "stopped_by_user": "Зупинено користувачем",
+    "process_failed": "Обробка елементу черги не вдалася ⚠️CHECK",
+    "output_dir_required": "Оберіть теку для виводу у Налаштуваннях ⚠️CHECK"
+  },
+  "subtask": {
+    "retry_label": "↻ повторити",
+    "retry_aria": "Повторити цю відео ⚠️CHECK",
+    "retry_title": "Спробуйте цю відео заново"
+  },
+  "actions": {
+    "show_in_folder": "Показати у папці",
+    "open_file": "Відкрити файл"
+  },
+  "progress_aria": "{{фаза}} прогрес"
+}

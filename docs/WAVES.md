@@ -720,7 +720,7 @@ Release v1.6.0.
   - Это позволяет M3d мерджить дрейфом per-namespace без перетасовки.
 - `state/`, `output/`, `logs/` — `.gitignore` (как в NumbersM).
 
-**M3c — bot run (manual, PO-trigger)**
+**M3c — bot run (manual, PO-trigger)**  ✅ done (2026-04-30, autonomous run after PO went to sleep)
 - Триггер: PO пишет в чате «давай переведём» / «запусти bot» / аналог.
 - Агент проверяет:
   1. `curl http://localhost:11434/api/tags` — Ollama жив.
@@ -729,7 +729,7 @@ Release v1.6.0.
 - Запуск: `npm --prefix scripts/translation-bot run run:all` в **foreground** (не background — bot длинный, ~7 часов на 600 строк × 7 целевых локалей; логи нужны).
 - По завершении — отчёт в чат: количество, warnings (`GLOSSARY_LOST`, `PLACEHOLDER_DRIFT`, `LENGTH_OUT_OF_BAND`, etc.) per-locale.
 
-**M3d — review & merge**
+**M3d — review & merge**  ⚠ partial — auto-merged 2408 entries via scripts/merge-i18n-drafts.mjs; PO review of UA-draft pending. Bot drafts kept for re-merge.
 - PO читает `output/drafts/uk/*.draft.json` внимательно (он UA-нативный, AC-4 в BA-доке).
 - Для остальных 6 локалей — **quick scan**: смотрим только записи с warning != null. Если warning'и пустые / минорные — merge без чтения каждой строки.
 - Merge: для каждой локали L, для каждого namespace N, скопировать `output/drafts/L/N.draft.json` → `src/locales/L/N.json`, при необходимости отредактировав отдельные значения вручную.

@@ -1,0 +1,17 @@
+{
+  "tagline": "v2t — przenośne wideo / dźwięk → tekst",
+  "tab": {
+    "queue": "Kolejka",
+    "settings": "Ustawienia"
+  },
+  "header": {
+    "lang_aria": "Język aplikacji",
+    "setup_guide_label": "Instrukcja instalacji ⚠️CHECK",
+    "setup_guide_title": "Szybkie przewodnik przez ustawienia ⚠️CHECK",
+    "setup_guide_aria": "Otwórz przewodnik ustawień ⚠️CHECK"
+  },
+  "toast": {
+    "saved": "Ustawienia zapisane.",
+    "save_failed": "Nie udało się zapisać ustawień. ⚠️CHECK"
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "title": "File d'attente",
+  "panel_aria": "File d'attente",
+  "empty_hint": {
+    "ready_when_you_are": "Prêt quand vous le souhaitez. Déposez des fichiers ou des dossiers ici, collez des liens vidéo ou utilisez les boutons ci-dessous — puis appuyez sur <strong>Démarrer la file</strong>.",
+    "finish_setup_first": "<strong>Terminez d'abord la configuration.</strong> Suivez la liste de contrôle ci-dessus (points verts). Ouvrez les <strong>Paramètres</strong> si quelque chose est manquant, ou utilisez le <strong>Guide de mise en place</strong> pour une courte visite guidée."
+  },
+  "drop_zone": "Déposez des fichiers ou des dossiers ici (le dépôt natif utilise les chemins système).",
+  "btn": {
+    "add_files": "Ajouter des fichiers…",
+    "add_folder": "Ajouter un dossier…",
+    "add_urls": "Ajouter des URL",
+    "start": "Démarrer la file d'attente",
+    "stop": "Arrêter la file d'attente",
+    "clear_done": "Effacer les terminés",
+    "clear_all": "Effacer tout"
+  },
+  "url_field": {
+    "label": "URLs (une par ligne)",
+    "placeholder": "URL de la vidéo ou de l'audio à convertir ⚠️CHECK"
+  },
+  "table": {
+    "label_header": "Étiquette",
+    "kind_header": "Type",
+    "status_header": "État",
+    "actions_header": "Actions",
+    "no_jobs": "Aucun travail en cours ⚠️CHECK",
+    "playlist_header": "{{title}} ({{count}} vidéos)"
+  },
+  "log": {
+    "show": "Afficher le journal ▾",
+    "hide": "Masquer le journal ▴",
+    "show_percents": "Afficher le pourcentage de téléchargement %",
+    "open_file": "Ouvrir le fichier de journal",
+    "copy": "Copier",
+    "empty": "…"
+  },
+  "msg": {
+    "added_paths_drop": "Ajouté{{count}}chemin(s) depuis le glisser-déposer",
+    "added_urls": "Ajouté{{count}}URL(s)",
+    "added_files_picker": "Ajouté{{count}}fichier(s) depuis le sélecteur ⚠️CHECK",
+    "queue_already_running": "La file d'attente est déjà en cours ⚠️CHECK",
+    "nothing_to_run": "Aucune tâche en cours d'exécution ⚠️CHECK",
+    "starting_queue": "Début de la file d'attente ({{count}} tâche(s))",
+    "queue_stopped": "La file d'attente a été arrêtée (les tâches restantes ont été annulées)",
+    "queue_idle": "Queue inactif",
+    "stop_requested": "Arrêt demandé — tuer le pas en cours si possible ; les tâches restantes seront annulées",
+    "scanning_folder": "Scanning folder: {{path}}",
+    "no_media_found": "Aucun fichier multimédia trouvé (ou le scan a échoué)",
+    "enqueued_folder": "Enqueued {{count}} fichier(s) du dossier",
+    "log_copied": "Log copié dans le presse-papiers",
+    "cleared_done": "Tâches terminées nettoyées",
+    "cleared_all": "Queue vidée",
+    "running": "Exécuter : {{label}}",
+    "stopped_label": "Arrêté : {{label}}",
+    "error_label": "Erreur : {{detail}} — {{label}}",
+    "error_no_label": "Erreur : {{detail}}",
+    "retry_enqueued": "Réessayer en file d'attente : {{title}}",
+    "session_log_unavailable": "Impossible d'ouvrir le fichier de journal de session (exécutez à l'intérieur de l'application ou le journal n'est pas disponible)"
+  },
+  "error": {
+    "open_folder": "Impossible d'ouvrir le dossier : {{message}}",
+    "open_file": "Impossible d'ouvrir le fichier : {{message}}",
+    "open_link": "Impossible d'ouvrir le lien : {{message}}",
+    "stopped_by_user": "Arrêté par l'utilisateur",
+    "process_failed": "Échec du traitement de l'élément de la file d'attente ⚠️CHECK",
+    "output_dir_required": "Choisissez le dossier de sortie dans les paramètres ⚠️CHECK"
+  },
+  "subtask": {
+    "retry_label": "↩️ réessayer",
+    "retry_aria": "Réessayer cette vidéo",
+    "retry_title": "Reessayer cette vidéo"
+  },
+  "actions": {
+    "show_in_folder": "Montrer dans le dossier",
+    "open_file": "Ouvrir un fichier"
+  },
+  "progress_aria": "{{phase}} progrès"
+}

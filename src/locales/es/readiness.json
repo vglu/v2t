@@ -1,0 +1,67 @@
+{
+  "title": "Antes de comenzar",
+  "panel_aria": "Lista de verificación de configuración",
+  "sub": {
+    "all_ok": "Todo listo — añade archivos o URLs a continuación y presiona Iniciar cola.",
+    "needs_work": "Completar la lista de verificación (detectamos herramientas y archivos automáticamente)."
+  },
+  "mode_hint": {
+    "local": "Modo: <strong>Whisper Local</strong> — la clave de API en la nube no es necesaria.",
+    "browser": "Modo: <strong>Whisper en la aplicación</strong> — WASM en la capa de interfaz; sin clave API ni whisper-cli (ffmpeg / yt-dlp aún necesarios para URLs).",
+    "cloud": "Modo: <strong>API en la nube</strong> — whisper-cli y ggml no son necesarios."
+  },
+  "tools_unknown": "Herramientas: desconocidas (ejecuta dentro de la aplicación para detectar ffmpeg / yt-dlp)",
+  "tool_hint": "Consejo: en <strong>Ajustes</strong> — en Windows o macOS usa <strong>Descargar ffmpeg y yt-dlp para mí</strong>, o instala manualmente.",
+  "open_settings_btn": "Abrir Configuraciones",
+  "row": {
+    "ffmpeg": {
+      "label": "ffmpeg",
+      "hint_checking": "Verificando... (ejecutar dentro de la aplicación de escritorio)",
+      "hint_ok": "Encontrado — el audio puede ser normalizado.",
+      "hint_missing": "Falta — instala desde Ajustes o coloca al lado del aplicativo."
+    },
+    "ytdlp": {
+      "label": "yt-dlp",
+      "hint_checking": "Verificando…",
+      "hint_ok": "Encontrado — Las URL pueden ser descargadas.",
+      "hint_missing": "Falta — instala desde Ajustes o coloca al lado del aplicativo."
+    },
+    "output": {
+      "label": "Carpeta de salida",
+      "hint_missing": "No establecido — elija una carpeta en el asistente de configuración o Ajustes.",
+      "hint_documents": "Configurar — usando Documentos (predeterminado). Los transcripciones se guardan aquí.",
+      "hint_custom": "Configurar — las transcripciones se guardarán aquí."
+    },
+    "whisper_cli": {
+      "label": "whisper-cli (ejecutable)",
+      "hint_checking": "Verificando…",
+      "hint_ok": "Encontrado — motor local listo.",
+      "hint_missing": "Falta — elige whisper-cli en Configuración (o coloca whisper-cli / main junto a la aplicación)."
+    },
+    "ggml": {
+      "label": "Modelo Whisper (.bin)",
+      "hint_checking": "Verificando…",
+      "hint_ok": "Verificado en disco (SHA-1) — listo para la transcripción offline.",
+      "hint_missing": "Falta o desacuerdo de la suma verificada — descarga/verifica el modelo en Configuración o configura. ⚠️CHECK"
+    },
+    "wasm_whisper": {
+      "label": "In-app Whisper (WASM)",
+      "hint": "Ejecuta en la aplicación (Transformers.js). La primera tarea puede descargar el modelo; no requiere clave de API ni whisper-cli."
+    },
+    "api_key": {
+      "label": "Clave de API en la nube",
+      "hint_ok": "Guardado en almacenamiento seguro del sistema operativo — transcripción en la nube lista.",
+      "hint_missing": "Falta — añade tu clave en el guía de configuración o Ajustes (no se usa para Whisper local)."
+    }
+  },
+  "deps_bar": {
+    "tools_unknown": "Herramientas: desconocidas (ejecutar dentro de Tauri para detectar ffmpeg / yt-dlp)",
+    "status_ok": "¡Genial!",
+    "status_missing": "Falta",
+    "status_no": "No ⚠️CHECK",
+    "ffmpeg_label": "ffmpeg:",
+    "ytdlp_label": "yt-dlp:",
+    "whisper_label": "whisper-cli",
+    "ggml_label": "ggml:"
+  }
+}

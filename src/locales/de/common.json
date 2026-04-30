@@ -1,0 +1,17 @@
+{
+  "tagline": "v2t — portierbares Video/Audio → Text",
+  "tab": {
+    "queue": "Warteschlange",
+    "settings": "Einstellungen"
+  },
+  "header": {
+    "lang_aria": "Sprach des Benutzens",
+    "setup_guide_label": "Einrichtungshandbuch",
+    "setup_guide_title": "Kurze Setup-Anleitung",
+    "setup_guide_aria": "Öffne Setup-Anleitung"
+  },
+  "toast": {
+    "saved": "Einstellungen gespeichert.",
+    "save_failed": "Konnte Einstellungen nicht speichern."
+  }
+}

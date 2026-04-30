@@ -1,0 +1,79 @@
+{
+  "title": "Fila",
+  "panel_aria": "Fila",
+  "empty_hint": {
+    "ready_when_you_are": "<strong>Pronto quando você estiver.</strong> Arraste arquivos ou pastas aqui, cole links de vídeo ou use os botões abaixo — em seguida, clique em <strong>Iniciar fila</strong>.",
+    "finish_setup_first": "<strong>Conclua a configuração primeiro.</strong> Siga a lista de verificação acima (pontos verdes). Abra <strong>Configurações</strong> se algo estiver faltando, ou use o <strong>Guia de Configuração</strong> para uma breve orientação."
+  },
+  "drop_zone": "Arraste arquivos ou pastas aqui (o arrastar nativo usa caminhos do sistema).",
+  "btn": {
+    "add_files": "Adicionar arquivos…",
+    "add_folder": "Adicionar pasta…",
+    "add_urls": "Adicionar URLs",
+    "start": "Iniciar fila",
+    "stop": "Interromper fila",
+    "clear_done": "Limpar concluídos",
+    "clear_all": "Limpar tudo"
+  },
+  "url_field": {
+    "label": "URLs (uma por linha)",
+    "placeholder": "URL do vídeo / áudio ⚠️CHECK"
+  },
+  "table": {
+    "label_header": "Etiqueta",
+    "kind_header": "Tipo",
+    "status_header": "Estado",
+    "actions_header": "Ações",
+    "no_jobs": "Nenhuma tarefa ainda",
+    "playlist_header": "{{title}} ({{count}} vídeos)"
+  },
+  "log": {
+    "show": "Mostrar registo ▾",
+    "hide": "Ocultar log ▴",
+    "show_percents": "Mostrar porcentagem de download ⚠️CHECK",
+    "open_file": "Abrir arquivo de log",
+    "copy": "Copiar",
+    "empty": "A fila de tarefas está vazia."
+  },
+  "msg": {
+    "added_paths_drop": "Adicionado {{count}} caminho(s) do arrastar e soltar",
+    "added_urls": "Adicionou {{count}} URL(s)",
+    "added_files_picker": "Adicionado {{count}} arquivo(s) do seletor ⚠️CHECK",
+    "queue_already_running": "A fila já está em execução",
+    "nothing_to_run": "Nada para executar (nenhum trabalho em espera)",
+    "starting_queue": "Iniciando fila ({{count}} trabalho(s))",
+    "queue_stopped": "Fila parada (tarefas restantes canceladas)",
+    "queue_idle": "Fila ociosa",
+    "stop_requested": "Solicitação de parada recebida — encerrando o passo atual se possível; os trabalhos restantes serão cancelados.",
+    "scanning_folder": "Scanning folder: {{caminho}}",
+    "no_media_found": "Nenhum arquivo de mídia encontrado (ou escaneamento falhou)",
+    "enqueued_folder": "Enfileirou {{count}} arquivo(s) da pasta",
+    "log_copied": "Log copiado para a área de transferência",
+    "cleared_done": "Limpar tarefas concluídas",
+    "cleared_all": "Limpar fila",
+    "running": "Executar: {{label}}",
+    "stopped_label": "Interrompido: {{label}}",
+    "error_label": "Erro: {{detail}} — {{label}}",
+    "error_no_label": "Erro: {{detail}}",
+    "retry_enqueued": "Reprocessar em fila: {{title}}",
+    "session_log_unavailable": "Não foi possível abrir o arquivo de registro da sessão (execute dentro do aplicativo ou registro indisponível)"
+  },
+  "error": {
+    "open_folder": "Não foi possível abrir a pasta: {{message}}",
+    "open_file": "Não foi possível abrir o arquivo: {{message}}",
+    "open_link": "Não foi possível abrir o link: {{message}}",
+    "stopped_by_user": "Interrompido pelo usuário",
+    "process_failed": "Falha ao processar item da fila ⚠️CHECK",
+    "output_dir_required": "Escolha a pasta de saída nas Configurações"
+  },
+  "subtask": {
+    "retry_label": "🔄 tentar novamente",
+    "retry_aria": "Repetir este vídeo",
+    "retry_title": "Tente novamente este vídeo"
+  },
+  "actions": {
+    "show_in_folder": "Mostrar na pasta",
+    "open_file": "Abrir arquivo"
+  },
+  "progress_aria": "{{phase}} progress"
+}

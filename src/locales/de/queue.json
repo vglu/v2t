@@ -1,0 +1,79 @@
+{
+  "title": "Warteschlange",
+  "panel_aria": "Warteschlange",
+  "empty_hint": {
+    "ready_when_you_are": "<strong>Bereit, wenn Sie es sind.</strong> Dateien oder Ordner hier ablegen, Video-Links einfügen oder die Schaltflächen unten verwenden – dann drücken Sie <strong>Anfrage starten</strong>.",
+    "finish_setup_first": "<strong>Zuerst die Einrichtung abschließen.</strong> Folgen Sie der Checklist (grüne Punkte). Öffnen Sie <strong>Einstellungen</strong>, wenn etwas fehlt, oder verwenden Sie den <strong>Einrichtungsleitfaden</strong> für eine kurze Einführung."
+  },
+  "drop_zone": "Ziehen Sie Dateien oder Ordner hierher (natürliche Ziehung verwendet Systempfade). ⚠️CHECK",
+  "btn": {
+    "add_files": "Dateien hinzufügen…",
+    "add_folder": "Ordner hinzufügen…",
+    "add_urls": "Fügen Sie URLs hinzu",
+    "start": "Starte Warteschlange",
+    "stop": "Stopp die Warteschlange",
+    "clear_done": "Abgeschlossene löschen",
+    "clear_all": "Alle löschen"
+  },
+  "url_field": {
+    "label": "URLs (eine pro Zeile)",
+    "placeholder": "https://www.youtube.com/watch?v=… ⚠️CHECK"
+  },
+  "table": {
+    "label_header": "Überschrift",
+    "kind_header": "Art",
+    "status_header": "Status",
+    "actions_header": "Aktionen",
+    "no_jobs": "Keine Aufgaben noch.",
+    "playlist_header": "{{title}} ({{count}} Videos)"
+  },
+  "log": {
+    "show": "Zeige Protokoll ▾",
+    "hide": "Versteck Protokoll ▴",
+    "show_percents": "Zeige Download-Prozentsatz %",
+    "open_file": "Öffne Protokolldatei",
+    "copy": "Kopieren",
+    "empty": "Keine Einträge im Queue ⚠️CHECK"
+  },
+  "msg": {
+    "added_paths_drop": "{{count}} Pfade wurden von der Abgabe hinzugefügt",
+    "added_urls": "{{count}} URL(s) hinzugefügt",
+    "added_files_picker": "{{count}} Datei(en) aus dem Picker hinzugefügt",
+    "queue_already_running": "Die Warteschlange läuft bereits.",
+    "nothing_to_run": "Keine Aufgaben zum Ausführen (keine anstehenden Jobs) ⚠️CHECK",
+    "starting_queue": "Starten Sie die Warteschlange ({{count}} Aufgabe(n))",
+    "queue_stopped": "Warteschlange gestoppt (verbleibende Aufgaben abgebrochen)",
+    "queue_idle": "Warteschlange leert sich",
+    "stop_requested": "Anfrage gestoppt — aktuelle Schritt wird sofern möglich beendet; verbleibende Aufgaben werden abgebrochen.",
+    "scanning_folder": "Ordner wird durchsucht: {{path}}",
+    "no_media_found": "Keine Mediendateien gefunden (oder Scan fehlgeschlagen)",
+    "enqueued_folder": "In der Warteschlange sind {{count}} Datei(en) aus dem Ordner.",
+    "log_copied": "Log in die Zwischenablage kopiert",
+    "cleared_done": "Abgeschlossene Aufgaben geleert",
+    "cleared_all": "Queue geleert",
+    "running": "Starten: {{label}}",
+    "stopped_label": "Gestoppt: {{label}}",
+    "error_label": "Fehler: {{detail}} — {{label}}",
+    "error_no_label": "Fehler: {{detail}}",
+    "retry_enqueued": "Wiederholen in der Warteschlange: {{title}}",
+    "session_log_unavailable": "Konnte die Sitzungsprotokolldatei nicht öffnen (Führen Sie den Vorgang innerhalb der App durch oder das Protokoll ist nicht verfügbar)"
+  },
+  "error": {
+    "open_folder": "Konnte den Ordner nicht öffnen: {{message}}",
+    "open_file": "Konnte die Datei nicht öffnen: {{message}}",
+    "open_link": "Konnte Link nicht öffnen: {{message}}",
+    "stopped_by_user": "Abgebrochen durch den Benutzer",
+    "process_failed": "Verarbeiten der Queue-Elemente fehlgeschlagen ⚠️CHECK",
+    "output_dir_required": "Wählen Sie das Ausgabeordner im Einstellungen ⚠️CHECK"
+  },
+  "subtask": {
+    "retry_label": "↻ Wiederholen",
+    "retry_aria": "Wiederholen Sie dieses Video",
+    "retry_title": "Wiederholen Sie dieses Video"
+  },
+  "actions": {
+    "show_in_folder": "Zeige im Ordner",
+    "open_file": "Öffne Datei"
+  },
+  "progress_aria": "{{phase}} Fortschritt"
+}

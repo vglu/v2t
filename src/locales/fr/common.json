@@ -1,0 +1,17 @@
+{
+  "tagline": "v2t — vidéo / audio mobile → texte",
+  "tab": {
+    "queue": "File d'attente",
+    "settings": "Paramètres"
+  },
+  "header": {
+    "lang_aria": "Langue de l'interface utilisateur",
+    "setup_guide_label": "Guide d'installation",
+    "setup_guide_title": "Vue d'ensemble de l'installation ⚠️CHECK",
+    "setup_guide_aria": "Ouvrir le guide de configuration"
+  },
+  "toast": {
+    "saved": "Paramètres enregistrés.",
+    "save_failed": "Impossible de sauvegarder les paramètres. ⚠️CHECK"
+  }
+}

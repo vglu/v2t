@@ -1,0 +1,164 @@
+{
+  "title": "Настройки",
+  "panel_aria": "Настройки",
+  "section": {
+    "language": "Язык",
+    "output": "Выходной каталог",
+    "transcription": "Транскрипция и модели",
+    "media_tools": "Инструменты для работы с медиа (ffmpeg, yt-dlp)",
+    "subtitles_fast_path": "Скорость обработки субтитров ⚠️CHECK",
+    "other": "Другое"
+  },
+  "language": {
+    "field_label": "Язык интерфейса",
+    "select_aria": "Язык интерфейса (полный)",
+    "hint": "<strong>Авто</strong> следует вашему локализации операционной системы (<code>navigator.language</code>); другие опции заставляют использовать конкретный язык. Сохраняется немедленно — нет необходимости нажимать кнопку «Сохранить» ниже. Та же переключатель (компактный, с флагами) находится в правом верхнем углу заголовка."
+  },
+  "output": {
+    "folder_label": "Папка для вывода (транскрипты .txt)",
+    "folder_placeholder": "Не установлено",
+    "browse": "Обзор…",
+    "use_documents": "Использовать Документы",
+    "hint": "Использовать Документы устанавливает папку \"Документы\" вашей ОС и сохраняет настройки. Вы можете изменить это в любое время с помощью кнопки \"Обзор\"."
+  },
+  "transcription": {
+    "mode_label": "Режим транскрипции",
+    "mode_aria": "Режим транскрипции",
+    "mode_options": {
+      "http_api": "Облачное хранилище — HTTP API (совместимое с OpenAI)",
+      "local": "Оффлайн — Локальный Whisper (whisper.cpp)",
+      "browser": "Встроенный Whisper (WASM / Transformers.js)"
+    },
+    "mode_summary": {
+      "local": "Не требуется API ключ. Необходим файл исполняемого файла whisper-cli и один файл модели ggml .bin на диске. ⚠️CHECK",
+      "browser": "Без API ключа или whisper-cli. Транскрипция выполняется в приложении (WASM). Выберите размер модели — первое выполнение может скачать веса. ⚠️CHECK",
+      "cloud": "Использует ваш API-ключ. whisper-cli и локальные модели не используются."
+    },
+    "browser_warn": "Экспериментальный режим: требует интернета для первого скачивания модели; длинный аудио может быть медленным или выйти за пределы памяти. Если это не удастся, переключитесь на Cloud API или локальную Whisper. ⚠️CHECK",
+    "transcription_aria": "Настройки распознавания речи"
+  },
+  "local_whisper": {
+    "step1_title": "1 · whisper-cli (движок)",
+    "step1_hint": "<strong>Windows:</strong> официальный <code>whisper-bin-x64.zip</code> от <a>ggml-org/whisper.cpp</a> (MIT) — нажмите кнопку ниже, чтобы скачать в данные приложения (включает DLLs). <strong>macOS:</strong> нет CLI zip в этих релизах; кнопка запускает <code>which whisper-cli</code> / <code>whisper</code> / <code>main</code> и сканирует пути Homebrew, или используйте <strong>Выбрать файл…</strong> после <code>brew install whisper-cpp</code>.",
+    "linux_intro": "<strong>Linux:</strong> в этой программе не скачивается whisper-cli. Установите пакет или соберите из исходного кода, затем укажите путь ниже или выберите файл <strong>Выбрать файл…</strong>.",
+    "linux_li_ubuntu": "<strong>Ubuntu / Debian:</strong> <code>sudo apt install whisper-cpp</code> (если доступно в вашей версии) или сборка из <a>ggml-org/whisper.cpp</a> ⚠️CHECK",
+    "linux_li_fedora": "<strong>Федоре:</strong> <code>sudo dnf install whisper-cpp</code> (название пакета может отличаться) ⚠️CHECK",
+    "linux_li_arch": "<strong>Arch:</strong> AUR, например, <code>yay -S whisper-cpp</code>",
+    "btn_download_win": "Скачать whisper-cli для меня (Windows)",
+    "btn_find_mac": "Найти whisper-cli (macOS)",
+    "btn_pick_file": "Выберите файл…",
+    "btn_working": "Работает…",
+    "path_field_label": "Путь к исполняемому файлу (необязательно, если рядом с приложением)",
+    "path_placeholder": "whisper-cli.exe / whisper-cli — или выберите файл…",
+    "install_success": "<strong>Путь к whisper-cli сохранен.</strong> Список должен обновиться после перезагрузки.",
+    "step15_title": "1.5 · Ускорение Whisper (Windows)",
+    "step15_hint": "Выбирает, какой сборка whisper.cpp загружать. <strong>CUDA</strong> требует NVIDIA GPU (10-20× быстрее на оборудовании RTX-класса). <strong>Vulkan</strong> работает на большинстве NVIDIA / AMD / Intel GPU (8-15×). <strong>CPU</strong> — безопасный базовый вариант. Изменение этого не приводит к автоматическому повторному скачиванию; нажмите <strong>Скачать заново whisper-cli</strong> ниже, чтобы получить соответствующий пакет.",
+    "gpu_detected_prefix": "Обнаружено:",
+    "gpu_none": "Нет распознанного отдельного графического процессора ⚠️CHECK",
+    "gpu_unknown_adapter": "неизвестный адаптер",
+    "gpu_auto_nvidia": "— Автоматически будет выбрано CUDA.",
+    "gpu_auto_none": "— Автоматически оставляется на процессоре.",
+    "gpu_auto_other": "— Автоматически на CPU; выберите Vulkan вручную, если драйверы актуальны.",
+    "accel_aria": "Ускорение Whisper",
+    "accel": {
+      "auto": "Автоматически (рекомендуется)",
+      "cuda": "CUDA — только от NVIDIA ⚠️CHECK",
+      "vulkan": "Vulkan — NVIDIA / AMD / Intel",
+      "cpu": "CPU — безопасный базовый вариант"
+    },
+    "btn_redownload": "Перезагрузить whisper-cli для выбранного бэкенда",
+    "step2_title": "2 · Модель GGML (.bin)",
+    "step2_hint": "Выберите размер модели, затем скачайте. Проверка списка становится зелёной, когда файл существует и SHA-1 совпадает с каталогом (тот же процесс проверки после скачивания). ⚠️CHECK",
+    "models_dir_label": "Папка для файлов .bin",
+    "models_dir_placeholder_default": "По умолчанию: данные приложения / модели ⚠️CHECK",
+    "model_label": "Модель",
+    "model_aria": "Модель Whisper GGML",
+    "model_option": "{{id}} — ~{{sizeMib}} MiB ({{fileName}})",
+    "btn_download_model": "Скачать / проверить модель",
+    "btn_downloading": "Загрузка…",
+    "model_dl_msg_done": "Модель готова (проверено SHA-1)."
+  },
+  "browser_whisper": {
+    "model_size_title": "Размер модели (браузер)",
+    "model_size_hint": "Размер модели Whisper ⚠️CHECK",
+    "model_label": "Модель",
+    "model_aria": "Размер модели Whisper в приложении",
+    "model_option": "{{id}} — ~{{sizeMib}} МиБ (браузер, приблизительно)"
+  },
+  "cloud": {
+    "api_url_label": "URL базового API",
+    "api_model_label": "Имя модели API",
+    "api_key_label": "Ключ API",
+    "where_key_summary": "Где я могу получить API ключ?",
+    "where_key_body_provider": "Используйте поставщика с API-ключом для работы с OpenAI-подобным <code>POST …/audio/transcriptions</code> и JSON, содержащим поле <code>text</code>. ⚠️CHECK",
+    "where_key_body_openai": "<strong>OpenAI:</strong> <a>API ключи</a>, базовый URL <code>https://api.openai.com/v1</code>, модель, например, <code>whisper-1</code>.",
+    "where_key_warning": "Обрабатывайте ключ как пароль: не делитесь им или вставляйте в публичные чаты или git. ⚠️CHECK",
+    "credential_store_hint": "API ключ сохраняется в хранилище учетных данных операционной системы (Управление учетными данными Windows, Ключевой шкаф macOS, Сервис секретов на Linux). Файл настроек хранит только другие параметры (нет ключа в простом тексте)."
+  },
+  "media_tools": {
+    "win_hint": "<strong>Скачать для меня (Windows):</strong> загружает <code>yt-dlp.exe</code> с релизов GitHub и <strong>GPL</strong>-лицензированный FFmpeg zip с <a>BtbN/FFmpeg-Builds</a>, извлекает <code>ffmpeg.exe</code> в папку данных вашего приложения, а затем сохраняет пути в настройках.",
+    "mac_hint": "<strong>Скачать для меня (macOS):</strong> загружает <code>yt-dlp_macos</code> из релизов GitHub и статический <code>ffmpeg</code> для вашего процессора (<a>ffmpeg-static</a>), сохраняет оба в данных приложения и обновляет пути. Если macOS их блокирует, разрешите в <strong>Приватность & Безопасность</strong> или очистите отчуждение (<code>xattr -dr com.apple.quarantine …</code>).",
+    "btn_download": "Загрузите ffmpeg и yt-dlp для меня",
+    "btn_downloading": "Загрузка…",
+    "linux_hint": "Однократное скачивание доступно только на <strong>Windows</strong> и <strong>macOS</strong>. На Linux установите <code>ffmpeg</code> и <code>yt-dlp</code> (например, через менеджер пакетов) и вставьте полные пути ниже. ⚠️CHECK",
+    "self_install_summary": "Я установлю ffmpeg / yt-dlp самостоятельно",
+    "self_install_intro": "Поместите <strong>ffmpeg</strong> и <strong>yt-dlp</strong> рядом с <code>v2t.exe</code> (или в подпапку <code>bin</code>), или укажите полные пути здесь.",
+    "ffmpeg_path_label": "Путь к ffmpeg (необязательно)",
+    "ytdlp_path_label": "Путь к yt-dlp (необязательно)",
+    "auto_detect_placeholder": "Автоматически обнаружить рядом с приложением",
+    "js_runtimes_label": "JS-запускалки yt-dlp (опционально)",
+    "js_runtimes_aria": "JavaScript-запускалки для EJS",
+    "js_runtimes_placeholder": "deno — посм. вики yt-dlp (EJS)",
+    "common_label": "Общее:",
+    "js_runtimes_hint": "Если YouTube не работает с сообщением \"нет поддерживаемого JavaScript-런тайма\", установите Deno или Node и укажите имя рантайма, которое yt-dlp ожидает (обычно <code>deno</code>).",
+    "btn_install_deno": "Скачать и установить Deno для меня ⚠️CHECK",
+    "btn_install_deno_busy": "Установка…",
+    "deno_success": "<strong>Готово.</strong> Deno установлен; JavaScript-런타имы настроены на <code>deno</code>.",
+    "cookies_label": "Источник cookies для yt-dlp (YouTube / TikTok возрастной контроль)",
+    "cookies_aria": "Сайт для чтения куки из браузера",
+    "cookies_options": {
+      "auto": "Автоматически (Edge на Windows, Chrome на macOS, Firefox на Linux)",
+      "chrome": "Chrome",
+      "brave": "Brave",
+      "edge": "Microsoft Edge",
+      "firefox": "Firefox",
+      "none": "Отключено — не использовать куки браузера"
+    },
+    "cookies_hint": "Передает параметр <code>--cookies-from-browser</code> в yt-dlp. Браузер должен быть установлен и вы должны быть вошли в YouTube / TikTok в нем. <strong>Chrome, Brave и Edge имеют два известных проблемы на Windows:</strong>: (1) их база данных куки заблокирована при запуске браузера — закройте его первым; (2) с Chrome 127+ куки зашифрованы с помощью шифрования привязанного к приложению (DPAPI), которое yt-dlp не может расшифровать даже после закрытия браузера (<a>issue #10927</a>). <strong>Firefox является наиболее надежным вариантом</strong> — войдите в него и выберите Firefox.",
+    "tools_msg_done": "ffmpeg и yt-dlp сохранены в данные приложения и пути обновлены."
+  },
+  "filename_template_label": "Шаблон имени файла",
+  "filename_template_placeholder": "{title}_{date}_{index}_t{track}.txt",
+  "delete_audio_after": "Удалить временный аудио после успешного завершения ⚠️CHECK",
+  "keep_video": "Сохранить скачанный видеофайл в папку вывода (URL-задачи — второй проход yt-dlp, наилучший mp4)",
+  "keep_audio": "Сохранять скачанный аудио в папку вывода (задачи с URL + локальные видео — извлеченные через ffmpeg)",
+  "audio_format": {
+    "label": "Формат аудио",
+    "original": "Оригинальный (лучший аудио/потоковая копия, без перекодирования) ⚠️CHECK",
+    "m4a": "m4a (AAC)",
+    "mp3": "mp3"
+  },
+  "recursive_scan": "Повторный сканирование папок (включая подпапки)",
+  "language_iso": {
+    "label": "Язык (опционально, ISO код)",
+    "placeholder": "автоматический перевод",
+    "examples_label": "Примеры:",
+    "ru_chip": "ru",
+    "ru_desc": "API ключ для Whisper ⚠️CHECK",
+    "uk_chip": "укrainian",
+    "uk_desc": "API ключ для Whisper ⚠️CHECK",
+    "en_chip": "API ключ ⚠️CHECK",
+    "en_desc": "API ключ ⚠️CHECK",
+    "hint": "Любой другой код ISO 639-1 (например, <code>de</code>, <code>fr</code>, <code>pl</code>)."
+  },
+  "subtitles": {
+    "intro": "Для видео с YouTube, содержащих <strong>руководственные</strong> субтитры на приоритетном языке, напрямую загружайте SRT через yt-dlp и пропускайте скачивание + Whisper. <strong>Автоматически сгенерированные</strong> описания намеренно игнорируются (низкая качество по сравнению с Whisper-medium для нелатинских языков). Только одиночные видео-URLs — URL-адреса плейлистов продолжают скачивание и транскрипцию в обычном режиме.",
+    "toggle": "Использовать субтитры при наличии (пропустить Whisper)",
+    "priority_label": "Приоритетные языки (разделенные запятой ISO коды)",
+    "priority_placeholder": "uk, ru, en",
+    "priority_hint": "Сначала найдется совпадение. Региональные варианты также будут учитываться (например, <code>en</code> соответствует <code>en-US</code>). ⚠️CHECK",
+    "keep_srt": "Также сохраняйте оригинальный .srt рядом с транскриптом .txt ⚠️CHECK"
+  },
+  "btn_save": "Сохранить настройки",
+  "btn_saving": "Сохранение…"
+}

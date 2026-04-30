@@ -1,0 +1,79 @@
+{
+  "title": "Cola",
+  "panel_aria": "Cola",
+  "empty_hint": {
+    "ready_when_you_are": "<strong>Listo cuando lo estés.</strong> Suelta archivos o carpetas aquí, pega enlaces de videos o usa los botones a continuación — luego presiona <strong>Iniciar la cola</strong>.",
+    "finish_setup_first": "<strong>Finalice la configuración primero.</strong> Siga la lista de verificación (puntos verdes). Abra <strong>Ajustes</strong> si falta algo, o use el <strong>Guía de configuración</strong> para un corto recorrido."
+  },
+  "drop_zone": "Arrastra archivos o carpetas aquí (el arrastre nativo usa rutas del sistema).",
+  "btn": {
+    "add_files": "Añadir archivos…",
+    "add_folder": "Añadir carpeta…",
+    "add_urls": "Añadir URLs",
+    "start": "Iniciar la cola",
+    "stop": "Detener la cola",
+    "clear_done": "Limpiar hechos",
+    "clear_all": "Borrar todo"
+  },
+  "url_field": {
+    "label": "URLs (una por línea)",
+    "placeholder": "URL de entrada ⚠️CHECK"
+  },
+  "table": {
+    "label_header": "Etiqueta",
+    "kind_header": "Tipo",
+    "status_header": "Estado",
+    "actions_header": "Acciones",
+    "no_jobs": "Aún no hay trabajos.",
+    "playlist_header": "{{title}} ({{count}} vídeos)"
+  },
+  "log": {
+    "show": "Mostrar registro ▾",
+    "hide": "Ocultar registro ▴",
+    "show_percents": "Mostrar porcentaje de descarga %",
+    "open_file": "Abrir archivo de registro",
+    "copy": "Copiar",
+    "empty": "Cola vacía ⚠️CHECK"
+  },
+  "msg": {
+    "added_paths_drop": "Se han añadido {{count}} ruta(s) desde el arrastrar y soltar.",
+    "added_urls": "Se han añadido {{count}} URL(s)",
+    "added_files_picker": "Se han añadido {{count}} archivo(s) desde el selector ⚠️CHECK",
+    "queue_already_running": "La cola ya está en ejecución",
+    "nothing_to_run": "Nada por ejecutar (ningún trabajo pendiente)",
+    "starting_queue": "Iniciando la cola ({{count}} trabajo(s))",
+    "queue_stopped": "Cola detenida (tareas restantes canceladas)",
+    "queue_idle": "Cola inactiva",
+    "stop_requested": "Petición de detención — terminando el paso actual si es posible; los trabajos restantes serán cancelados.",
+    "scanning_folder": "Escaneando carpeta: {{path}}",
+    "no_media_found": "No se encontraron archivos de medios (o la escaneo falló)",
+    "enqueued_folder": "Coloqué {{count}} archivo(s) desde la carpeta",
+    "log_copied": "Log copiado al portapapeles",
+    "cleared_done": "Borró trabajos terminados",
+    "cleared_all": "Borró la cola",
+    "running": "Ejecutar: {{label}}",
+    "stopped_label": "Detenido: {{label}}",
+    "error_label": "Error: {{detail}} — {{label}}",
+    "error_no_label": "Error: {{detail}}",
+    "retry_enqueued": "Reintentar encolar: {{title}}",
+    "session_log_unavailable": "No se pudo abrir el archivo de registro de sesión (ejecute dentro de la aplicación o el registro no está disponible)"
+  },
+  "error": {
+    "open_folder": "No se pudo abrir la carpeta: {{message}}",
+    "open_file": "No se pudo abrir el archivo: {{message}}",
+    "open_link": "No se pudo abrir el enlace: {{message}}",
+    "stopped_by_user": "Detenido por el usuario",
+    "process_failed": "el_proceso_de_elemento_en_cola_falló",
+    "output_dir_required": "Elija la carpeta de salida en Configuración"
+  },
+  "subtask": {
+    "retry_label": "🔄 intentar de nuevo",
+    "retry_aria": "Reintentar este video",
+    "retry_title": "Reintentar este video"
+  },
+  "actions": {
+    "show_in_folder": "Mostrar en carpeta",
+    "open_file": "Abrir archivo"
+  },
+  "progress_aria": "{{phase}} progreso"
+}

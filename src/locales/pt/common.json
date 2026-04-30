@@ -1,0 +1,17 @@
+{
+  "tagline": "v2t — vídeo / áudio portátil → texto",
+  "tab": {
+    "queue": "Fila",
+    "settings": "Configurações"
+  },
+  "header": {
+    "lang_aria": "Idioma da interface",
+    "setup_guide_label": "Guia de configuração",
+    "setup_guide_title": "Guia de configuração rápido",
+    "setup_guide_aria": "Abrir guia de configuração"
+  },
+  "toast": {
+    "saved": "Configurações salvas.",
+    "save_failed": "Não foi possível salvar as configurações."
+  }
+}
