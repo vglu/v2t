@@ -12,7 +12,7 @@
   "language": {
     "field_label": "Idioma do aplicativo",
     "select_aria": "Idioma da interface do usuário (completo)",
-    "hint": "<strong>Auto</strong> segue o idioma do seu sistema operacional (<code>navigator.language</code>); outras opções forçam um idioma específico. Salvo imediatamente — não precisa pressionar Salvar abaixo. O mesmo interruptor (compacto, apenas bandeira) está no cabeçalho superior direito."
+    "hint": "<strong>Auto</strong> segue o idioma do SO; outras opções forçam um idioma específico. Salvo na hora — não precisa clicar em <strong>Save</strong> abaixo. O mesmo seletor (compacto, só bandeira) fica no canto superior direito."
   },
   "output": {
     "folder_label": "Pasta de saída (transcrições .txt)",

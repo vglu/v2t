@@ -12,7 +12,7 @@
   "language": {
     "field_label": "Idioma de la interfaz de usuario",
     "select_aria": "Idioma de la interfaz (completo)",
-    "hint": "<strong>Auto</strong> sigue el idioma de tu sistema operativo (<code>navigator.language</code>); otras opciones fuerzan un idioma específico. Guardado instantáneo — no es necesario presionar Guardar abajo. El mismo interruptor (compacto, solo banderas) está en la parte superior derecha del encabezado."
+    "hint": "<strong>Auto</strong> sigue el idioma del sistema; otras opciones imponen un idioma concreto. Se guarda al instante — no hace falta pulsar <strong>Save</strong> abajo. El mismo selector (compacto, solo bandera) está en la esquina superior derecha."
   },
   "output": {
     "folder_label": "Carpeta de salida (transcripciones .txt)",

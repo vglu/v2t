@@ -12,7 +12,7 @@
   "language": {
     "field_label": "Język aplikacji ⚠️CHECK",
     "select_aria": "Język interfejsu użytkownika (cały)",
-    "hint": "<strong>Auto</strong> wykorzystuje ustawienia lokalizacyjne systemu (<code>navigator.language</code>); inne opcje wymuszać konkretny język. Zapisywane natychmiastowo — nie ma potrzeby naciskania Przycisku Zapisz poniżej. Ten sam przełącznik (skompaktowany, flagi tylko) znajduje się w prawym górnym nagłówku."
+    "hint": "<strong>Auto</strong> idzie za językiem systemu; inne opcje wymuszają konkretny. Zapis natychmiastowy — nie trzeba klikać <strong>Save</strong> niżej. Ten sam przełącznik (kompaktowy, sama flaga) jest w prawym górnym rogu."
   },
   "output": {
     "folder_label": "Folder wyjściowy (transkrypcje .txt)",

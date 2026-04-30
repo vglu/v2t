@@ -12,7 +12,7 @@
   "language": {
     "field_label": "Langue de l'interface utilisateur",
     "select_aria": "Langue de l'interface utilisateur (complète)",
-    "hint": "<strong>Auto</strong> suit le paramètre régional de votre système d'exploitation (<code>navigator.language</code>) ; les autres options forcent une langue spécifique. Enregistré instantanément — pas besoin de cliquer sur Enregistrer en dessous. Le même interrupteur (compact, avec drapeau uniquement) se trouve dans l'en-tête supérieur droit."
+    "hint": "<strong>Auto</strong> suit la langue du système; les autres options imposent une langue précise. Enregistré aussitôt — pas besoin de cliquer sur <strong>Save</strong>. Le même sélecteur (compact, drapeau seul) se trouve en haut à droite."
   },
   "output": {
     "folder_label": "Dossier de sortie (transcrits .txt)",

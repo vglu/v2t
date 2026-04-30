@@ -12,7 +12,7 @@
   "language": {
     "field_label": "UI language",
     "select_aria": "UI language (full)",
-    "hint": "<strong>Auto</strong> follows your OS locale (<code>navigator.language</code>); other options force a specific language. Saved instantly — no need to press Save below. The same switcher (compact, flag-only) lives in the top-right header."
+    "hint": "<strong>Auto</strong> follows your OS language; other options force a specific one. Saved instantly — no need to press Save below. The same switcher (compact, flag-only) lives in the top-right header."
   },
   "output": {
     "folder_label": "Output folder (transcripts .txt)",

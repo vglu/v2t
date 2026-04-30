@@ -12,7 +12,7 @@
   "language": {
     "field_label": "Sprache",
     "select_aria": "Sprache der Benutzeroberfläche (vollständig)",
-    "hint": "<strong>Auto</strong> folgt Ihrem Betriebssystem-Sprachumfeld (<code>navigator.language</code>); andere Optionen erzwingen eine spezifische Sprache. Gespeichert wird es sofort — kein Speichern unter erforderlich. Der gleiche Schalter (kompakt, nur Flags) befindet sich im rechten oberen Header."
+    "hint": "<strong>Auto</strong> übernimmt die Sprache des Betriebssystems; andere Optionen erzwingen eine bestimmte. Wird sofort gespeichert — kein Klick auf <strong>Save</strong> nötig. Derselbe Schalter (kompakt, nur Flagge) liegt oben rechts."
   },
   "output": {
     "folder_label": "Ausgabeordner (Transkripte .txt)",
