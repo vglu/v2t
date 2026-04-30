@@ -12,19 +12,19 @@
     "add_urls": "Dodaj URL'y",
     "start": "Rozpocznij kolejkę",
     "stop": "Zatrzymaj kolejkę",
-    "clear_done": "Wyczyść wykonane ⚠️CHECK",
+    "clear_done": "Wyczyść wykonane",
     "clear_all": "Wyczyść wszystko"
   },
   "url_field": {
     "label": "URLs (jeden na linię)",
-    "placeholder": "Wprowadź URL filmu lub nagrania do konwersji na tekst ⚠️CHECK"
+    "placeholder": "Wprowadź URL filmu lub nagrania do konwersji na tekst"
   },
   "table": {
     "label_header": "Etyka",
-    "kind_header": "Rodzaj ⚠️CHECK",
+    "kind_header": "Rodzaj",
     "status_header": "Status",
     "actions_header": "Działania",
-    "no_jobs": "Nie ma jeszcze żadnych zadań. ⚠️CHECK",
+    "no_jobs": "Nie ma jeszcze żadnych zadań.",
     "playlist_header": "{{title}} ({{count}} wideo)"
   },
   "log": {
@@ -32,13 +32,13 @@
     "hide": "Ukryj dziennik ▴",
     "show_percents": "Pokaż procent pobrania %",
     "open_file": "Otwórz plik dziennika",
-    "copy": "Kopiuj ⚠️CHECK",
-    "empty": "Nie ma żadnych zadań w kolejce. ⚠️CHECK"
+    "copy": "Kopiuj",
+    "empty": "Nie ma żadnych zadań w kolejce."
   },
   "msg": {
-    "added_paths_drop": "Dodano {{count}} ścieżkę/ścieżek z upułnienia ⚠️CHECK",
-    "added_urls": "Dodano {{count}} adres(y) URL ⚠️CHECK",
-    "added_files_picker": "Dodano {{count}} plików z wyboru ⚠️CHECK",
+    "added_paths_drop": "Dodano {{count}} ścieżkę/ścieżek z upułnienia",
+    "added_urls": "Dodano {{count}} adres(y) URL",
+    "added_files_picker": "Dodano {{count}} plików z wyboru",
     "queue_already_running": "Kolejka już działa.",
     "nothing_to_run": "Nic do uruchomienia (brak oczekujących zadań)",
     "starting_queue": "Rozpoczęcie kolejki ({{count}} zadanie|zadania|zadań)",
@@ -46,30 +46,30 @@
     "queue_idle": "Kolejka pusta",
     "stop_requested": "Zaproszenie do zatrzymania — jeśli to możliwe, zabij aktualny krok; pozostałe zadania zostaną anulowane.",
     "scanning_folder": "Przeszukiwanie folderu: {{path}}",
-    "no_media_found": "Nie znaleziono plików multimedialnych (lub skanowanie nie powiodło się) ⚠️CHECK",
+    "no_media_found": "Nie znaleziono plików multimedialnych (lub skanowanie nie powiodło się)",
     "enqueued_folder": "Dodano {{count}} plików z folderu",
     "log_copied": "Log skopiowany do schowka",
     "cleared_done": "Wyczyszczono zakończone zadania",
-    "cleared_all": "Czyści kolejność ⚠️CHECK",
+    "cleared_all": "Czyści kolejność",
     "running": "Uruchom: {{label}}",
     "stopped_label": "Zatrzymano: {{label}}",
     "error_label": "Błąd: {{detail}} — {{label}}",
     "error_no_label": "Błąd: {{detail}}",
     "retry_enqueued": "Ponów próbę: {{title}}",
-    "session_log_unavailable": "Nie udało się otworzyć pliku dziennika sesji (uruchom w aplikacji lub dziennik niedostępny) ⚠️CHECK"
+    "session_log_unavailable": "Nie udało się otworzyć pliku dziennika sesji (uruchom w aplikacji lub dziennik niedostępny)"
   },
   "error": {
     "open_folder": "Nie udało się otworzyć folderu: {{message}}",
     "open_file": "Nie udało się otworzyć pliku: {{message}}",
     "open_link": "Nie można otworzyć linku: {{message}}",
     "stopped_by_user": "Zatrzymano przez użytkownika",
-    "process_failed": "Przetłumaczenie do języka polskiego:\n\nNie udało się przetłumaczyć elementu w kolejce ⚠️CHECK",
-    "output_dir_required": "Wybierz folder wyjściowy w Ustawieniach ⚠️CHECK"
+    "process_failed": "Przetłumaczenie do języka polskiego:\n\nNie udało się przetłumaczyć elementu w kolejce",
+    "output_dir_required": "Wybierz folder wyjściowy w Ustawieniach"
   },
   "subtask": {
-    "retry_label": "restart ⚠️CHECK",
-    "retry_aria": "Sprobuj ponownie ten film ⚠️CHECK",
-    "retry_title": "Przepróbuj ten film ⚠️CHECK"
+    "retry_label": "restart",
+    "retry_aria": "Sprobuj ponownie ten film",
+    "retry_title": "Przepróbuj ten film"
   },
   "actions": {
     "show_in_folder": "Pokaż w folderze",

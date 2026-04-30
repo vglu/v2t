@@ -76,7 +76,7 @@
     "model_size_label": "Taille du modèle",
     "model_aria": "Taille du modèle Whisper dans l'application",
     "model_option": "{{id}} — ~{{sizeMib}} Mo (navigateur, approximatif)",
-    "tip": "Les fichiers <code>.bin</code> ggml ne sont pas utilisés dans ce mode. ⚠️CHECK"
+    "tip": "Les fichiers <code>.bin</code> ggml ne sont pas utilisés dans ce mode."
   },
   "cloud_step": {
     "intro": "Entrez les détails de votre fournisseur de cloud. La clé est stockée dans le magasin sécurisé de l'OS, pas en texte brut.",
@@ -94,7 +94,7 @@
     "cuda_default_name": "discrétisé",
     "cuda_enable": "Activer l'accélération CUDA (recommandé)",
     "linux_intro": "<strong>Débian / Ubuntu:</strong> il n'y a pas de bouton de téléchargement ici. Exemples :",
-    "linux_li_ubuntu": "Ubuntu/Debian : <code>sudo apt install whisper-cpp</code> ou construire <a>whisper.cpp</a> ⚠️CHECK",
+    "linux_li_ubuntu": "Ubuntu/Debian : <code>sudo apt install whisper-cpp</code> ou construire <a>whisper.cpp</a>",
     "linux_li_fedora": "Fedora : <code>sudo dnf install whisper-cpp</code>",
     "linux_li_arch": "Arch : <code>yay -S whisper-cpp</code> (AUR)",
     "btn_download_win": "Téléchargez whisper-cli pour moi (Windows)",
@@ -122,6 +122,6 @@
   },
   "run_step": {
     "intro": "Ajoutez des fichiers, des dossiers ou collez des liens dans la file d'attente, puis appuyez sur <strong>Démarrer la file d'attente</strong>.",
-    "tip": "Si quelque chose échoue, vérifiez le journal en bas et la liste de contrôle ci-dessus. ⚠️CHECK"
+    "tip": "Si quelque chose échoue, vérifiez le journal en bas et la liste de contrôle ci-dessus."
   }
 }

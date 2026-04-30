@@ -105,7 +105,7 @@
     "cli_path_label": "Caminho do executável",
     "cli_path_placeholder": "Deixe em branco se whisper-cli estiver ao lado do aplicativo",
     "step_b_title": "Passo B — arquivo do modelo",
-    "step_b_tip": "Escolha o tamanho, em seguida, faça o download. Verificamos SHA-1; quando ele corresponder, verá uma confirmação verde abaixo e o item da lista de verificação <strong>Modelo Whisper (.bin)</strong> se tornará verde. ⚠️CHECK",
+    "step_b_tip": "Escolha o tamanho, em seguida, faça o download. Verificamos SHA-1; quando ele corresponder, verá uma confirmação verde abaixo e o item da lista de verificação <strong>Modelo Whisper (.bin)</strong> se tornará verde.",
     "models_dir_label": "Pasta para arquivos .bin",
     "models_dir_default_placeholder": "Default: dados do aplicativo / modelos",
     "browse": "Procurar…",
@@ -122,6 +122,6 @@
   },
   "run_step": {
     "intro": "Adicione arquivos, pastas ou cole links na fila, em seguida pressione <strong>Iniciar fila</strong>.",
-    "tip": "Se algo falhar, verifique o log na parte inferior e a lista de verificação acima. ⚠️CHECK"
+    "tip": "Se algo falhar, verifique o log na parte inferior e a lista de verificação acima."
   }
 }

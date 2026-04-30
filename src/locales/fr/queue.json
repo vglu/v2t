@@ -17,14 +17,14 @@
   },
   "url_field": {
     "label": "URLs (une par ligne)",
-    "placeholder": "URL de la vidéo ou de l'audio à convertir ⚠️CHECK"
+    "placeholder": "URL de la vidéo ou de l'audio à convertir"
   },
   "table": {
     "label_header": "Étiquette",
     "kind_header": "Type",
     "status_header": "État",
     "actions_header": "Actions",
-    "no_jobs": "Aucun travail en cours ⚠️CHECK",
+    "no_jobs": "Aucun travail en cours",
     "playlist_header": "{{title}} ({{count}} vidéos)"
   },
   "log": {
@@ -38,9 +38,9 @@
   "msg": {
     "added_paths_drop": "Ajouté{{count}}chemin(s) depuis le glisser-déposer",
     "added_urls": "Ajouté{{count}}URL(s)",
-    "added_files_picker": "Ajouté{{count}}fichier(s) depuis le sélecteur ⚠️CHECK",
-    "queue_already_running": "La file d'attente est déjà en cours ⚠️CHECK",
-    "nothing_to_run": "Aucune tâche en cours d'exécution ⚠️CHECK",
+    "added_files_picker": "Ajouté{{count}}fichier(s) depuis le sélecteur",
+    "queue_already_running": "La file d'attente est déjà en cours",
+    "nothing_to_run": "Aucune tâche en cours d'exécution",
     "starting_queue": "Début de la file d'attente ({{count}} tâche(s))",
     "queue_stopped": "La file d'attente a été arrêtée (les tâches restantes ont été annulées)",
     "queue_idle": "Queue inactif",
@@ -63,8 +63,8 @@
     "open_file": "Impossible d'ouvrir le fichier : {{message}}",
     "open_link": "Impossible d'ouvrir le lien : {{message}}",
     "stopped_by_user": "Arrêté par l'utilisateur",
-    "process_failed": "Échec du traitement de l'élément de la file d'attente ⚠️CHECK",
-    "output_dir_required": "Choisissez le dossier de sortie dans les paramètres ⚠️CHECK"
+    "process_failed": "Échec du traitement de l'élément de la file d'attente",
+    "output_dir_required": "Choisissez le dossier de sortie dans les paramètres"
   },
   "subtask": {
     "retry_label": "↩️ réessayer",

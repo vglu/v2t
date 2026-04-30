@@ -66,7 +66,7 @@
   "mode": {
     "intro": "¿Cómo se deben producir los transcripciones?",
     "group_aria": "Modo de transcripción",
-    "cloud": "<strong>Nube (API HTTP)</strong> — Compatible con OpenAI <code>/audio/transcriptions</code>, necesita una clave de API. ⚠️CHECK",
+    "cloud": "<strong>Nube (API HTTP)</strong> — Compatible con OpenAI <code>/audio/transcriptions</code>, necesita una clave de API.",
     "local": "<strong>Whisper local</strong> — <code>whisper.cpp</code> en este equipo, sin clave de API; descarga un modelo en el siguiente paso.",
     "browser": "<strong>Whisper en la aplicación</strong> — se ejecuta dentro de la aplicación (WASM), sin clave API ni <code>whisper-cli</code>; el modelo se descarga por primera vez.",
     "later": "<strong>Decidir en Configuraciones más tarde</strong> — omitir la configuración de API/modelo por ahora."
@@ -76,7 +76,7 @@
     "model_size_label": "Tamaño del modelo",
     "model_aria": "Tamaño del modelo Whisper en la aplicación",
     "model_option": "{{id}} — ~{{sizeMib}} MiB (navegador, aproximado)",
-    "tip": "Etiquetas que coinciden con el catálogo local; los archivos <code>.bin</code> de ggml no se utilizan en este modo. ⚠️CHECK"
+    "tip": "Etiquetas que coinciden con el catálogo local; los archivos <code>.bin</code> de ggml no se utilizan en este modo."
   },
   "cloud_step": {
     "intro": "Introduce los detalles de tu proveedor de nube. La clave se almacena en el almacenamiento seguro del sistema operativo, no en texto plano.",
@@ -105,7 +105,7 @@
     "cli_path_label": "Ruta del ejecutable",
     "cli_path_placeholder": "Dejar vacío si whisper-cli está a su lado del app",
     "step_b_title": "Paso B — archivo de modelo",
-    "step_b_tip": "Elige el tamaño, luego descarga. Verificamos SHA-1; cuando coincida, verás una confirmación verde debajo y el elemento de la lista <strong>Mi modelo Whisper (.bin)</strong> se pondrá en verde. ⚠️CHECK",
+    "step_b_tip": "Elige el tamaño, luego descarga. Verificamos SHA-1; cuando coincida, verás una confirmación verde debajo y el elemento de la lista <strong>Mi modelo Whisper (.bin)</strong> se pondrá en verde.",
     "models_dir_label": "Carpeta para archivos .bin",
     "models_dir_default_placeholder": "Valor por defecto: datos de la aplicación / modelos",
     "browse": "Explorar…",
@@ -122,6 +122,6 @@
   },
   "run_step": {
     "intro": "Añade archivos, carpetas o pega enlaces a la cola, luego presiona <strong>Iniciar cola</strong>.",
-    "tip": "Si algo falla, verifica el registro en la parte inferior y la lista de verificación encima. ⚠️CHECK"
+    "tip": "Si algo falla, verifica el registro en la parte inferior y la lista de verificación encima."
   }
 }

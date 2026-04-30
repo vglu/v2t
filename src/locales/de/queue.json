@@ -5,7 +5,7 @@
     "ready_when_you_are": "<strong>Bereit, wenn Sie es sind.</strong> Dateien oder Ordner hier ablegen, Video-Links einfügen oder die Schaltflächen unten verwenden – dann drücken Sie <strong>Anfrage starten</strong>.",
     "finish_setup_first": "<strong>Zuerst die Einrichtung abschließen.</strong> Folgen Sie der Checklist (grüne Punkte). Öffnen Sie <strong>Einstellungen</strong>, wenn etwas fehlt, oder verwenden Sie den <strong>Einrichtungsleitfaden</strong> für eine kurze Einführung."
   },
-  "drop_zone": "Ziehen Sie Dateien oder Ordner hierher (natürliche Ziehung verwendet Systempfade). ⚠️CHECK",
+  "drop_zone": "Ziehen Sie Dateien oder Ordner hierher (natürliche Ziehung verwendet Systempfade).",
   "btn": {
     "add_files": "Dateien hinzufügen…",
     "add_folder": "Ordner hinzufügen…",
@@ -17,7 +17,7 @@
   },
   "url_field": {
     "label": "URLs (eine pro Zeile)",
-    "placeholder": "https://www.youtube.com/watch?v=… ⚠️CHECK"
+    "placeholder": "https://www.youtube.com/watch?v=…"
   },
   "table": {
     "label_header": "Überschrift",
@@ -33,14 +33,14 @@
     "show_percents": "Zeige Download-Prozentsatz %",
     "open_file": "Öffne Protokolldatei",
     "copy": "Kopieren",
-    "empty": "Keine Einträge im Queue ⚠️CHECK"
+    "empty": "Keine Einträge im Queue"
   },
   "msg": {
     "added_paths_drop": "{{count}} Pfade wurden von der Abgabe hinzugefügt",
     "added_urls": "{{count}} URL(s) hinzugefügt",
     "added_files_picker": "{{count}} Datei(en) aus dem Picker hinzugefügt",
     "queue_already_running": "Die Warteschlange läuft bereits.",
-    "nothing_to_run": "Keine Aufgaben zum Ausführen (keine anstehenden Jobs) ⚠️CHECK",
+    "nothing_to_run": "Keine Aufgaben zum Ausführen (keine anstehenden Jobs)",
     "starting_queue": "Starten Sie die Warteschlange ({{count}} Aufgabe(n))",
     "queue_stopped": "Warteschlange gestoppt (verbleibende Aufgaben abgebrochen)",
     "queue_idle": "Warteschlange leert sich",
@@ -63,8 +63,8 @@
     "open_file": "Konnte die Datei nicht öffnen: {{message}}",
     "open_link": "Konnte Link nicht öffnen: {{message}}",
     "stopped_by_user": "Abgebrochen durch den Benutzer",
-    "process_failed": "Verarbeiten der Queue-Elemente fehlgeschlagen ⚠️CHECK",
-    "output_dir_required": "Wählen Sie das Ausgabeordner im Einstellungen ⚠️CHECK"
+    "process_failed": "Verarbeiten der Queue-Elemente fehlgeschlagen",
+    "output_dir_required": "Wählen Sie das Ausgabeordner im Einstellungen"
   },
   "subtask": {
     "retry_label": "↻ Wiederholen",

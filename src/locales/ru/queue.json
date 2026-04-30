@@ -1,5 +1,5 @@
 {
-  "title": "Очередь ⚠️CHECK",
+  "title": "Очередь",
   "panel_aria": "Очередь",
   "empty_hint": {
     "ready_when_you_are": "Готовы когда захотите. Перетащите файлы или папки сюда, вставьте ссылки на видео или используйте кнопки ниже — затем нажмите <strong>Запустить очередь</strong>.",
@@ -17,28 +17,28 @@
   },
   "url_field": {
     "label": "URLs (один на строку)",
-    "placeholder": "Ссылка на видео / аудио ⚠️CHECK"
+    "placeholder": "Ссылка на видео / аудио"
   },
   "table": {
     "label_header": "Заголовок",
     "kind_header": "Вид",
     "status_header": "Статус",
     "actions_header": "Действия",
-    "no_jobs": "Нет заданий пока ⚠️CHECK",
+    "no_jobs": "Нет заданий пока",
     "playlist_header": "{{title}} ({{count}} видеороликов)"
   },
   "log": {
     "show": "Показать журнал ▾",
     "hide": "Скрыть журнал ▴",
-    "show_percents": "Показать процент загрузки ⚠️CHECK",
+    "show_percents": "Показать процент загрузки",
     "open_file": "Открыть файл журнала",
     "copy": "Копировать",
     "empty": "…"
   },
   "msg": {
-    "added_paths_drop": "Добавлено {{count}} путь(а/ов) из перетаскивания ⚠️CHECK",
-    "added_urls": "Добавлено {{count}} URL(а) ⚠️CHECK",
-    "added_files_picker": "Добавлено {{count}} файл(ов) из пикера ⚠️CHECK",
+    "added_paths_drop": "Добавлено {{count}} путь(а/ов) из перетаскивания",
+    "added_urls": "Добавлено {{count}} URL(а)",
+    "added_files_picker": "Добавлено {{count}} файл(ов) из пикера",
     "queue_already_running": "Очередь уже запущена",
     "nothing_to_run": "Нет задач для выполнения (нет ожидающих заданий)",
     "starting_queue": "Запуск очереди ({{count}} задания(й))",
@@ -64,10 +64,10 @@
     "open_link": "Не удалось открыть ссылку: {{message}}",
     "stopped_by_user": "Остановлено пользователем",
     "process_failed": "Обработка элемента очереди не удалась",
-    "output_dir_required": "Выберите папку для вывода в настройках ⚠️CHECK"
+    "output_dir_required": "Выберите папку для вывода в настройках"
   },
   "subtask": {
-    "retry_label": "🔄 попробовать снова",
+    "retry_label": "↻ повторить",
     "retry_aria": "Повторить этот видеофайл",
     "retry_title": "Повторить этот видеофайл"
   },

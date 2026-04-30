@@ -28,7 +28,7 @@
     },
     "output": {
       "label": "Pasta de saída",
-      "hint_missing": "Escolha uma pasta no guia de configuração ou nas Configurações. ⚠️CHECK",
+      "hint_missing": "Escolha uma pasta no guia de configuração ou nas Configurações.",
       "hint_documents": "Configurar — usando Documentos (padrão). Transcrições salvas aqui.",
       "hint_custom": "Configurar — transcrições serão salvas aqui."
     },
@@ -58,7 +58,7 @@
     "tools_unknown": "Ferramentas: desconhecidas (execute dentro do Tauri para detectar ffmpeg / yt-dlp)",
     "status_ok": "OK",
     "status_missing": "Ausente",
-    "status_no": "Não disponível ⚠️CHECK",
+    "status_no": "Não disponível",
     "ffmpeg_label": "ffmpeg:",
     "ytdlp_label": "yt-dlp:",
     "whisper_label": "whisper-cli",

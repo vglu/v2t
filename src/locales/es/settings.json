@@ -19,7 +19,7 @@
     "folder_placeholder": "No establecido",
     "browse": "Explorar…",
     "use_documents": "Usar Documentos",
-    "hint": "<strong>Usar Documentos</strong> establece la carpeta \"Documentos\" de tu sistema operativo y guarda las configuraciones. Puedes cambiarlo en cualquier momento con Navegar. ⚠️CHECK"
+    "hint": "<strong>Usar Documentos</strong> establece la carpeta \"Documentos\" de tu sistema operativo y guarda las configuraciones. Puedes cambiarlo en cualquier momento con Navegar."
   },
   "transcription": {
     "mode_label": "Modo de transcripción",
@@ -30,11 +30,11 @@
       "browser": "En la aplicación — Whisper (WASM / Transformers.js)"
     },
     "mode_summary": {
-      "local": "Sin clave de API. Necesitas el ejecutable whisper-cli y un modelo .bin de ggml en disco. ⚠️CHECK",
-      "browser": "Sin clave de API o whisper-cli. La transcripción se realiza en la aplicación (WASM); elige el tamaño del modelo — la primera ejecución puede descargar pesos. ⚠️CHECK",
-      "cloud": "Utiliza la clave de API de tu proveedor. whisper-cli y los modelos locales no se utilizan. ⚠️CHECK"
+      "local": "Sin clave de API. Necesitas el ejecutable whisper-cli y un modelo .bin de ggml en disco.",
+      "browser": "Sin clave de API o whisper-cli. La transcripción se realiza en la aplicación (WASM); elige el tamaño del modelo — la primera ejecución puede descargar pesos.",
+      "cloud": "Utiliza la clave de API de tu proveedor. whisper-cli y los modelos locales no se utilizan."
     },
-    "browser_warn": "Experimento: requiere internet para el primer descargo de modelo; audio largo puede ser lento o agotar la memoria. Si esto falla, cambia a API en la nube o Whisper local. ⚠️CHECK",
+    "browser_warn": "Experimento: requiere internet para el primer descargo de modelo; audio largo puede ser lento o agotar la memoria. Si esto falla, cambia a API en la nube o Whisper local.",
     "transcription_aria": "Configuración de transcripción"
   },
   "local_whisper": {
@@ -42,7 +42,7 @@
     "step1_hint": "<strong>Windows:</strong> oficial <code>whisper-bin-x64.zip</code> de <a>ggml-org/whisper.cpp</a> (MIT) — use el botón a continuación para descargar en datos de la aplicación (incluye DLLs). <strong>macOS:</strong> no hay ZIP CLI en esas versiones; el botón ejecuta <code>which whisper-cli</code> / <code>whisper</code> / <code>main</code> y escanea las rutas de Homebrew, o usa <strong>Elegir archivo…</strong> después de <code>brew install whisper-cpp</code>.",
     "linux_intro": "<strong>Linux:</strong> Esta aplicación no descarga whisper-cli aquí. Instala un paquete o compila desde el código fuente, luego establece la ruta a continuación o usa <strong>Elegir archivo…</strong>.",
     "linux_li_ubuntu": "<strong>Ubuntu / Debian:</strong> <code>sudo apt install whisper-cpp</code> (si está disponible en tu versión) o compila desde <a>ggml-org/whisper.cpp</a>",
-    "linux_li_fedora": "<strong>Fedora:</strong> <code>sudo dnf install whisper-cpp</code> (el nombre del paquete puede variar) ⚠️CHECK",
+    "linux_li_fedora": "<strong>Fedora:</strong> <code>sudo dnf install whisper-cpp</code> (el nombre del paquete puede variar)",
     "linux_li_arch": "<strong>Arch:</strong> AUR, por ejemplo <code>yay -S whisper-cpp</code>",
     "btn_download_win": "Descarga whisper-cli por mí (Windows)",
     "btn_find_mac": "Buscar whisper-cli (macOS)",
@@ -80,7 +80,7 @@
   },
   "browser_whisper": {
     "model_size_title": "Tamaño del modelo (navegador)",
-    "model_size_hint": "Tamaño del modelo Whisper ⚠️CHECK",
+    "model_size_hint": "Tamaño del modelo Whisper",
     "model_label": "Modelo",
     "model_aria": "Tamaño del modelo Whisper en la aplicación",
     "model_option": "{{id}} — ~{{sizeMib}} MiB (navegador, aproximado)"
@@ -92,7 +92,7 @@
     "where_key_summary": "¿Dónde obtengo una clave de API?",
     "where_key_body_provider": "Use un proveedor con una solicitud <code>POST …/audio/transcriptions</code> de estilo OpenAI y JSON con un campo <code>text</code>.",
     "where_key_body_openai": "<strong>OpenAI:</strong> <a>Claves API</a>, base <code>https://api.openai.com/v1</code>, modelo, por ejemplo, <code>whisper-1</code>.",
-    "where_key_warning": "Trate la clave como una contraseña: no la comparta ni pasee en chats públicos o repositorios de código. ⚠️CHECK",
+    "where_key_warning": "Trate la clave como una contraseña: no la comparta ni pasee en chats públicos o repositorios de código.",
     "credential_store_hint": "La clave API se guarda en el almacén de credenciales del sistema operativo (Administrador de credenciales de Windows, Cofre de claves de macOS, Servicio secreto en Linux). El archivo de configuración solo mantiene otras opciones (no hay clave en texto plano)."
   },
   "media_tools": {
@@ -100,15 +100,15 @@
     "mac_hint": "<strong>Descargar para mí (macOS):</strong> descarga <code>yt-dlp_macos</code> de las liberaciones de GitHub y un estático <code>ffmpeg</code> para tu CPU (<a>ffmpeg-static</a>), guarda ambos en los datos de la aplicación y actualiza los caminos. Si macOS los bloquea, permítelos en <strong>Privacidad & Seguridad</strong> o limpia el cuarentena (<code>xattr -dr com.apple.quarantine …</code>).",
     "btn_download": "Descarga ffmpeg & yt-dlp por mí",
     "btn_downloading": "Descargando…",
-    "linux_hint": "Descarga en un clic solo está disponible para <strong>Windows</strong> y <strong>macOS</strong>. En Linux, instala <code>ffmpeg</code> y <code>yt-dlp</code> (por ejemplo, mediante el administrador de paquetes) y pega las rutas completas a continuación. ⚠️CHECK",
+    "linux_hint": "Descarga en un clic solo está disponible para <strong>Windows</strong> y <strong>macOS</strong>. En Linux, instala <code>ffmpeg</code> y <code>yt-dlp</code> (por ejemplo, mediante el administrador de paquetes) y pega las rutas completas a continuación.",
     "self_install_summary": "Instalaré ffmpeg / yt-dlp por mí mismo",
     "self_install_intro": "Coloca <strong>ffmpeg</strong> y <strong>yt-dlp</strong> junto a <code>v2t.exe</code> (o en una subcarpeta <code>bin</code>), o introduce las rutas completas aquí.",
     "ffmpeg_path_label": "Ruta de ffmpeg (opcional)",
     "ytdlp_path_label": "Ruta de yt-dlp (opcional)",
     "auto_detect_placeholder": "Detectar automáticamente si está junto a la aplicación",
     "js_runtimes_label": "yt-dlp JS ejecuciones (opcional)",
-    "js_runtimes_aria": "Runtimes de JavaScript para EJS ⚠️CHECK",
-    "js_runtimes_placeholder": "deno — ver wiki de yt-dlp (EJS) ⚠️CHECK",
+    "js_runtimes_aria": "Runtimes de JavaScript para EJS",
+    "js_runtimes_placeholder": "deno — ver wiki de yt-dlp (EJS)",
     "common_label": "Común:",
     "js_runtimes_hint": "Si YouTube falla con \"ningún entorno de ejecución de JavaScript compatible\", instala Deno o Node y configura esto como el nombre del entorno de ejecución que yt-dlp espera (a menudo <code>deno</code>).",
     "btn_install_deno": "Descarga e instala Deno por mí",
@@ -144,10 +144,10 @@
     "placeholder": "auto",
     "examples_label": "Ejemplos:",
     "ru_chip": "ru_chip",
-    "ru_desc": "API key ⚠️CHECK",
-    "uk_chip": "uk ⚠️CHECK",
+    "ru_desc": "API key",
+    "uk_chip": "uk",
     "uk_desc": "Claro, por favor proporciona el texto en inglés que deseas traducir a español.",
-    "en_chip": "API key ⚠️CHECK",
+    "en_chip": "API key",
     "en_desc": "Claro, por favor proporciona el texto en inglés que deseas traducir y haré la traducción según las reglas establecidas.",
     "hint": "Cualquier otro código ISO 639-1 (por ejemplo, <code>de</code>, <code>fr</code>, <code>pl</code>)."
   },
@@ -156,8 +156,8 @@
     "toggle": "Usar subtítulos cuando estén disponibles (saltar Whisper)",
     "priority_label": "Prioridades de idiomas (códigos ISO separados por comas)",
     "priority_placeholder": "ru, es, en",
-    "priority_hint": "La opción seleccionada tiene prioridad en la generación de subtítulos. ⚠️CHECK",
-    "keep_srt": "También guarda el archivo .srt original junto al transcripción .txt ⚠️CHECK"
+    "priority_hint": "La opción seleccionada tiene prioridad en la generación de subtítulos.",
+    "keep_srt": "También guarda el archivo .srt original junto al transcripción .txt"
   },
   "btn_save": "Guardar configuración",
   "btn_saving": "Guardando…"

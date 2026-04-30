@@ -17,7 +17,7 @@
   },
   "url_field": {
     "label": "URLs (una por línea)",
-    "placeholder": "URL de entrada ⚠️CHECK"
+    "placeholder": "URL de entrada"
   },
   "table": {
     "label_header": "Etiqueta",
@@ -33,12 +33,12 @@
     "show_percents": "Mostrar porcentaje de descarga %",
     "open_file": "Abrir archivo de registro",
     "copy": "Copiar",
-    "empty": "Cola vacía ⚠️CHECK"
+    "empty": "Cola vacía"
   },
   "msg": {
     "added_paths_drop": "Se han añadido {{count}} ruta(s) desde el arrastrar y soltar.",
     "added_urls": "Se han añadido {{count}} URL(s)",
-    "added_files_picker": "Se han añadido {{count}} archivo(s) desde el selector ⚠️CHECK",
+    "added_files_picker": "Se han añadido {{count}} archivo(s) desde el selector",
     "queue_already_running": "La cola ya está en ejecución",
     "nothing_to_run": "Nada por ejecutar (ningún trabajo pendiente)",
     "starting_queue": "Iniciando la cola ({{count}} trabajo(s))",
@@ -67,7 +67,7 @@
     "output_dir_required": "Elija la carpeta de salida en Configuración"
   },
   "subtask": {
-    "retry_label": "🔄 intentar de nuevo",
+    "retry_label": "↻ reintentar",
     "retry_aria": "Reintentar este video",
     "retry_title": "Reintentar este video"
   },

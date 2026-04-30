@@ -7,7 +7,7 @@
     "transcription": "Transcrição e modelos",
     "media_tools": "Ferramentas multimídia (ffmpeg, yt-dlp)",
     "subtitles_fast_path": "Caminho rápido para legendas",
-    "other": "Outros ⚠️CHECK"
+    "other": "Outros"
   },
   "language": {
     "field_label": "Idioma do aplicativo",
@@ -30,11 +30,11 @@
       "browser": "Em aplicativo — Whisper (WASM / Transformers.js)"
     },
     "mode_summary": {
-      "local": "Sem chave de API. Você precisa do executável whisper-cli e um modelo .bin ggml no disco. ⚠️CHECK",
-      "browser": "Sem chave de API ou whisper-cli. A transcrição é executada no aplicativo (WASM); selecione o tamanho do modelo — a primeira execução pode baixar os pesos. ⚠️CHECK",
+      "local": "Sem chave de API. Você precisa do executável whisper-cli e um modelo .bin ggml no disco.",
+      "browser": "Sem chave de API ou whisper-cli. A transcrição é executada no aplicativo (WASM); selecione o tamanho do modelo — a primeira execução pode baixar os pesos.",
       "cloud": "Usa a chave de API do seu provedor. O whisper-cli e os modelos locais não são utilizados."
     },
-    "browser_warn": "Experimental: precisa de internet para o primeiro download do modelo; áudio longo pode ser lento ou acabar com a memória. Se falhar, mude para API em nuvem ou Whisper local. ⚠️CHECK",
+    "browser_warn": "Experimental: precisa de internet para o primeiro download do modelo; áudio longo pode ser lento ou acabar com a memória. Se falhar, mude para API em nuvem ou Whisper local.",
     "transcription_aria": "Configurações de transcrição"
   },
   "local_whisper": {
@@ -42,7 +42,7 @@
     "step1_hint": "<strong>Windows:</strong> oficial <code>whisper-bin-x64.zip</code> de <a>ggml-org/whisper.cpp</a> (MIT) — use o botão abaixo para baixar para os dados do aplicativo (inclui DLLs). <strong>macOS:</strong> sem zip CLI nesses lançamentos; o botão executa <code>which whisper-cli</code> / <code>whisper</code> / <code>main</code> e escaneia caminhos Homebrew, ou use <strong>Selecione arquivo…</strong> após <code>brew install whisper-cpp</code>.",
     "linux_intro": "<strong>Linux:</strong> esta aplicação não baixa o whisper-cli aqui. Instale um pacote ou compile a partir do código-fonte, em seguida defina o caminho abaixo ou use <strong>Selecionar arquivo…</strong>.",
     "linux_li_ubuntu": "<strong>Ubuntu / Debian:</strong> <code>sudo apt install whisper-cpp</code> (se disponível na sua versão) ou compile a partir de <a>ggml-org/whisper.cpp</a>",
-    "linux_li_fedora": "<strong>Fedora:</strong> <code>sudo dnf install whisper-cpp</code> (nome do pacote pode variar) ⚠️CHECK",
+    "linux_li_fedora": "<strong>Fedora:</strong> <code>sudo dnf install whisper-cpp</code> (nome do pacote pode variar)",
     "linux_li_arch": "<strong>Arch:</strong> AUR, por exemplo, <code>yay -S whisper-cpp</code>",
     "btn_download_win": "Baixe o whisper-cli para mim (Windows)",
     "btn_find_mac": "Encontre whisper-cli (macOS)",
@@ -54,7 +54,7 @@
     "step15_title": "1.5 · Aceleração do Whisper (Windows)",
     "step15_hint": "Escolha qual build do whisper.cpp baixar. <strong>CUDA</strong> precisa de um GPU NVIDIA (10-20× mais rápido em hardware RTX). <strong>Vulkan</strong> funciona em maioria dos GPUs NVIDIA / AMD / Intel (8-15×). <strong>CPU</strong> é a base segura. Mudar isso não baixa automaticamente; clique em <strong>Re-download whisper-cli</strong> abaixo para obter o pacote correspondente.",
     "gpu_detected_prefix": "Detectado:",
-    "gpu_none": "Nenhuma GPU discreta reconhecida ⚠️CHECK",
+    "gpu_none": "Nenhuma GPU discreta reconhecida",
     "gpu_unknown_adapter": "adaptador desconhecido",
     "gpu_auto_nvidia": "Auto escolherá o CUDA.",
     "gpu_auto_none": "— O automático permanece na CPU.",
@@ -80,7 +80,7 @@
   },
   "browser_whisper": {
     "model_size_title": "Tamanho do modelo (navegador)",
-    "model_size_hint": "Tamanho do modelo Whisper ⚠️CHECK",
+    "model_size_hint": "Tamanho do modelo Whisper",
     "model_label": "Modelo",
     "model_aria": "Tamanho do modelo Whisper na aplicação",
     "model_option": "{{id}} — ~{{sizeMib}} MiB (navegador, aproximado)"
@@ -90,15 +90,15 @@
     "api_model_label": "Nome do modelo de API",
     "api_key_label": "Chave de API",
     "where_key_summary": "Onde eu obtenho uma chave de API?",
-    "where_key_body_provider": "Use um provedor com uma API de estilo OpenAI para <code>POST …/audio/transcriptions</code> e JSON com um campo <code>text</code>. ⚠️CHECK",
+    "where_key_body_provider": "Use um provedor com uma API de estilo OpenAI para <code>POST …/audio/transcriptions</code> e JSON com um campo <code>text</code>.",
     "where_key_body_openai": "<strong>OpenAI:</strong> <a>Chaves API</a>, base <code>https://api.openai.com/v1</code>, modelo, por exemplo, <code>whisper-1</code>.",
-    "where_key_warning": "Trate a chave como uma senha: não compartilhe ou cole ela em conversas públicas ou repositórios git. ⚠️CHECK",
+    "where_key_warning": "Trate a chave como uma senha: não compartilhe ou cole ela em conversas públicas ou repositórios git.",
     "credential_store_hint": "A chave da API é armazenada no repositório de credenciais do sistema operacional (Gerenciador de Credenciais do Windows, Chaveiro do macOS, Serviço Secretos no Linux). O arquivo de configurações mantém apenas outras opções (nenhuma chave em texto limpo)."
   },
   "media_tools": {
     "win_hint": "<strong>Download para mim (Windows):</strong> baixa <code>yt-dlp.exe</code> das versões do GitHub e um zip de FFmpeg GPL da <a>BtbN/FFmpeg-Builds</a>, extrai <code>ffmpeg.exe</code> para a pasta de dados da sua aplicação, depois salva os caminhos nas configurações.",
     "mac_hint": "<strong>Baixar para mim (macOS):</strong> baixa <code>yt-dlp_macos</code> dos lançamentos do GitHub e um estático <code>ffmpeg</code> para o seu processador (<a>ffmpeg-static</a>), salva ambos na pasta de dados da aplicação e atualiza os caminhos. Se macOS bloquear, permita em <strong>Privacidade & Segurança</strong> ou limpe a quarantena (<code>xattr -dr com.apple.quarantine …</code>).",
-    "btn_download": "Baixe o ffmpeg e o yt-dlp para mim ⚠️CHECK",
+    "btn_download": "Baixe o ffmpeg e o yt-dlp para mim",
     "btn_downloading": "Baixando…",
     "linux_hint": "Abaixo é possível apenas no<strong>Windows</strong> e<strong>macOS</strong>. No<strong>Linux</strong>, instale<code>ffmpeg</code>e<code>yt-dlp</code>(por exemplo, gerenciador de pacotes) e cole os caminhos completos abaixo.",
     "self_install_summary": "Eu instalei o ffmpeg / yt-dlp por conta própria",
@@ -144,11 +144,11 @@
     "placeholder": "auto",
     "examples_label": "Exemplos:",
     "ru_chip": "ru",
-    "ru_desc": "API key ⚠️CHECK",
+    "ru_desc": "API key",
     "uk_chip": "uk",
     "uk_desc": "(Ucraniano)",
-    "en_chip": "API key ⚠️CHECK",
-    "en_desc": "API key ⚠️CHECK",
+    "en_chip": "API key",
+    "en_desc": "API key",
     "hint": "Qualquer outro código ISO 639-1 (por exemplo, <code>de</code>, <code>fr</code>, <code>pl</code>)."
   },
   "subtitles": {
@@ -156,8 +156,8 @@
     "toggle": "Use legendas quando disponíveis (pule o Whisper)",
     "priority_label": "Prioridades de idiomas (códigos ISO separados por vírgula)",
     "priority_placeholder": "uk, ru, en",
-    "priority_hint": "A prioridade das legendas é determinada por ordem de lista. ⚠️CHECK",
-    "keep_srt": "Também salve o arquivo de subtítulos original (.srt) ao lado do transcritto (.txt) ⚠️CHECK"
+    "priority_hint": "A prioridade das legendas é determinada por ordem de lista.",
+    "keep_srt": "Também salve o arquivo de subtítulos original (.srt) ao lado do transcritto (.txt)"
   },
   "btn_save": "Salvar configurações",
   "btn_saving": "Salvando…"

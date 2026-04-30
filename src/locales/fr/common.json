@@ -7,11 +7,11 @@
   "header": {
     "lang_aria": "Langue de l'interface utilisateur",
     "setup_guide_label": "Guide d'installation",
-    "setup_guide_title": "Vue d'ensemble de l'installation ⚠️CHECK",
+    "setup_guide_title": "Vue d'ensemble de l'installation",
     "setup_guide_aria": "Ouvrir le guide de configuration"
   },
   "toast": {
     "saved": "Paramètres enregistrés.",
-    "save_failed": "Impossible de sauvegarder les paramètres. ⚠️CHECK"
+    "save_failed": "Impossible de sauvegarder les paramètres."
   }
 }

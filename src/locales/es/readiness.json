@@ -42,7 +42,7 @@
       "label": "Modelo Whisper (.bin)",
       "hint_checking": "Verificando…",
       "hint_ok": "Verificado en disco (SHA-1) — listo para la transcripción offline.",
-      "hint_missing": "Falta o desacuerdo de la suma verificada — descarga/verifica el modelo en Configuración o configura. ⚠️CHECK"
+      "hint_missing": "Falta o desacuerdo de la suma verificada — descarga/verifica el modelo en Configuración o configura."
     },
     "wasm_whisper": {
       "label": "In-app Whisper (WASM)",
@@ -58,7 +58,7 @@
     "tools_unknown": "Herramientas: desconocidas (ejecutar dentro de Tauri para detectar ffmpeg / yt-dlp)",
     "status_ok": "¡Genial!",
     "status_missing": "Falta",
-    "status_no": "No ⚠️CHECK",
+    "status_no": "No",
     "ffmpeg_label": "ffmpeg:",
     "ytdlp_label": "yt-dlp:",
     "whisper_label": "whisper-cli",

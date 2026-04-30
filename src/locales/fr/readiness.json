@@ -28,7 +28,7 @@
     },
     "output": {
       "label": "Dossier de sortie",
-      "hint_missing": "Choisissez un dossier dans le guide d'installation ou les paramètres. ⚠️CHECK",
+      "hint_missing": "Choisissez un dossier dans le guide d'installation ou les paramètres.",
       "hint_documents": "Définir — utiliser les Documents (par défaut). Les transcripts sont enregistrés ici.",
       "hint_custom": "Enregistrer les sous-titres ici."
     },
@@ -42,7 +42,7 @@
       "label": "Modèle Whisper (.bin)",
       "hint_checking": "Vérification…",
       "hint_ok": "Vérifié sur le disque (SHA-1) — prêt pour la transcription hors ligne.",
-      "hint_missing": "Manquant ou erreur de somme de contrôle — utilisez Télécharger / vérifier le modèle dans les Paramètres ou la configuration. ⚠️CHECK"
+      "hint_missing": "Manquant ou erreur de somme de contrôle — utilisez Télécharger / vérifier le modèle dans les Paramètres ou la configuration."
     },
     "wasm_whisper": {
       "label": "Whisper en application (WASM)",
@@ -57,8 +57,8 @@
   "deps_bar": {
     "tools_unknown": "Outils : inconnus (exécuter dans Tauri pour détecter ffmpeg / yt-dlp)",
     "status_ok": "OK",
-    "status_missing": "Manquant ⚠️CHECK",
-    "status_no": "pas trouvé ⚠️CHECK",
+    "status_missing": "Manquant",
+    "status_no": "pas trouvé",
     "ffmpeg_label": "ffmpeg :",
     "ytdlp_label": "yt-dlp :",
     "whisper_label": "whisper-cli",
