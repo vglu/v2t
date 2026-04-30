@@ -24,7 +24,8 @@
     "kind_header": "Kind",
     "status_header": "Status",
     "actions_header": "Actions",
-    "no_jobs": "No jobs yet"
+    "no_jobs": "No jobs yet",
+    "playlist_header": "{{title}} ({{count}} videos)"
   },
   "log": {
     "show": "Show log ▾",

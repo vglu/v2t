@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import {
   browserQueueJobFinish,
   cancelQueueJob,
@@ -85,6 +86,7 @@ function IconOpenFile({ className }: { className?: string }) {
 }
 
 export function QueuePanel({ settings, readinessComplete }: Props) {
+  const { t } = useTranslation("queue");
   const { recursiveFolderScan } = settings;
   const [urlDraft, setUrlDraft] = useState("");
   const [jobs, setJobs] = useState<QueueJob[]>([]);
@@ -130,7 +132,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
         displayLabel: fileBasenameNoExt(source),
       }));
       addJobs(items);
-      appendLog(`Added ${items.length} path(s) from drop`);
+      appendLog(t("msg.added_paths_drop", { count: items.length }));
     },
     [addJobs, appendLog],
   );
@@ -290,17 +292,17 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
         displayLabel: shortLabel(source),
       })),
     );
-    appendLog(`Added ${lines.length} URL(s)`);
+    appendLog(t("msg.added_urls", { count: lines.length }));
     setUrlDraft("");
   }
 
   async function addFolder() {
     const dir = await open({ directory: true, multiple: false });
     if (typeof dir !== "string" || !dir.trim()) return;
-    appendLog(`Scanning folder: ${shortLabel(dir, 80)}`);
+    appendLog(t("msg.scanning_folder", { path: shortLabel(dir, 80) }));
     const files = await scanMediaFolder(dir.trim(), recursiveFolderScan);
     if (!files || files.length === 0) {
-      appendLog("No media files found (or scan failed)");
+      appendLog(t("msg.no_media_found"));
       return;
     }
     addJobs(
@@ -310,7 +312,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
         displayLabel: fileBasenameNoExt(source),
       })),
     );
-    appendLog(`Enqueued ${files.length} file(s) from folder`);
+    appendLog(t("msg.enqueued_folder", { count: files.length }));
   }
 
   async function addFilesViaDialog() {
@@ -349,7 +351,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
         displayLabel: fileBasenameNoExt(source),
       })),
     );
-    appendLog(`Added ${list.length} file(s) from picker`);
+    appendLog(t("msg.added_files_picker", { count: list.length }));
   }
 
   const cancelPendingSnapshot = useCallback((slice: QueueJob[]) => {
@@ -367,29 +369,27 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
     if (!runningRef.current) return;
     stopRequestedRef.current = true;
     void cancelQueueJob(currentJobIdRef.current);
-    appendLog(
-      "Stop requested — killing current step if possible; remaining jobs will be cancelled",
-    );
+    appendLog(t("msg.stop_requested"));
   }
 
   async function startQueue() {
     if (runningRef.current) {
-      appendLog("Queue is already running");
+      appendLog(t("msg.queue_already_running"));
       return;
     }
     const pending = jobs.filter((j) => j.status === "pending");
     if (pending.length === 0) {
-      appendLog("Nothing to run (no pending jobs)");
+      appendLog(t("msg.nothing_to_run"));
       return;
     }
     stopRequestedRef.current = false;
     setQueueActive(true);
-    appendLog(`Starting queue (${pending.length} job(s))`);
+    appendLog(t("msg.starting_queue", { count: pending.length }));
     try {
       for (let i = 0; i < pending.length; i++) {
         if (stopRequestedRef.current) {
           cancelPendingSnapshot(pending.slice(i));
-          appendLog("Queue stopped (remaining jobs cancelled)");
+          appendLog(t("msg.queue_stopped"));
           break;
         }
         const job = pending[i]!;
@@ -399,7 +399,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
             j.id === job.id ? { ...j, status: "running", detail: undefined } : j,
           ),
         );
-        appendLog(`Run: ${job.displayLabel}`);
+        appendLog(t("msg.running", { label: job.displayLabel }));
         currentJobIdRef.current = job.id;
         try {
           const outcome = await processQueueItem({
@@ -415,7 +415,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           if (outcome.kind === "browserPrepared") {
             const outDir = settings.outputDir?.trim();
             if (!outDir) {
-              throw new Error("Choose output folder in Settings");
+              throw new Error(t("error.output_dir_required"));
             }
             let texts: string[];
             try {
@@ -462,7 +462,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           );
         } catch (err) {
           const detail =
-            err instanceof Error ? err.message : "process_queue_item failed";
+            err instanceof Error ? err.message : t("error.process_failed");
           const cancelled =
             /job cancelled/i.test(detail) || /^cancelled$/i.test(detail);
           setJobs((prev) =>
@@ -471,15 +471,17 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
                 ? {
                     ...j,
                     status: cancelled ? "cancelled" : "error",
-                    detail: cancelled ? "Stopped by user" : detail,
+                    detail: cancelled ? t("error.stopped_by_user") : detail,
                   }
                 : j,
             ),
           );
           appendLog(
             cancelled
-              ? `Stopped: ${job.displayLabel}`
-              : `Error: ${detail}${job.displayLabel !== detail ? ` — ${job.displayLabel}` : ""}`,
+              ? t("msg.stopped_label", { label: job.displayLabel })
+              : job.displayLabel !== detail
+                ? t("msg.error_label", { detail, label: job.displayLabel })
+                : t("msg.error_no_label", { detail }),
           );
         } finally {
           currentJobIdRef.current = null;
@@ -488,7 +490,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
     } finally {
       setQueueActive(false);
       stopRequestedRef.current = false;
-      appendLog("Queue idle");
+      appendLog(t("msg.queue_idle"));
     }
   }
 
@@ -505,25 +507,25 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
         return next;
       });
     }
-    appendLog("Cleared finished jobs");
+    appendLog(t("msg.cleared_done"));
   }
 
   function clearAll() {
     if (runningRef.current) return;
     setJobs([]);
     setJobProgress({});
-    appendLog("Cleared queue");
+    appendLog(t("msg.cleared_all"));
   }
 
   function copyLog() {
     void navigator.clipboard.writeText(logLines.join("\n"));
-    appendLog("Log copied to clipboard");
+    appendLog(t("msg.log_copied"));
   }
 
   async function openLogFile() {
     const ok = await openSessionLog();
     if (!ok) {
-      appendLog("Could not open session log file (run inside the app or log unavailable)");
+      appendLog(t("msg.session_log_unavailable"));
     }
   }
 
@@ -533,7 +535,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
       await revealItemInDir(path);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      appendLog(`Не удалось открыть папку: ${msg}`);
+      appendLog(t("error.open_folder", { message: msg }));
     }
   }
 
@@ -543,7 +545,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
       await openPath(path);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      appendLog(`Не удалось открыть файл: ${msg}`);
+      appendLog(t("error.open_file", { message: msg }));
     }
   }
 
@@ -554,10 +556,10 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
         await openUrl(url);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        appendLog(`Could not open link: ${msg}`);
+        appendLog(t("error.open_link", { message: msg }));
       }
     },
-    [appendLog],
+    [appendLog, t],
   );
 
   const retrySubtask = useCallback(
@@ -570,9 +572,9 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           displayLabel: shortLabel(`Retry: ${subtask.title}`),
         },
       ]);
-      appendLog(`Retry enqueued: ${subtask.title}`);
+      appendLog(t("msg.retry_enqueued", { title: subtask.title }));
     },
-    [addJobs, appendLog],
+    [addJobs, appendLog, t],
   );
 
   const queueEmpty = jobs.length === 0;
@@ -583,8 +585,8 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
   }, [logLines, showDownloadPercents]);
 
   return (
-    <section className="queue-panel" aria-label="Queue">
-      <h2>Queue</h2>
+    <section className="queue-panel" aria-label={t("panel_aria")}>
+      <h2>{t("title")}</h2>
 
       {queueEmpty ? (
         <div
@@ -592,16 +594,9 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           data-testid="queue-empty-hint"
         >
           {readinessComplete ? (
-            <>
-              <strong>Ready when you are.</strong> Drop files or folders here, paste video links, or use the
-              buttons below — then press <strong>Start queue</strong>.
-            </>
+            <Trans i18nKey="empty_hint.ready_when_you_are" t={t} components={{ strong: <strong /> }} />
           ) : (
-            <>
-              <strong>Finish setup first.</strong> Follow the checklist above (green dots). Open{" "}
-              <strong>Settings</strong> if anything is missing, or use <strong>Setup guide</strong> for a short
-              tour.
-            </>
+            <Trans i18nKey="empty_hint.finish_setup_first" t={t} components={{ strong: <strong /> }} />
           )}
         </div>
       ) : null}
@@ -614,29 +609,29 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           e.stopPropagation();
         }}
       >
-        <p>Drop files or folders here (native drop uses system paths).</p>
+        <p>{t("drop_zone")}</p>
         <div className="queue-toolbar">
           <button type="button" onClick={() => void addFilesViaDialog()}>
-            Add files…
+            {t("btn.add_files")}
           </button>
           <button type="button" onClick={() => void addFolder()}>
-            Add folder…
+            {t("btn.add_folder")}
           </button>
         </div>
       </div>
 
       <label className="field url-field">
-        <span>URLs (one per line)</span>
+        <span>{t("url_field.label")}</span>
         <textarea
           data-testid="url-input"
           value={urlDraft}
           onChange={(e) => setUrlDraft(e.target.value)}
           rows={4}
-          placeholder="https://www.youtube.com/watch?v=…"
+          placeholder={t("url_field.placeholder")}
         />
       </label>
       <button type="button" data-testid="add-urls" onClick={addUrlsFromDraft}>
-        Add URLs
+        {t("btn.add_urls")}
       </button>
 
       <div className="queue-run-row">
@@ -646,7 +641,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           data-testid="start-queue"
           onClick={() => void startQueue()}
         >
-          Start queue
+          {t("btn.start")}
         </button>
         <button
           type="button"
@@ -654,13 +649,13 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           disabled={!queueRunning}
           onClick={stopQueue}
         >
-          Stop queue
+          {t("btn.stop")}
         </button>
         <button type="button" onClick={clearDone}>
-          Clear done
+          {t("btn.clear_done")}
         </button>
         <button type="button" onClick={clearAll}>
-          Clear all
+          {t("btn.clear_all")}
         </button>
       </div>
 
@@ -668,17 +663,17 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
         <table className="queue-table">
           <thead>
             <tr>
-              <th>Label</th>
-              <th>Kind</th>
-              <th>Status</th>
-              <th className="queue-table-actions-head" aria-label="Actions" />
+              <th>{t("table.label_header")}</th>
+              <th>{t("table.kind_header")}</th>
+              <th>{t("table.status_header")}</th>
+              <th className="queue-table-actions-head" aria-label={t("table.actions_header")} />
             </tr>
           </thead>
           <tbody>
             {jobs.length === 0 ? (
               <tr>
                 <td colSpan={4} className="muted">
-                  No jobs yet
+                  {t("table.no_jobs")}
                 </td>
               </tr>
             ) : (
@@ -715,7 +710,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
             aria-controls="queue-log-body"
             onClick={() => setLogVisible((v) => !v)}
           >
-            {logVisible ? "Hide log ▴" : "Show log ▾"}
+            {logVisible ? t("log.hide") : t("log.show")}
           </button>
           <div className="log-header-actions">
             <label className="log-filter">
@@ -724,13 +719,13 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
                 checked={showDownloadPercents}
                 onChange={(e) => setShowDownloadPercents(e.target.checked)}
               />
-              <span>Show download %</span>
+              <span>{t("log.show_percents")}</span>
             </label>
             <button type="button" onClick={() => void openLogFile()}>
-              Open log file
+              {t("log.open_file")}
             </button>
             <button type="button" onClick={copyLog}>
-              Copy
+              {t("log.copy")}
             </button>
           </div>
         </div>
@@ -739,7 +734,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           id="queue-log-body"
           data-testid="queue-log"
         >
-          {visibleLogLines.length === 0 ? "…" : visibleLogLines.join("\n")}
+          {visibleLogLines.length === 0 ? t("log.empty") : visibleLogLines.join("\n")}
         </pre>
       </div>
     </section>
@@ -767,6 +762,7 @@ function FragmentRow({
   onOpenSubtaskLink,
   onRetrySubtask,
 }: FragmentRowProps) {
+  const { t: tQueue } = useTranslation("queue");
   const showProgress = job.status === "running" && progress != null;
   const subtasks = job.subtasks;
   const showSubtasks =
@@ -775,7 +771,10 @@ function FragmentRow({
     (job.status === "running" || job.status === "error");
   const headerLabel =
     subtasks && subtasks.length > 0
-      ? `${job.playlistTitle?.trim() || job.displayLabel} (${subtasks.length} videos)`
+      ? tQueue("table.playlist_header", {
+          title: job.playlistTitle?.trim() || job.displayLabel,
+          count: subtasks.length,
+        })
       : job.displayLabel;
   return (
     <>
@@ -798,8 +797,8 @@ function FragmentRow({
               <button
                 type="button"
                 className="queue-table-action-btn queue-table-action-btn--icon"
-                title="Show in folder"
-                aria-label="Show in folder"
+                title={tQueue("actions.show_in_folder")}
+                aria-label={tQueue("actions.show_in_folder")}
                 onClick={() => onReveal(outPath)}
               >
                 <IconRevealInFolder className="queue-action-icon" />
@@ -807,8 +806,8 @@ function FragmentRow({
               <button
                 type="button"
                 className="queue-table-action-btn queue-table-action-btn--icon"
-                title="Open file"
-                aria-label="Open file"
+                title={tQueue("actions.open_file")}
+                aria-label={tQueue("actions.open_file")}
                 onClick={() => onOpen(outPath)}
               >
                 <IconOpenFile className="queue-action-icon" />

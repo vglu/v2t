@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from "react-i18next";
 import type { AppSettings, DependencyReport } from "../types/settings";
 
 type Props = {
@@ -25,6 +26,7 @@ function pathsProbablyEqual(a: string | null | undefined, b: string | null | und
 }
 
 export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings }: Props) {
+  const { t } = useTranslation("readiness");
   const toolsUnknown = report === null;
   const ffmpegOk = report?.ffmpegFound ?? false;
   const ytDlpOk = report?.ytDlpFound ?? false;
@@ -55,33 +57,33 @@ export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings
   }[] = [
     {
       id: "ffmpeg",
-      label: "ffmpeg",
+      label: t("row.ffmpeg.label"),
       ok: toolsUnknown ? false : ffmpegOk,
       hint: toolsUnknown
-        ? "Checking… (run inside the desktop app)"
+        ? t("row.ffmpeg.hint_checking")
         : ffmpegOk
-          ? "Found — audio can be normalized."
-          : "Missing — install from Settings or place next to the app.",
+          ? t("row.ffmpeg.hint_ok")
+          : t("row.ffmpeg.hint_missing"),
     },
     {
       id: "ytdlp",
-      label: "yt-dlp",
+      label: t("row.ytdlp.label"),
       ok: toolsUnknown ? false : ytDlpOk,
       hint: toolsUnknown
-        ? "Checking…"
+        ? t("row.ytdlp.hint_checking")
         : ytDlpOk
-          ? "Found — URLs can be downloaded."
-          : "Missing — install from Settings or place next to the app.",
+          ? t("row.ytdlp.hint_ok")
+          : t("row.ytdlp.hint_missing"),
     },
     {
       id: "output",
-      label: "Output folder",
+      label: t("row.output.label"),
       ok: outputOk,
       hint: !outputOk
-        ? "Not set — choose a folder in the setup guide or Settings."
+        ? t("row.output.hint_missing")
         : outputIsDocuments
-          ? "Set — using Documents (default). Transcripts save here."
-          : "Set — transcripts will save here.",
+          ? t("row.output.hint_documents")
+          : t("row.output.hint_custom"),
     },
   ];
 
@@ -89,84 +91,78 @@ export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings
     rows.push(
       {
         id: "whisper-cli",
-        label: "whisper-cli (executable)",
+        label: t("row.whisper_cli.label"),
         ok: toolsUnknown ? false : whisperCliOk,
         hint: toolsUnknown
-          ? "Checking…"
+          ? t("row.whisper_cli.hint_checking")
           : whisperCliOk
-            ? "Found — local engine ready."
-            : "Missing — pick whisper-cli in Settings (or put whisper-cli / main next to the app).",
+            ? t("row.whisper_cli.hint_ok")
+            : t("row.whisper_cli.hint_missing"),
       },
       {
         id: "ggml-model",
-        label: "Whisper model (.bin)",
+        label: t("row.ggml.label"),
         ok: toolsUnknown ? false : modelOk,
         hint: toolsUnknown
-          ? "Checking…"
+          ? t("row.ggml.hint_checking")
           : modelOk
-            ? "Verified on disk (SHA-1) — ready for offline transcription."
-            : "Missing or checksum mismatch — use Download / verify model in Settings or setup.",
+            ? t("row.ggml.hint_ok")
+            : t("row.ggml.hint_missing"),
       },
     );
   } else if (useBrowser) {
     rows.push({
       id: "wasm-whisper",
-      label: "In-app Whisper (WASM)",
+      label: t("row.wasm_whisper.label"),
       ok: true,
-      hint: "Runs in the app (Transformers.js). First job may download the model; no API key or whisper-cli.",
+      hint: t("row.wasm_whisper.hint"),
     });
   } else {
     rows.push({
       id: "api",
-      label: "Cloud API key",
+      label: t("row.api_key.label"),
       ok: apiKeyOk,
-      hint: apiKeyOk
-        ? "Saved in OS secure storage — cloud transcription ready."
-        : "Missing — add your key in the setup guide or Settings (not used for Local Whisper).",
+      hint: apiKeyOk ? t("row.api_key.hint_ok") : t("row.api_key.hint_missing"),
     });
   }
 
   return (
     <section
       className={`readiness ${allOk ? "readiness-all-ok" : "readiness-needs-work"}`}
-      aria-label="Setup checklist"
+      aria-label={t("panel_aria")}
       data-testid="readiness-panel"
     >
       <div className="readiness-head">
-        <h2 className="readiness-title">Before you start</h2>
+        <h2 className="readiness-title">{t("title")}</h2>
         <p className="readiness-sub">
-          {allOk
-            ? "All set — add files or URLs below and press Start queue."
-            : "Complete the checklist (we detect tools and files automatically)."}
+          {allOk ? t("sub.all_ok") : t("sub.needs_work")}
         </p>
         {useLocal ? (
           <p className="readiness-mode-hint">
-            Mode: <strong>Local Whisper</strong> — cloud API key is not required.
+            <Trans i18nKey="mode_hint.local" t={t} components={{ strong: <strong /> }} />
           </p>
         ) : useBrowser ? (
           <p className="readiness-mode-hint">
-            Mode: <strong>In-app Whisper</strong> — WASM in the UI layer; no API key or whisper-cli (ffmpeg / yt-dlp
-            still required for URLs).
+            <Trans i18nKey="mode_hint.browser" t={t} components={{ strong: <strong /> }} />
           </p>
         ) : (
           <p className="readiness-mode-hint">
-            Mode: <strong>Cloud API</strong> — whisper-cli and ggml model are not required.
+            <Trans i18nKey="mode_hint.cloud" t={t} components={{ strong: <strong /> }} />
           </p>
         )}
         {toolsUnknown ? (
           <p className="readiness-tools-unknown" data-testid="deps-unknown">
-            Tools: unknown (run inside the desktop app to detect ffmpeg / yt-dlp)
+            {t("tools_unknown")}
           </p>
         ) : null}
         {!allOk ? (
           <button type="button" className="readiness-settings-btn" onClick={onOpenSettings}>
-            Open Settings
+            {t("open_settings_btn")}
           </button>
         ) : null}
         {!toolsUnknown && (!ffmpegOk || !ytDlpOk) ? (
           <p className="readiness-tool-hint" data-testid="readiness-tool-hint">
-            Tip: in <strong>Settings</strong> — on Windows or macOS use{" "}
-            <strong>Download ffmpeg &amp; yt-dlp for me</strong>, or install manually.
+            <Trans i18nKey="tool_hint" t={t} components={{ strong: <strong /> }} />
           </p>
         ) : null}
       </div>

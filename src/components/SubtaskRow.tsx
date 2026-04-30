@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { SubtaskState, SubtaskStatus } from "../types/queue";
 
 type Props = {
@@ -26,6 +27,7 @@ const STATUS_ICON: Record<SubtaskStatus, string> = {
 const SUBS_REASON_RE = /^from subs\b/i;
 
 export function SubtaskRow({ subtask, isActive, onOpen, onRetry }: Props) {
+  const { t } = useTranslation("queue");
   const effectiveStatus: SubtaskStatus =
     subtask.status === "pending" && isActive ? "running" : subtask.status;
   const reason = subtask.reason?.trim();
@@ -58,11 +60,11 @@ export function SubtaskRow({ subtask, isActive, onOpen, onRetry }: Props) {
         <button
           type="button"
           className="subtask-retry"
-          aria-label="Retry this video"
-          title="Retry this video"
+          aria-label={t("subtask.retry_aria")}
+          title={t("subtask.retry_title")}
           onClick={() => onRetry(subtask)}
         >
-          ↻ retry
+          {t("subtask.retry_label")}
         </button>
       ) : null}
     </li>

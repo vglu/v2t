@@ -1,5 +1,6 @@
 import i18next from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { QueuePanel } from "./components/QueuePanel";
 import { ReadinessPanel } from "./components/ReadinessPanel";
@@ -47,6 +48,7 @@ const HEADER_LANG_OPTIONS: ReadonlyArray<{ value: UiLanguage; label: string }> =
 ];
 
 export default function App() {
+  const { t } = useTranslation("common");
   const [settings, setSettings] = useState<AppSettings>(defaultAppSettings);
   const [deps, setDeps] = useState<DependencyReport | null>(null);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
@@ -141,7 +143,7 @@ export default function App() {
     setToast(null);
     const ok = await saveSettings(settings);
     setSaving(false);
-    setToast(ok ? "Settings saved." : "Could not save settings.");
+    setToast(ok ? t("toast.saved") : t("toast.save_failed"));
     if (ok) await refreshDeps(settings);
   }
 
@@ -151,7 +153,7 @@ export default function App() {
     setToast(null);
     const ok = await saveSettings(next);
     setSaving(false);
-    setToast(ok ? "Settings saved." : "Could not save settings.");
+    setToast(ok ? t("toast.saved") : t("toast.save_failed"));
     if (ok) await refreshDeps(next);
   }
 
@@ -162,7 +164,7 @@ export default function App() {
     setToast(null);
     const ok = await saveSettings(next);
     setSaving(false);
-    setToast(ok ? "Settings saved." : "Could not save settings.");
+    setToast(ok ? t("toast.saved") : t("toast.save_failed"));
     if (ok) await refreshDeps(next);
     setWizardOpen(false);
   }
@@ -176,12 +178,12 @@ export default function App() {
     <div className="app-root">
       <header className="app-header">
         <h1>Video to Text</h1>
-        <p className="tagline">v2t — portable video / audio → text</p>
+        <p className="tagline">{t("tagline")}</p>
         <div className="app-header-actions">
           <select
             className="app-lang-select"
             data-testid="header-language-switcher"
-            aria-label="UI language"
+            aria-label={t("header.lang_aria")}
             value={settings.uiLanguage}
             onChange={(e) => void handleLanguageChange(e.target.value as UiLanguage)}
           >
@@ -195,24 +197,25 @@ export default function App() {
             type="button"
             className="ghost"
             onClick={() => setWizardOpen(true)}
-            title="Short setup walkthrough"
-            aria-label="Open setup guide"
+            title={t("header.setup_guide_title")}
+            aria-label={t("header.setup_guide_aria")}
           >
-            Setup guide
+            {t("header.setup_guide_label")}
           </button>
         </div>
       </header>
 
-      <div className="app-tabs" role="tablist" aria-label="Main sections">
+      <div className="app-tabs" role="tablist">
         <button
           type="button"
           role="tab"
           className={activeTab === "queue" ? "app-tab app-tab--active" : "app-tab"}
           aria-selected={activeTab === "queue"}
           id="tab-queue"
+          data-testid="tab-queue"
           onClick={() => setActiveTab("queue")}
         >
-          Queue
+          {t("tab.queue")}
         </button>
         <button
           type="button"
@@ -222,9 +225,10 @@ export default function App() {
           }
           aria-selected={activeTab === "settings"}
           id="tab-settings"
+          data-testid="tab-settings"
           onClick={() => setActiveTab("settings")}
         >
-          Settings
+          {t("tab.settings")}
         </button>
       </div>
 
