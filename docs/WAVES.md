@@ -637,7 +637,7 @@ Release v1.6.0.
 
 ## 6.1. Что сделать (по подзадачам M1..M7)
 
-### M1 — i18n scaffolding
+### M1 — i18n scaffolding  ✅ done (8abe7b6, 2026-04-29)
 **Файлы:** `package.json`, `vite.config.ts` (если нужен plugin), новый `src/i18n/index.ts`, новый `src/i18n/types.ts`, `src/main.tsx` (init).
 
 - `npm i react-i18next i18next` (плюс `i18next-browser-languagedetector` для `auto`).
@@ -663,7 +663,7 @@ Release v1.6.0.
 - В `src/main.tsx` импортировать `./i18n` ДО `<App />`.
 - Helper-хук `useT(): { t: TFunction }` тонко обёрнутый над `useTranslation`.
 
-### M2 — Settings: поле `uiLanguage` + двойной UI-переключатель
+### M2 — Settings: поле `uiLanguage` + двойной UI-переключатель  ✅ done (5147167 + 3c5c18f, 2026-04-29)
 **Файлы:** `src-tauri/src/settings.rs` (поле + serde default), `src/types/settings.ts` (тип + default), `src/components/SettingsPanel.tsx` (полный `<select>`), `src/App.tsx` (компактный header `<select>`), `src/i18n/index.ts` (sync с settings).
 
 - Rust: поле `ui_language: UiLanguage` (enum `Auto | En | Uk | Ru | De | Es | Fr | Pl`), `#[serde(default)]` → `Auto`.
@@ -678,7 +678,7 @@ Release v1.6.0.
 
 ### M3 — Locale catalogs (4 sub-steps)
 
-**M3a — extract en**
+**M3a — extract en**  ✅ done (ece6521, 2026-04-29) — 344 keys × 5 namespaces.
 **Файлы:** новые `src/locales/en/{common,onboarding,settings,queue,readiness}.json`.
 
 - Пройтись по `src/components/*.tsx` + `src/App.tsx`, извлечь все литералы → ключи в snake_case по разделам:
@@ -690,7 +690,7 @@ Release v1.6.0.
 - Это чистый refactor — **НЕ переводить, только перенести**. Каждая строка в JSON — текущая EN-версия слово-в-слово.
 - CI-script `scripts/check-i18n-keys.mjs`: для каждой пары ключ-значение в `en/` проверить наличие в каждой целевой локали. Запускать в `npm run build` через pre-build hook.
 
-**M3b — copy & adapt translation-bot**
+**M3b — copy & adapt translation-bot**  ✅ done (bb1ec3c, 2026-04-30) — Qwen2.5-Coder:7b loads ~5.5 GB into VRAM, ~1.5 s/string average. Smoke test passed in 37s.
 **Файлы:** новый `scripts/translation-bot/` (копия из `D:\Projects\NumbersM\scripts\translation-bot\`).
 
 - Копировать целиком: `src/`, `package.json`, `tsconfig.json`, `README.md`. Не workspace member — отдельный isolated `package.json` с `tsx`, `node-fetch`, `picocolors`.
@@ -735,7 +735,7 @@ Release v1.6.0.
 - Merge: для каждой локали L, для каждого namespace N, скопировать `output/drafts/L/N.draft.json` → `src/locales/L/N.json`, при необходимости отредактировав отдельные значения вручную.
 - Скрипт `scripts/merge-drafts.mjs` (опционально) — копирует все drafts разом, можно потом переоткрывать diff'ы вручную.
 
-### M4 — OnboardingWizard
+### M4 — OnboardingWizard  ✅ done (aac60a5, 2026-04-30)
 **Файл:** `src/components/OnboardingWizard.tsx` (~1071 LOC).
 
 - Заменить **все** литералы на `t("key", { params })`. Плотные prose-блоки с inline-`<code>` и `<a>` — использовать `<Trans i18nKey="key" components={{ a: <a href="..." />, code: <code /> }} />` для сохранения структуры.
@@ -743,14 +743,14 @@ Release v1.6.0.
 - Tests: проверить `data-testid` рендера каждого шага, не текст.
 - Smoke: `i18next.changeLanguage("uk")` в dev → wizard полностью на украинском.
 
-### M5 — SettingsPanel
+### M5 — SettingsPanel  ✅ done (9921ef2, 2026-04-30)
 **Файл:** `src/components/SettingsPanel.tsx` (~1055 LOC).
 
 - Аналогично M4 — все литералы → `t(...)`.
 - Сохранить тестовые `data-testid` (`transcription-mode-card`, `whisper-acceleration-card`, `subtitle-priority-langs`, `use-subtitles-toggle`).
 - Подсказки (hint'ы) с inline-кодом — через `<Trans>`.
 
-### M6 — QueuePanel + мелочёвка
+### M6 — QueuePanel + мелочёвка  ✅ done (2574957 + f6d3f2b, 2026-04-30)
 **Файлы:** `src/components/QueuePanel.tsx`, `src/components/SubtaskRow.tsx`, `src/components/SubtaskList.tsx`, `src/components/JobProgressBar.tsx`, `src/components/ReadinessPanel.tsx`, `src/components/DependencyBar.tsx`, `src/App.tsx`.
 
 - Все JSX-строки → `t(...)`.
