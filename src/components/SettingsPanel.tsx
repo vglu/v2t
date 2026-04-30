@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import {
   defaultDocumentsDir,
   defaultWhisperModelsDir,
@@ -57,6 +58,7 @@ export function SettingsPanel({
   onLanguageChange,
   saving,
 }: Props) {
+  const { t } = useTranslation("settings");
   const [whisperModels, setWhisperModels] = useState<WhisperModelMeta[]>([]);
   const [defaultModelsPath, setDefaultModelsPath] = useState<string | null>(null);
   const [modelDlMsg, setModelDlMsg] = useState<string | null>(null);
@@ -215,7 +217,7 @@ export function SettingsPanel({
     setModelDlProgress(null);
     try {
       await downloadWhisperModel(settings.whisperModel, settings.whisperModelsDir);
-      setModelDlMsg("Model ready (verified SHA-1).");
+      setModelDlMsg(t("local_whisper.model_dl_msg_done"));
       onRefreshReadiness?.();
     } catch (e) {
       const msg =
@@ -267,7 +269,7 @@ export function SettingsPanel({
         ffmpegPath: p.ffmpegPath,
         ytDlpPath: p.ytDlpPath,
       });
-      setToolDlMsg("ffmpeg and yt-dlp saved to app data and paths updated.");
+      setToolDlMsg(t("media_tools.tools_msg_done"));
     } catch (e) {
       const msg =
         typeof e === "string"
@@ -312,15 +314,15 @@ export function SettingsPanel({
   return (
     <section
       className="settings-panel settings-panel--embedded"
-      aria-label="Settings"
+      aria-label={t("panel_aria")}
     >
-      <h2>Settings</h2>
+      <h2>{t("title")}</h2>
 
-      <p className="settings-section-title">Language</p>
+      <p className="settings-section-title">{t("section.language")}</p>
       <label className="field">
-        <span>UI language</span>
+        <span>{t("language.field_label")}</span>
         <select
-          aria-label="UI language (full)"
+          aria-label={t("language.select_aria")}
           data-testid="settings-language-switcher"
           value={settings.uiLanguage}
           onChange={(e) => onLanguageChange(e.target.value as UiLanguage)}
@@ -332,45 +334,43 @@ export function SettingsPanel({
           ))}
         </select>
         <p className="hint">
-          <strong>Auto</strong> follows your OS locale (<code>navigator.language</code>); other
-          options force a specific language. Saved instantly — no need to press Save below. The
-          same switcher (compact, flag-only) lives in the top-right header.
+          <Trans i18nKey="language.hint" t={t} components={{ strong: <strong />, code: <code /> }} />
         </p>
       </label>
 
-      <p className="settings-section-title">Output</p>
+      <p className="settings-section-title">{t("section.output")}</p>
       <label className="field">
-        <span>Output folder (transcripts .txt)</span>
+        <span>{t("output.folder_label")}</span>
         <div className="row-gap">
           <input
             type="text"
             readOnly
             value={settings.outputDir ?? ""}
-            placeholder="Not set"
+            placeholder={t("output.folder_placeholder")}
           />
           <button type="button" onClick={() => void pickOutputDir()}>
-            Browse…
+            {t("output.browse")}
           </button>
           <button type="button" onClick={() => void useDocumentsAsOutput()}>
-            Use Documents
+            {t("output.use_documents")}
           </button>
         </div>
       </label>
       <p className="hint">
-        <strong>Use Documents</strong> sets your OS “Documents” folder and saves settings. You can change it anytime with Browse.
+        <Trans i18nKey="output.hint" t={t} components={{ strong: <strong /> }} />
       </p>
 
-      <p className="settings-section-title">Transcription &amp; models</p>
+      <p className="settings-section-title">{t("section.transcription")}</p>
       <div
         className="settings-highlight"
         data-testid="transcription-mode-card"
         role="group"
-        aria-label="Transcription settings"
+        aria-label={t("transcription.transcription_aria")}
       >
         <label className="field mb-sm">
-          <span>Transcription mode</span>
+          <span>{t("transcription.mode_label")}</span>
           <select
-            aria-label="Transcription mode"
+            aria-label={t("transcription.mode_aria")}
             value={settings.transcriptionMode}
             onChange={(e) =>
               onChange({
@@ -379,38 +379,44 @@ export function SettingsPanel({
               })
             }
           >
-            <option value="httpApi">Cloud — HTTP API (OpenAI-compatible)</option>
-            <option value="localWhisper">Offline — Local Whisper (whisper.cpp)</option>
-            <option value="browserWhisper">In-app — Whisper (WASM / Transformers.js)</option>
+            <option value="httpApi">{t("transcription.mode_options.http_api")}</option>
+            <option value="localWhisper">{t("transcription.mode_options.local")}</option>
+            <option value="browserWhisper">{t("transcription.mode_options.browser")}</option>
           </select>
         </label>
         <p className="hint settings-mode-summary">
           {useLocal
-            ? "No API key. You need the whisper-cli executable and one ggml .bin model on disk."
+            ? t("transcription.mode_summary.local")
             : useBrowser
-              ? "No API key or whisper-cli. Transcription runs in the app (WASM); pick model size — first run may download weights."
-              : "Uses your provider’s API key. whisper-cli and local models are not used."}
+              ? t("transcription.mode_summary.browser")
+              : t("transcription.mode_summary.cloud")}
         </p>
         {useBrowser ? (
           <p className="hint hint--warn" role="note">
-            Experimental: needs internet for the first model download; long audio may be slow or run out of memory. If
-            this fails, switch to Cloud API or Local Whisper.
+            {t("transcription.browser_warn")}
           </p>
         ) : null}
 
         {useLocal ? (
           <div className="local-whisper-block" data-testid="local-whisper-block">
             <div className="settings-step-card">
-              <p className="settings-step-title">1 · whisper-cli (engine)</p>
+              <p className="settings-step-title">{t("local_whisper.step1_title")}</p>
               <p className="hint settings-step-body">
-                <strong>Windows:</strong> official <code>whisper-bin-x64.zip</code> from{" "}
-                <a href="https://github.com/ggml-org/whisper.cpp/releases" target="_blank" rel="noopener noreferrer">
-                  ggml-org/whisper.cpp
-                </a>{" "}
-                (MIT) — use the button below to download into app data (includes DLLs).{" "}
-                <strong>macOS:</strong> no CLI zip in those releases; the button runs{" "}
-                <code>which whisper-cli</code> / <code>whisper</code> / <code>main</code> and scans Homebrew paths, or
-                use <strong>Pick file…</strong> after <code>brew install whisper-cpp</code>.
+                <Trans
+                  i18nKey="local_whisper.step1_hint"
+                  t={t}
+                  components={{
+                    strong: <strong />,
+                    code: <code />,
+                    a: (
+                      <a
+                        href="https://github.com/ggml-org/whisper.cpp/releases"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      />
+                    ),
+                  }}
+                />
               </p>
               {isLinux ? (
                 <div
@@ -418,22 +424,43 @@ export function SettingsPanel({
                   data-testid="linux-whisper-instructions"
                 >
                   <p className="hint settings-step-body">
-                    <strong>Linux:</strong> this app does not download whisper-cli here. Install a package or build
-                    from source, then set the path below or use <strong>Pick file…</strong>.
+                    <Trans
+                      i18nKey="local_whisper.linux_intro"
+                      t={t}
+                      components={{ strong: <strong /> }}
+                    />
                   </p>
                   <ul className="hint settings-step-body">
                     <li>
-                      <strong>Ubuntu / Debian:</strong> <code>sudo apt install whisper-cpp</code> (if available in your
-                      release) or build from{" "}
-                      <a href="https://github.com/ggml-org/whisper.cpp" target="_blank" rel="noopener noreferrer">
-                        ggml-org/whisper.cpp
-                      </a>
+                      <Trans
+                        i18nKey="local_whisper.linux_li_ubuntu"
+                        t={t}
+                        components={{
+                          strong: <strong />,
+                          code: <code />,
+                          a: (
+                            <a
+                              href="https://github.com/ggml-org/whisper.cpp"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            />
+                          ),
+                        }}
+                      />
                     </li>
                     <li>
-                      <strong>Fedora:</strong> <code>sudo dnf install whisper-cpp</code> (package name may vary)
+                      <Trans
+                        i18nKey="local_whisper.linux_li_fedora"
+                        t={t}
+                        components={{ strong: <strong />, code: <code /> }}
+                      />
                     </li>
                     <li>
-                      <strong>Arch:</strong> AUR e.g. <code>yay -S whisper-cpp</code>
+                      <Trans
+                        i18nKey="local_whisper.linux_li_arch"
+                        t={t}
+                        components={{ strong: <strong />, code: <code /> }}
+                      />
                     </li>
                   </ul>
                 </div>
@@ -446,14 +473,14 @@ export function SettingsPanel({
                     onClick={() => void onDownloadWhisperCliSetup()}
                   >
                     {whisperCliDlBusy
-                      ? "Working…"
+                      ? t("local_whisper.btn_working")
                       : isWin
-                        ? "Download whisper-cli for me (Windows)"
-                        : "Find whisper-cli (macOS)"}
+                        ? t("local_whisper.btn_download_win")
+                        : t("local_whisper.btn_find_mac")}
                   </button>
                 ) : null}
                 <button type="button" onClick={() => void pickWhisperCliExecutable()}>
-                  Pick file…
+                  {t("local_whisper.btn_pick_file")}
                 </button>
               </div>
               {whisperCliDlProgress &&
@@ -475,7 +502,11 @@ export function SettingsPanel({
                     ✓
                   </span>
                   <div className="onboarding-success-callout-text">
-                    <strong>whisper-cli path saved.</strong> The checklist should update after refresh.
+                    <Trans
+                      i18nKey="local_whisper.install_success"
+                      t={t}
+                      components={{ strong: <strong /> }}
+                    />
                   </div>
                 </div>
               ) : null}
@@ -488,7 +519,7 @@ export function SettingsPanel({
                 </div>
               ) : null}
               <label className="field">
-                <span>Path to executable (optional if next to app)</span>
+                <span>{t("local_whisper.path_field_label")}</span>
                 <div className="row-gap">
                   <input
                     type="text"
@@ -499,7 +530,7 @@ export function SettingsPanel({
                         whisperCliPath: e.target.value.trim() || null,
                       })
                     }
-                    placeholder="whisper-cli.exe / whisper-cli — or use Pick file…"
+                    placeholder={t("local_whisper.path_placeholder")}
                   />
                 </div>
               </label>
@@ -507,37 +538,38 @@ export function SettingsPanel({
 
             {isWin ? (
               <div className="settings-step-card" data-testid="whisper-acceleration-card">
-                <p className="settings-step-title">1.5 · Whisper acceleration (Windows)</p>
+                <p className="settings-step-title">{t("local_whisper.step15_title")}</p>
                 <p className="hint settings-step-body">
-                  Picks which whisper.cpp build to download. <strong>CUDA</strong> needs an NVIDIA GPU
-                  (10-20× faster on RTX-class hardware). <strong>Vulkan</strong> works on most NVIDIA /
-                  AMD / Intel GPUs (8-15×). <strong>CPU</strong> is the safe baseline. Changing this
-                  does not auto-redownload; click <strong>Re-download whisper-cli</strong> below to
-                  fetch the matching bundle.
+                  <Trans
+                    i18nKey="local_whisper.step15_hint"
+                    t={t}
+                    components={{ strong: <strong /> }}
+                  />
                 </p>
                 {gpuInfo ? (
                   <p className="hint settings-step-body" data-testid="gpu-detect-hint">
-                    Detected: {gpuInfo.kind === "none"
-                      ? "no discrete GPU recognized"
-                      : `${gpuInfo.kind.toUpperCase()} (${gpuInfo.names.join(", ") || "unknown adapter"})`}
+                    {t("local_whisper.gpu_detected_prefix")}
+                    {gpuInfo.kind === "none"
+                      ? t("local_whisper.gpu_none")
+                      : `${gpuInfo.kind.toUpperCase()} (${gpuInfo.names.join(", ") || t("local_whisper.gpu_unknown_adapter")})`}
                     {gpuInfo.kind === "nvidia"
-                      ? " — Auto will pick CUDA."
+                      ? t("local_whisper.gpu_auto_nvidia")
                       : gpuInfo.kind === "none"
-                        ? " — Auto stays on CPU."
-                        : " — Auto stays on CPU; pick Vulkan manually if drivers are current."}
+                        ? t("local_whisper.gpu_auto_none")
+                        : t("local_whisper.gpu_auto_other")}
                   </p>
                 ) : null}
                 <div
                   className="onboarding-radio-group"
                   role="radiogroup"
-                  aria-label="Whisper acceleration"
+                  aria-label={t("local_whisper.accel_aria")}
                 >
                   {(
                     [
-                      ["auto", "Auto (recommended)"],
-                      ["cuda", "CUDA — NVIDIA only"],
-                      ["vulkan", "Vulkan — NVIDIA / AMD / Intel"],
-                      ["cpu", "CPU — safe baseline"],
+                      ["auto", t("local_whisper.accel.auto")],
+                      ["cuda", t("local_whisper.accel.cuda")],
+                      ["vulkan", t("local_whisper.accel.vulkan")],
+                      ["cpu", t("local_whisper.accel.cpu")],
                     ] as ReadonlyArray<[WhisperAcceleration, string]>
                   ).map(([val, label]) => (
                     <label className="onboarding-radio" key={val}>
@@ -557,37 +589,34 @@ export function SettingsPanel({
                     disabled={whisperCliDlBusy || saving}
                     onClick={() => void onDownloadWhisperCliSetup()}
                   >
-                    {whisperCliDlBusy ? "Working…" : "Re-download whisper-cli for selected backend"}
+                    {whisperCliDlBusy ? t("local_whisper.btn_working") : t("local_whisper.btn_redownload")}
                   </button>
                 </div>
               </div>
             ) : null}
 
             <div className="settings-step-card">
-              <p className="settings-step-title">2 · GGML model (.bin)</p>
-              <p className="hint settings-step-body">
-                Choose a model size, then download. The checklist turns green when the file exists and the
-                SHA-1 matches the catalog (same check as after download).
-              </p>
+              <p className="settings-step-title">{t("local_whisper.step2_title")}</p>
+              <p className="hint settings-step-body">{t("local_whisper.step2_hint")}</p>
               <label className="field">
-                <span>Folder for .bin files</span>
+                <span>{t("local_whisper.models_dir_label")}</span>
                 <div className="row-gap">
                   <input
                     type="text"
                     readOnly
                     value={settings.whisperModelsDir ?? ""}
-                    placeholder={defaultModelsPath ?? "Default: app data / models"}
+                    placeholder={defaultModelsPath ?? t("local_whisper.models_dir_placeholder_default")}
                   />
                   <button type="button" onClick={() => void pickWhisperModelsDir()}>
-                    Browse…
+                    {t("output.browse")}
                   </button>
                 </div>
               </label>
 
               <label className="field">
-                <span>Model</span>
+                <span>{t("local_whisper.model_label")}</span>
                 <select
-                  aria-label="Whisper GGML model"
+                  aria-label={t("local_whisper.model_aria")}
                   value={settings.whisperModel}
                   onChange={(e) =>
                     onChange({ ...settings, whisperModel: e.target.value })
@@ -595,7 +624,11 @@ export function SettingsPanel({
                 >
                   {whisperModels.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.id} — ~{m.sizeMib} MiB ({m.fileName})
+                      {t("local_whisper.model_option", {
+                        id: m.id,
+                        sizeMib: m.sizeMib,
+                        fileName: m.fileName,
+                      })}
                     </option>
                   ))}
                 </select>
@@ -607,7 +640,7 @@ export function SettingsPanel({
                   disabled={modelDlBusy}
                   onClick={() => void onDownloadModel()}
                 >
-                  {modelDlBusy ? "Downloading…" : "Download / verify model"}
+                  {modelDlBusy ? t("local_whisper.btn_downloading") : t("local_whisper.btn_download_model")}
                 </button>
               </div>
 
@@ -629,15 +662,18 @@ export function SettingsPanel({
         ) : useBrowser ? (
           <div className="browser-whisper-block" data-testid="browser-whisper-block">
             <div className="settings-step-card">
-              <p className="settings-step-title">Model size (browser)</p>
+              <p className="settings-step-title">{t("browser_whisper.model_size_title")}</p>
               <p className="hint settings-step-body">
-                Same labels as the local catalog; the app maps them to Transformers.js checkpoints. No ggml{" "}
-                <code>.bin</code> download here — weights load on first transcription (needs network once per model).
+                <Trans
+                  i18nKey="browser_whisper.model_size_hint"
+                  t={t}
+                  components={{ code: <code /> }}
+                />
               </p>
               <label className="field">
-                <span>Model</span>
+                <span>{t("browser_whisper.model_label")}</span>
                 <select
-                  aria-label="In-app Whisper model size"
+                  aria-label={t("browser_whisper.model_aria")}
                   value={settings.whisperModel}
                   onChange={(e) =>
                     onChange({ ...settings, whisperModel: e.target.value })
@@ -645,7 +681,7 @@ export function SettingsPanel({
                 >
                   {whisperModels.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.id} — ~{m.sizeMib} MiB (browser, approximate)
+                      {t("browser_whisper.model_option", { id: m.id, sizeMib: m.sizeMib })}
                     </option>
                   ))}
                 </select>
@@ -655,7 +691,7 @@ export function SettingsPanel({
         ) : (
           <>
             <label className="field">
-              <span>API base URL</span>
+              <span>{t("cloud.api_url_label")}</span>
               <input
                 type="url"
                 value={settings.apiBaseUrl}
@@ -665,7 +701,7 @@ export function SettingsPanel({
               />
             </label>
             <label className="field">
-              <span>API model name</span>
+              <span>{t("cloud.api_model_label")}</span>
               <input
                 type="text"
                 value={settings.apiModel}
@@ -673,7 +709,7 @@ export function SettingsPanel({
               />
             </label>
             <label className="field">
-              <span>API key</span>
+              <span>{t("cloud.api_key_label")}</span>
               <input
                 type="password"
                 autoComplete="off"
@@ -682,67 +718,79 @@ export function SettingsPanel({
               />
             </label>
             <details className="help-details">
-              <summary>Where do I get an API key?</summary>
+              <summary>{t("cloud.where_key_summary")}</summary>
               <div className="help-details-body">
                 <p>
-                  Use a provider with OpenAI-style{" "}
-                  <code>POST …/audio/transcriptions</code> and JSON with a <code>text</code> field.
+                  <Trans
+                    i18nKey="cloud.where_key_body_provider"
+                    t={t}
+                    components={{ code: <code /> }}
+                  />
                 </p>
                 <p>
-                  <strong>OpenAI:</strong>{" "}
-                  <a
-                    href="https://platform.openai.com/api-keys"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    API keys
-                  </a>
-                  , base <code>https://api.openai.com/v1</code>, model e.g. <code>whisper-1</code>.
+                  <Trans
+                    i18nKey="cloud.where_key_body_openai"
+                    t={t}
+                    components={{
+                      strong: <strong />,
+                      code: <code />,
+                      a: (
+                        <a
+                          href="https://platform.openai.com/api-keys"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        />
+                      ),
+                    }}
+                  />
                 </p>
-                <p className="hint help-details-warning">
-                  Treat the key like a password: do not share it or paste it into public chats or git.
-                </p>
+                <p className="hint help-details-warning">{t("cloud.where_key_warning")}</p>
               </div>
             </details>
-            <p className="hint">
-              API key is saved in the OS credential store (Windows Credential Manager, macOS Keychain,
-              Secret Service on Linux). The settings file keeps other options only (no key in plain text).
-            </p>
+            <p className="hint">{t("cloud.credential_store_hint")}</p>
           </>
         )}
       </div>
 
-      <p className="settings-section-title">Media tools (ffmpeg, yt-dlp)</p>
+      <p className="settings-section-title">{t("section.media_tools")}</p>
       {showManagedToolDownloads ? (
         <>
           {isWin ? (
             <p className="hint">
-              <strong>Download for me (Windows):</strong> fetches <code>yt-dlp.exe</code> from GitHub
-              releases and a <strong>GPL</strong> FFmpeg zip from{" "}
-              <a
-                href="https://github.com/BtbN/FFmpeg-Builds"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                BtbN/FFmpeg-Builds
-              </a>
-              , extracts <code>ffmpeg.exe</code> into your app data folder, then saves paths in settings.
+              <Trans
+                i18nKey="media_tools.win_hint"
+                t={t}
+                components={{
+                  strong: <strong />,
+                  code: <code />,
+                  a: (
+                    <a
+                      href="https://github.com/BtbN/FFmpeg-Builds"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  ),
+                }}
+              />
             </p>
           ) : null}
           {isMac ? (
             <p className="hint">
-              <strong>Download for me (macOS):</strong> fetches <code>yt-dlp_macos</code> from GitHub
-              releases and a static <code>ffmpeg</code> for your CPU (
-              <a
-                href="https://github.com/eugeneware/ffmpeg-static"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                ffmpeg-static
-              </a>
-              ), saves both under app data and updates paths. If macOS blocks them, allow in{" "}
-              <strong>Privacy &amp; Security</strong> or clear quarantine (
-              <code>xattr -dr com.apple.quarantine …</code>).
+              <Trans
+                i18nKey="media_tools.mac_hint"
+                t={t}
+                components={{
+                  strong: <strong />,
+                  code: <code />,
+                  a: (
+                    <a
+                      href="https://github.com/eugeneware/ffmpeg-static"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  ),
+                }}
+              />
             </p>
           ) : null}
           <div className="row-gap mb-sm">
@@ -751,7 +799,7 @@ export function SettingsPanel({
               disabled={toolDlBusy}
               onClick={() => void onDownloadMediaTools()}
             >
-              {toolDlBusy ? "Downloading…" : "Download ffmpeg & yt-dlp for me"}
+              {toolDlBusy ? t("media_tools.btn_downloading") : t("media_tools.btn_download")}
             </button>
           </div>
           {toolDlProgress && toolDlProgress.total != null && toolDlProgress.total > 0 ? (
@@ -766,21 +814,26 @@ export function SettingsPanel({
         </>
       ) : (
         <p className="hint">
-          One-click download is only on <strong>Windows</strong> and <strong>macOS</strong>. On Linux
-          install <code>ffmpeg</code> and <code>yt-dlp</code> (e.g. package manager) and paste full paths
-          below.
+          <Trans
+            i18nKey="media_tools.linux_hint"
+            t={t}
+            components={{ strong: <strong />, code: <code /> }}
+          />
         </p>
       )}
 
       <details className="help-details">
-        <summary>I’ll install ffmpeg / yt-dlp myself</summary>
+        <summary>{t("media_tools.self_install_summary")}</summary>
         <div className="help-details-body">
           <p>
-            Put <strong>ffmpeg</strong> and <strong>yt-dlp</strong> next to <code>v2t.exe</code> (or in
-            a <code>bin</code> subfolder), or enter full paths here.
+            <Trans
+              i18nKey="media_tools.self_install_intro"
+              t={t}
+              components={{ strong: <strong />, code: <code /> }}
+            />
           </p>
           <label className="field">
-            <span>ffmpeg path (optional)</span>
+            <span>{t("media_tools.ffmpeg_path_label")}</span>
             <input
               type="text"
               value={settings.ffmpegPath ?? ""}
@@ -790,11 +843,11 @@ export function SettingsPanel({
                   ffmpegPath: e.target.value.trim() || null,
                 })
               }
-              placeholder="Auto-detect if next to app"
+              placeholder={t("media_tools.auto_detect_placeholder")}
             />
           </label>
           <label className="field">
-            <span>yt-dlp path (optional)</span>
+            <span>{t("media_tools.ytdlp_path_label")}</span>
             <input
               type="text"
               value={settings.ytDlpPath ?? ""}
@@ -804,11 +857,11 @@ export function SettingsPanel({
                   ytDlpPath: e.target.value.trim() || null,
                 })
               }
-              placeholder="Auto-detect if next to app"
+              placeholder={t("media_tools.auto_detect_placeholder")}
             />
           </label>
           <label className="field">
-            <span>yt-dlp JS runtimes (optional)</span>
+            <span>{t("media_tools.js_runtimes_label")}</span>
             <input
               type="text"
               value={settings.ytDlpJsRuntimes ?? ""}
@@ -818,15 +871,15 @@ export function SettingsPanel({
                   ytDlpJsRuntimes: e.target.value.trim() || null,
                 })
               }
-              placeholder="e.g. deno — see yt-dlp wiki (EJS)"
-              aria-label="yt-dlp JavaScript runtimes for EJS"
+              placeholder={t("media_tools.js_runtimes_placeholder")}
+              aria-label={t("media_tools.js_runtimes_aria")}
             />
             <div
               className="field-lang-examples"
               role="group"
-              aria-label="Insert JS runtime values"
+              aria-label={t("media_tools.js_runtimes_aria")}
             >
-              <span className="field-lang-examples-label">Common:</span>
+              <span className="field-lang-examples-label">{t("media_tools.common_label")}</span>
               <button
                 type="button"
                 className="lang-code-chip"
@@ -851,8 +904,11 @@ export function SettingsPanel({
             </div>
           </label>
           <p className="hint">
-            If YouTube fails with "no supported JavaScript runtime", install Deno or Node and set this
-            to the runtime name yt-dlp expects (often <code>deno</code>).
+            <Trans
+              i18nKey="media_tools.js_runtimes_hint"
+              t={t}
+              components={{ code: <code /> }}
+            />
           </p>
           {showManagedToolDownloads ? (
             <div className="onboarding-block">
@@ -862,7 +918,7 @@ export function SettingsPanel({
                 disabled={denoDlBusy}
                 onClick={() => void onInstallDeno()}
               >
-                {denoDlBusy ? "Installing…" : "Download & install Deno for me"}
+                {denoDlBusy ? t("media_tools.btn_install_deno_busy") : t("media_tools.btn_install_deno")}
               </button>
               {denoDlProgress && denoDlProgress.total != null && denoDlProgress.total > 0 ? (
                 <div className="download-progress-wrap">
@@ -872,51 +928,62 @@ export function SettingsPanel({
               {denoDlMsg && denoDlBusy ? <p className="hint">{denoDlMsg}</p> : null}
               {denoInstallSuccess ? (
                 <p className="hint" style={{ color: "var(--ok)" }}>
-                  <strong>Done.</strong> Deno installed; JS runtimes set to <code>deno</code>.
+                  <Trans
+                    i18nKey="media_tools.deno_success"
+                    t={t}
+                    components={{ strong: <strong />, code: <code /> }}
+                  />
                 </p>
               ) : null}
               {denoDlError ? <p className="hint" style={{ color: "var(--err)" }}>{denoDlError}</p> : null}
             </div>
           ) : null}
           <label className="field">
-            <span>Cookies source for yt-dlp (YouTube / TikTok age-gate)</span>
+            <span>{t("media_tools.cookies_label")}</span>
             <select
-              aria-label="Browser to read cookies from"
+              aria-label={t("media_tools.cookies_aria")}
               value={settings.cookiesFromBrowser}
               onChange={(e) =>
                 onChange({ ...settings, cookiesFromBrowser: e.target.value as CookiesFromBrowser })
               }
             >
-              <option value="auto">Auto (Edge on Windows, Chrome on macOS, Firefox on Linux)</option>
-              <option value="chrome">Chrome</option>
-              <option value="brave">Brave</option>
-              <option value="edge">Edge</option>
-              <option value="firefox">Firefox</option>
-              <option value="none">Disabled — do not use browser cookies</option>
+              <option value="auto">{t("media_tools.cookies_options.auto")}</option>
+              <option value="chrome">{t("media_tools.cookies_options.chrome")}</option>
+              <option value="brave">{t("media_tools.cookies_options.brave")}</option>
+              <option value="edge">{t("media_tools.cookies_options.edge")}</option>
+              <option value="firefox">{t("media_tools.cookies_options.firefox")}</option>
+              <option value="none">{t("media_tools.cookies_options.none")}</option>
             </select>
           </label>
           <p className="hint">
-            Passes <code>--cookies-from-browser</code> to yt-dlp. The browser must be installed and you
-            must be logged in to YouTube / TikTok in it.{" "}
-            <strong>Chrome, Brave and Edge have two known issues on Windows:</strong>{" "}
-            (1) their cookie database is locked while the browser is running — close it first;{" "}
-            (2) since Chrome 127+ cookies are encrypted with app-bound encryption (DPAPI) that yt-dlp
-            cannot decrypt even when the browser is closed{" "}
-            (<a href="https://github.com/yt-dlp/yt-dlp/issues/10927" target="_blank" rel="noopener noreferrer">issue #10927</a>).{" "}
-            <strong>Firefox is the most reliable option</strong> — log in there and select Firefox.
+            <Trans
+              i18nKey="media_tools.cookies_hint"
+              t={t}
+              components={{
+                strong: <strong />,
+                code: <code />,
+                a: (
+                  <a
+                    href="https://github.com/yt-dlp/yt-dlp/issues/10927"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  />
+                ),
+              }}
+            />
           </p>        </div>
       </details>
 
-      <p className="settings-section-title">Other</p>
+      <p className="settings-section-title">{t("section.other")}</p>
       <label className="field">
-        <span>Filename template</span>
+        <span>{t("filename_template_label")}</span>
         <input
           type="text"
           value={settings.filenameTemplate}
           onChange={(e) =>
             onChange({ ...settings, filenameTemplate: e.target.value })
           }
-          placeholder="{title}_{date}_{index}_t{track}.txt"
+          placeholder={t("filename_template_placeholder")}
         />
       </label>
 
@@ -928,7 +995,7 @@ export function SettingsPanel({
             onChange({ ...settings, deleteAudioAfter: e.target.checked })
           }
         />
-        <span>Delete temp audio after success</span>
+        <span>{t("delete_audio_after")}</span>
       </label>
 
       <label className="field checkbox">
@@ -939,9 +1006,7 @@ export function SettingsPanel({
             onChange({ ...settings, keepDownloadedVideo: e.target.checked })
           }
         />
-        <span>
-          Save downloaded video to output folder (URL jobs — second yt-dlp pass, best mp4)
-        </span>
+        <span>{t("keep_video")}</span>
       </label>
 
       <label className="field checkbox">
@@ -952,14 +1017,12 @@ export function SettingsPanel({
             onChange({ ...settings, keepDownloadedAudio: e.target.checked })
           }
         />
-        <span>
-          Save downloaded audio to output folder (URL jobs + local video — extracted via ffmpeg)
-        </span>
+        <span>{t("keep_audio")}</span>
       </label>
 
       {settings.keepDownloadedAudio && (
         <label className="field">
-          <span>Audio format</span>
+          <span>{t("audio_format.label")}</span>
           <select
             value={settings.downloadedAudioFormat}
             onChange={(e) =>
@@ -969,9 +1032,9 @@ export function SettingsPanel({
               })
             }
           >
-            <option value="original">Original (bestaudio / stream copy, no re-encode)</option>
-            <option value="m4a">m4a (AAC)</option>
-            <option value="mp3">mp3</option>
+            <option value="original">{t("audio_format.original")}</option>
+            <option value="m4a">{t("audio_format.m4a")}</option>
+            <option value="mp3">{t("audio_format.mp3")}</option>
           </select>
         </label>
       )}
@@ -984,11 +1047,11 @@ export function SettingsPanel({
             onChange({ ...settings, recursiveFolderScan: e.target.checked })
           }
         />
-        <span>Recursive folder scan (include subfolders)</span>
+        <span>{t("recursive_scan")}</span>
       </label>
 
       <label className="field">
-        <span>Language (optional, ISO code)</span>
+        <span>{t("language_iso.label")}</span>
         <input
           type="text"
           value={settings.language ?? ""}
@@ -998,48 +1061,48 @@ export function SettingsPanel({
               language: e.target.value.trim() || null,
             })
           }
-          placeholder="auto"
+          placeholder={t("language_iso.placeholder")}
           aria-describedby="language-examples-hint"
         />
         <div
           className="field-lang-examples"
           role="group"
-          aria-label="Insert example language codes"
+          aria-label={t("language_iso.examples_label")}
         >
-          <span className="field-lang-examples-label">Examples:</span>
+          <span className="field-lang-examples-label">{t("language_iso.examples_label")}</span>
           <button
             type="button"
             className="lang-code-chip"
             onClick={() => onChange({ ...settings, language: "ru" })}
           >
-            ru <span className="lang-code-chip-desc">(Russian)</span>
+            {t("language_iso.ru_chip")}{" "}
+            <span className="lang-code-chip-desc">{t("language_iso.ru_desc")}</span>
           </button>
           <button
             type="button"
             className="lang-code-chip"
             onClick={() => onChange({ ...settings, language: "uk" })}
           >
-            uk <span className="lang-code-chip-desc">(Ukrainian)</span>
+            {t("language_iso.uk_chip")}{" "}
+            <span className="lang-code-chip-desc">{t("language_iso.uk_desc")}</span>
           </button>
           <button
             type="button"
             className="lang-code-chip"
             onClick={() => onChange({ ...settings, language: "en" })}
           >
-            en <span className="lang-code-chip-desc">(English)</span>
+            {t("language_iso.en_chip")}{" "}
+            <span className="lang-code-chip-desc">{t("language_iso.en_desc")}</span>
           </button>
         </div>
         <p className="hint" id="language-examples-hint">
-          Or any other ISO 639-1 code (e.g. <code>de</code>, <code>fr</code>, <code>pl</code>).
+          <Trans i18nKey="language_iso.hint" t={t} components={{ code: <code /> }} />
         </p>
       </label>
 
-      <p className="settings-section-title">Subtitles fast-path</p>
+      <p className="settings-section-title">{t("section.subtitles_fast_path")}</p>
       <p className="hint">
-        For YouTube videos with <strong>manual</strong> subtitles in a priority language, fetch the
-        SRT directly via yt-dlp and skip download + Whisper. <strong>Auto-generated</strong>{" "}
-        captions are intentionally ignored (lower quality than Whisper-medium for non-English).
-        Single-video URLs only — pure-playlist URLs continue to download + transcribe normally.
+        <Trans i18nKey="subtitles.intro" t={t} components={{ strong: <strong /> }} />
       </p>
       <label className="field checkbox">
         <input
@@ -1050,12 +1113,12 @@ export function SettingsPanel({
             onChange({ ...settings, useSubtitlesWhenAvailable: e.target.checked })
           }
         />
-        <span>Use subtitles when available (skip Whisper)</span>
+        <span>{t("subtitles.toggle")}</span>
       </label>
       {settings.useSubtitlesWhenAvailable ? (
         <>
           <label className="field">
-            <span>Priority languages (comma-separated ISO codes)</span>
+            <span>{t("subtitles.priority_label")}</span>
             <input
               type="text"
               data-testid="subtitle-priority-langs"
@@ -1069,11 +1132,10 @@ export function SettingsPanel({
                     .filter((s) => s.length > 0),
                 })
               }
-              placeholder="uk, ru, en"
+              placeholder={t("subtitles.priority_placeholder")}
             />
             <p className="hint">
-              First match wins. Regional variants are matched (e.g. <code>en</code> matches{" "}
-              <code>en-US</code>).
+              <Trans i18nKey="subtitles.priority_hint" t={t} components={{ code: <code /> }} />
             </p>
           </label>
           <label className="field checkbox">
@@ -1082,13 +1144,13 @@ export function SettingsPanel({
               checked={settings.keepSrt}
               onChange={(e) => onChange({ ...settings, keepSrt: e.target.checked })}
             />
-            <span>Also save the original .srt next to the .txt transcript</span>
+            <span>{t("subtitles.keep_srt")}</span>
           </label>
         </>
       ) : null}
 
       <button type="button" className="primary" disabled={saving} onClick={onSave}>
-        {saving ? "Saving…" : "Save settings"}
+        {saving ? t("btn_saving") : t("btn_save")}
       </button>
     </section>
   );
