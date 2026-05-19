@@ -7,9 +7,9 @@ use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::Digest;
-use tauri::AppHandle;
 use tar::Archive;
 
+use crate::progress::SinkHandle;
 use crate::tool_download::{emit, ToolDownloadProgress};
 
 const FORMULA_API: &str = "https://formulae.brew.sh/api/formula/whisper-cpp.json";
@@ -68,7 +68,7 @@ async fn ghcr_anonymous_token(scope: &str) -> Result<String, String> {
 }
 
 async fn download_bottle_file(
-    app: &AppHandle,
+    sink: &SinkHandle,
     blob_url: &str,
     bearer: &str,
     dest: &Path,
@@ -119,7 +119,7 @@ async fn download_bottle_file(
         if received.saturating_sub(last_emit) > 512 * 1024 {
             last_emit = received;
             emit(
-                app,
+                sink,
                 ToolDownloadProgress::new(
                     label.to_string(),
                     "downloading",
@@ -184,13 +184,13 @@ fn extract_whisper_cli_from_bottle_tar_gz(archive_path: &Path, dest_cli: &Path) 
 
 /// Download `whisper-cli` from the official Homebrew bottle (GHCR, anonymous pull token).
 pub async fn download_whisper_cli_from_homebrew_bottle(
-    app: &AppHandle,
+    sink: &SinkHandle,
     dest_dir: &Path,
 ) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dest_dir).map_err(|e| format!("mkdir: {e}"))?;
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress::new(
             "whisper-cli",
             "downloading",
@@ -221,7 +221,7 @@ pub async fn download_whisper_cli_from_homebrew_bottle(
     let (blob_url, sha256) = pick_bottle(files)?;
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress::new(
             "whisper-cli",
             "downloading",
@@ -241,10 +241,10 @@ pub async fn download_whisper_cli_from_homebrew_bottle(
             .unwrap_or(0)
     ));
 
-    download_bottle_file(app, &blob_url, &token, &tmp, &sha256, "whisper-cli").await?;
+    download_bottle_file(sink, &blob_url, &token, &tmp, &sha256, "whisper-cli").await?;
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress::new(
             "whisper-cli",
             "extracting",
@@ -268,7 +268,7 @@ pub async fn download_whisper_cli_from_homebrew_bottle(
     }
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress::new(
             "whisper-cli",
             "done",

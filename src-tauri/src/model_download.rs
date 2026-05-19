@@ -2,26 +2,15 @@ use std::path::{Path, PathBuf};
 
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
-use serde::Serialize;
 use sha1::{Digest, Sha1};
 use tauri::AppHandle;
-use tauri::Emitter;
 use tauri::Manager;
 
+use crate::progress::{JobEvent, ModelDownloadEvent, SinkHandle};
 use crate::whisper_catalog::WhisperModelCatalogEntry;
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ModelDownloadProgress {
-    model_id: String,
-    phase: String,
-    bytes_received: u64,
-    total_bytes: Option<u64>,
-    message: String,
-}
-
-fn emit(app: &AppHandle, payload: ModelDownloadProgress) {
-    let _ = app.emit("model-download-progress", &payload);
+fn emit(sink: &SinkHandle, payload: ModelDownloadEvent) {
+    sink.emit(JobEvent::ModelDownload(payload));
 }
 
 /// Resolve directory for ggml `.bin` files (override or `app_data/models`).
@@ -60,7 +49,7 @@ pub fn file_matches_sha1(path: &Path, expected_hex: &str) -> Result<bool, String
 }
 
 pub async fn download_whisper_model_file(
-    app: &AppHandle,
+    sink: &SinkHandle,
     entry: &'static WhisperModelCatalogEntry,
     models_dir: &Path,
 ) -> Result<(), String> {
@@ -69,8 +58,8 @@ pub async fn download_whisper_model_file(
     let dest = models_dir.join(entry.file_name);
     if dest.is_file() && file_matches_sha1(&dest, entry.sha1_hex)? {
         emit(
-            app,
-            ModelDownloadProgress {
+            sink,
+            ModelDownloadEvent {
                 model_id: entry.id.to_string(),
                 phase: "done".to_string(),
                 bytes_received: dest
@@ -88,8 +77,8 @@ pub async fn download_whisper_model_file(
     let _ = std::fs::remove_file(&partial);
 
     emit(
-        app,
-        ModelDownloadProgress {
+        sink,
+        ModelDownloadEvent {
             model_id: entry.id.to_string(),
             phase: "downloading".to_string(),
             bytes_received: 0,
@@ -145,8 +134,8 @@ pub async fn download_whisper_model_file(
         if received.saturating_sub(last_emit) > 512 * 1024 || total == Some(received) {
             last_emit = received;
             emit(
-                app,
-                ModelDownloadProgress {
+                sink,
+                ModelDownloadEvent {
                     model_id: entry.id.to_string(),
                     phase: "downloading".to_string(),
                     bytes_received: received,
@@ -163,8 +152,8 @@ pub async fn download_whisper_model_file(
     drop(file);
 
     emit(
-        app,
-        ModelDownloadProgress {
+        sink,
+        ModelDownloadEvent {
             model_id: entry.id.to_string(),
             phase: "verifying".to_string(),
             bytes_received: received,
@@ -185,8 +174,8 @@ pub async fn download_whisper_model_file(
     std::fs::rename(&partial, &dest).map_err(|e| format!("rename model file: {e}"))?;
 
     emit(
-        app,
-        ModelDownloadProgress {
+        sink,
+        ModelDownloadEvent {
             model_id: entry.id.to_string(),
             phase: "done".to_string(),
             bytes_received: received,

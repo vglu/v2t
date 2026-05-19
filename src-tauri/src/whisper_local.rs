@@ -1,16 +1,15 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 
-use serde::Serialize;
-use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command as TokioCommand;
 use tokio_util::sync::CancellationToken;
 
 use crate::pipeline::{self, JOB_CANCELLED_MSG};
 use crate::process_kill;
-use crate::session_log;
+use crate::progress::{JobEvent, QueueJobProgressEvent, SinkHandle};
 use crate::transcribe::{
     pcm_payload_bytes, wav_source_fingerprint, CHUNK_SECS, FFMPEG_CHUNK_TIMEOUT, MAX_UPLOAD_BYTES,
     PCM_BYTES_PER_SEC,
@@ -68,14 +67,6 @@ fn parse_whisper_progress_pct(line: &str) -> Option<u8> {
     }
 }
 
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct QueueJobProgressEmit {
-    job_id: String,
-    phase: String,
-    message: String,
-}
-
 fn apply_win_no_window(cmd: &mut TokioCommand) {
     #[cfg(windows)]
     {
@@ -93,7 +84,7 @@ async fn run_whisper_cli_with_progress(
     args: &[String],
     timeout: Duration,
     cancel: &CancellationToken,
-    app: &tauri::AppHandle,
+    sink: &SinkHandle,
     job_id: &str,
 ) -> Result<std::process::Output, String> {
     let mut cmd = TokioCommand::new(cli);
@@ -110,7 +101,7 @@ async fn run_whisper_cli_with_progress(
     let stderr = child.stderr.take().ok_or("whisper-cli: no stderr pipe")?;
     let stdout = child.stdout.take().ok_or("whisper-cli: no stdout pipe")?;
 
-    let app_emit = app.clone();
+    let sink_emit = Arc::clone(sink);
     let jid = job_id.to_string();
     let stderr_task = tokio::spawn(async move {
         let mut reader = BufReader::new(stderr);
@@ -127,15 +118,14 @@ async fn run_whisper_cli_with_progress(
                         if last_pct != Some(p) {
                             last_pct = Some(p);
                             let msg = format!("Local Whisper: {p}%");
-                            let _ = app_emit.emit(
-                                "queue-job-progress",
-                                &QueueJobProgressEmit {
-                                    job_id: jid.clone(),
-                                    phase: "whisper".to_string(),
-                                    message: msg.clone(),
-                                },
-                            );
-                            session_log::try_append(&app_emit, Some(jid.as_str()), "whisper", &msg);
+                            sink_emit.emit(JobEvent::QueueJobProgress(QueueJobProgressEvent {
+                                job_id: jid.clone(),
+                                phase: "whisper".to_string(),
+                                message: msg,
+                                subtask_index: None,
+                                subtask_total: None,
+                                subtask_percent: None,
+                            }));
                         }
                     }
                 }
@@ -192,6 +182,7 @@ async fn run_whisper_cli_with_progress(
 }
 
 /// Run whisper.cpp `whisper-cli` (or compatible `main`) on one WAV; read `-otxt` output.
+#[allow(clippy::too_many_arguments)]
 async fn transcribe_one_wav(
     wav_path: &Path,
     cli: &Path,
@@ -200,6 +191,7 @@ async fn transcribe_one_wav(
     _work_dir: &Path,
     out_base: &Path,
     cancel: &CancellationToken,
+    sink: &SinkHandle,
     app: &tauri::AppHandle,
     job_id: &str,
 ) -> Result<String, String> {
@@ -222,7 +214,7 @@ async fn transcribe_one_wav(
     ];
 
     let mut out =
-        run_whisper_cli_with_progress(cli, &args, WHISPER_TIMEOUT, cancel, app, job_id).await?;
+        run_whisper_cli_with_progress(cli, &args, WHISPER_TIMEOUT, cancel, sink, job_id).await?;
     if !out.status.success() {
         let stderr_text = String::from_utf8_lossy(&out.stderr).to_string();
         if looks_like_gpu_init_failure(&stderr_text) {
@@ -232,21 +224,20 @@ async fn transcribe_one_wav(
                         "[whisper] GPU init failed (driver/SDK mismatch?), falling back to CPU build at {}",
                         cpu_cli.display()
                     );
-                    let _ = app.emit(
-                        "queue-job-progress",
-                        &QueueJobProgressEmit {
-                            job_id: job_id.to_string(),
-                            phase: "whisper".to_string(),
-                            message: msg.clone(),
-                        },
-                    );
-                    session_log::try_append(app, Some(job_id), "whisper", &msg);
+                    sink.emit(JobEvent::QueueJobProgress(QueueJobProgressEvent {
+                        job_id: job_id.to_string(),
+                        phase: "whisper".to_string(),
+                        message: msg,
+                        subtask_index: None,
+                        subtask_total: None,
+                        subtask_percent: None,
+                    }));
                     out = run_whisper_cli_with_progress(
                         &cpu_cli,
                         &args,
                         WHISPER_TIMEOUT,
                         cancel,
-                        app,
+                        sink,
                         job_id,
                     )
                     .await?;
@@ -276,6 +267,7 @@ async fn transcribe_one_wav(
 }
 
 /// Same chunking strategy as HTTP path when PCM payload exceeds `MAX_UPLOAD_BYTES`.
+#[allow(clippy::too_many_arguments)]
 pub async fn transcribe_wav_maybe_split_whisper(
     wav_path: &Path,
     cli: &Path,
@@ -284,6 +276,7 @@ pub async fn transcribe_wav_maybe_split_whisper(
     work_dir: &Path,
     language: Option<&str>,
     cancel: &CancellationToken,
+    sink: &SinkHandle,
     app: &tauri::AppHandle,
     job_id: &str,
 ) -> Result<String, String> {
@@ -299,6 +292,7 @@ pub async fn transcribe_wav_maybe_split_whisper(
             work_dir,
             &out_base,
             cancel,
+            sink,
             app,
             job_id,
         )
@@ -369,6 +363,7 @@ pub async fn transcribe_wav_maybe_split_whisper(
             work_dir,
             &out_base,
             cancel,
+            sink,
             app,
             job_id,
         )

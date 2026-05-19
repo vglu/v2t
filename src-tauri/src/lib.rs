@@ -1,4 +1,6 @@
+mod api_job_registry;
 mod api_key_store;
+mod api_server;
 mod audio_save;
 mod cancel_registry;
 mod deps;
@@ -8,6 +10,7 @@ mod model_download;
 mod output_template;
 mod pipeline;
 mod process_kill;
+mod progress;
 mod scan;
 mod session_log;
 mod settings;
@@ -17,6 +20,7 @@ mod tool_download;
 #[cfg(any(windows, target_os = "macos"))]
 mod tool_manifest;
 mod transcribe;
+mod webhook;
 mod whisper_catalog;
 mod whisper_local;
 #[cfg(target_os = "macos")]
@@ -24,11 +28,14 @@ mod whisper_bottle_macos;
 mod yt_dlp_metadata;
 mod yt_dlp_progress;
 
+use api_server::ApiServerSupervisor;
 use cancel_registry::JobCancelRegistry;
 use session_log::SessionLog;
 use std::path::PathBuf;
 use tauri::Manager;
 use job::{BrowserTrackInfo, ProcessQueueItemOutcome, ProcessQueueItemResult};
+use progress::{SinkHandle, TauriSink};
+use serde::Serialize;
 use settings::{AppSettings, WhisperAcceleration};
 use tokio_util::sync::CancellationToken;
 
@@ -108,8 +115,10 @@ async fn process_queue_item(
     yt_dlp_path_override: Option<String>,
 ) -> Result<ProcessQueueItemOutcome, String> {
     let cancel = registry.register_job(&job_id);
+    let sink: SinkHandle = TauriSink::handle(app.clone());
     let out = job::run_process_queue_item(
         app,
+        sink,
         job_id.clone(),
         job_index,
         source,
@@ -193,7 +202,8 @@ async fn download_whisper_model(
     let dir = model_download::resolve_models_dir(&app, models_dir.as_deref())?;
     let entry = whisper_catalog::catalog_entry(&model_id)
         .ok_or_else(|| format!("Unknown whisper model: {model_id}"))?;
-    model_download::download_whisper_model_file(&app, entry, &dir).await
+    let sink: SinkHandle = TauriSink::handle(app);
+    model_download::download_whisper_model_file(&sink, entry, &dir).await
 }
 
 #[tauri::command]
@@ -206,7 +216,8 @@ fn default_documents_dir(app: tauri::AppHandle) -> Result<String, String> {
 async fn download_media_tools(
     app: tauri::AppHandle,
 ) -> Result<tool_download::DownloadedMediaTools, String> {
-    tool_download::download_managed_media_tools(&app).await
+    let sink: SinkHandle = TauriSink::handle(app.clone());
+    tool_download::download_managed_media_tools(&app, &sink).await
 }
 
 #[tauri::command]
@@ -215,7 +226,8 @@ async fn download_whisper_cli(
     acceleration: Option<WhisperAcceleration>,
 ) -> Result<tool_download::DownloadedWhisperCli, String> {
     let acc = acceleration.unwrap_or_default();
-    tool_download::download_whisper_cli_managed(&app, acc).await
+    let sink: SinkHandle = TauriSink::handle(app.clone());
+    tool_download::download_whisper_cli_managed(&app, &sink, acc).await
 }
 
 #[tauri::command]
@@ -227,7 +239,8 @@ fn detect_gpu() -> gpu_detect::GpuInfo {
 async fn install_deno(
     app: tauri::AppHandle,
 ) -> Result<tool_download::InstalledDeno, String> {
-    tool_download::install_deno_managed(&app).await
+    let sink: SinkHandle = TauriSink::handle(app.clone());
+    tool_download::install_deno_managed(&app, &sink).await
 }
 
 #[tauri::command]
@@ -243,10 +256,51 @@ fn open_session_log(app: tauri::AppHandle) -> Result<(), String> {
     tauri_plugin_opener::open_path(log.log_path(), None::<&str>).map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiServerInfo {
+    enabled: bool,
+    running: bool,
+    port: u16,
+    /// Empty string when no token has been generated yet.
+    bearer_token: String,
+    /// Convenience URL the caller can show in the UI.
+    base_url: String,
+}
+
+#[tauri::command]
+fn get_api_server_info(
+    app: tauri::AppHandle,
+    supervisor: tauri::State<'_, ApiServerSupervisor>,
+) -> Result<ApiServerInfo, String> {
+    let s = settings::load(&app)?;
+    let (running, port_opt) = supervisor.status();
+    let port = port_opt.unwrap_or(s.api_server.port);
+    Ok(ApiServerInfo {
+        enabled: s.api_server.enabled,
+        running,
+        port,
+        bearer_token: s.api_server.bearer_token.clone(),
+        base_url: format!("http://127.0.0.1:{port}"),
+    })
+}
+
+/// Re-read settings.json and reconcile the API server with them (start, stop, or restart).
+/// Call this from the frontend after `save_settings`.
+#[tauri::command]
+fn api_server_apply(
+    app: tauri::AppHandle,
+    supervisor: tauri::State<'_, ApiServerSupervisor>,
+) -> Result<ApiServerInfo, String> {
+    supervisor.apply_settings(&app)?;
+    get_api_server_info(app, supervisor)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(JobCancelRegistry::default())
+        .manage(ApiServerSupervisor::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -265,6 +319,18 @@ pub fn run() {
                     );
                 }
             });
+            // M2: bring up the REST API if it's enabled in settings.json. Best-effort —
+            // any failure (port busy, missing settings) is logged and never blocks
+            // startup of the GUI.
+            let supervisor = app.state::<ApiServerSupervisor>();
+            if let Err(e) = supervisor.apply_settings(&app.handle()) {
+                session_log::try_append(
+                    &app.handle(),
+                    None,
+                    "api-server",
+                    &format!("setup failed: {e}"),
+                );
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -286,7 +352,9 @@ pub fn run() {
             detect_gpu,
             install_deno,
             session_log_append_ui,
-            open_session_log
+            open_session_log,
+            get_api_server_info,
+            api_server_apply
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

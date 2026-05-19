@@ -2,7 +2,6 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::Emitter;
 use tokio_util::sync::CancellationToken;
 
 use crate::audio_save;
@@ -11,7 +10,7 @@ use crate::deps;
 use crate::model_download;
 use crate::output_template;
 use crate::pipeline;
-use crate::session_log;
+use crate::progress::{JobEvent, QueueJobProgressEvent, SinkHandle, SubtaskStatusEvent, TauriSink};
 use crate::settings::{AppSettings, TranscriptionMode};
 use crate::subs;
 use crate::transcribe;
@@ -49,14 +48,6 @@ pub enum ProcessQueueItemOutcome {
     },
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueueJobProgress {
-    pub job_id: String,
-    pub phase: String,
-    pub message: String,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessQueueItemResult {
@@ -64,24 +55,15 @@ pub struct ProcessQueueItemResult {
     pub summary: String,
 }
 
-fn emit_progress(app: &tauri::AppHandle, job_id: &str, phase: &str, message: &str) {
-    let payload = QueueJobProgress {
+fn emit_progress(sink: &SinkHandle, job_id: &str, phase: &str, message: &str) {
+    sink.emit(JobEvent::QueueJobProgress(QueueJobProgressEvent {
         job_id: job_id.to_string(),
         phase: phase.to_string(),
         message: message.to_string(),
-    };
-    let _ = app.emit("queue-job-progress", &payload);
-    session_log::try_append(app, Some(job_id), phase, message);
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SubtaskStatusPayload {
-    job_id: String,
-    subtask_index: u32,
-    status: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<String>,
+        subtask_index: None,
+        subtask_total: None,
+        subtask_percent: None,
+    }));
 }
 
 /// Emit one per-subtask status transition. UI listens for these to flip the
@@ -89,24 +71,18 @@ struct SubtaskStatusPayload {
 /// is 1-based and matches the playlist index reported by `playlist-resolved`
 /// (or simply `1` for single-video URLs).
 fn emit_subtask_status(
-    app: &tauri::AppHandle,
+    sink: &SinkHandle,
     job_id: &str,
     subtask_index: u32,
     status: &'static str,
     reason: Option<String>,
 ) {
-    let payload = SubtaskStatusPayload {
+    sink.emit(JobEvent::SubtaskStatus(SubtaskStatusEvent {
         job_id: job_id.to_string(),
         subtask_index,
         status,
-        reason: reason.clone(),
-    };
-    let _ = app.emit("subtask-status", &payload);
-    let log_msg = match &payload.reason {
-        Some(r) if !r.is_empty() => format!("subtask {subtask_index}: {status} ({r})"),
-        _ => format!("subtask {subtask_index}: {status}"),
-    };
-    session_log::try_append(app, Some(job_id), "subtask", &log_msg);
+        reason,
+    }));
 }
 
 fn require_output_dir(settings: &AppSettings) -> Result<PathBuf, String> {
@@ -163,6 +139,8 @@ pub fn finish_browser_queue_job(
 
     validate_browser_transcript_paths(output_dir, tracks)?;
 
+    let sink: SinkHandle = TauriSink::handle(app.clone());
+
     let n_tracks = tracks.len();
     for (t, text) in tracks.iter().zip(texts.iter()) {
         if cancel.is_cancelled() {
@@ -170,7 +148,7 @@ pub fn finish_browser_queue_job(
         }
         if !t.skip_transcribe {
             emit_progress(
-                app,
+                &sink,
                 job_id,
                 "save",
                 &format!(
@@ -211,7 +189,7 @@ pub fn finish_browser_queue_job(
     } else {
         format!("Saved {n_tracks} transcript file(s); last: {transcript_path}")
     };
-    emit_progress(app, job_id, "done", &summary);
+    emit_progress(&sink, job_id, "done", &summary);
 
     Ok(ProcessQueueItemResult {
         transcript_path,
@@ -219,8 +197,10 @@ pub fn finish_browser_queue_job(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_process_queue_item(
     app: tauri::AppHandle,
+    sink: SinkHandle,
     job_id: String,
     job_index: u32,
     source: String,
@@ -254,7 +234,7 @@ pub async fn run_process_queue_item(
             None
         };
 
-    emit_progress(&app, &job_id, "prepare", "Preparing audio (yt-dlp / ffmpeg)…");
+    emit_progress(&sink, &job_id, "prepare", "Preparing audio (yt-dlp / ffmpeg)…");
 
     // Pre-resolve playlist metadata before download so the UI can render the
     // per-video subtask list (titles + clickable links) up-front. Best-effort:
@@ -281,26 +261,26 @@ pub async fn run_process_queue_item(
                             playlist_title: info.title.clone(),
                             subtasks,
                         };
-                        let _ = app.emit("playlist-resolved", &payload);
                         let title_str = info
                             .title
                             .as_deref()
                             .map(|t| format!(" \"{t}\""))
                             .unwrap_or_default();
+                        let n_subtasks = payload.subtasks.len();
+                        sink.emit(JobEvent::PlaylistResolved(payload));
                         emit_progress(
-                            &app,
+                            &sink,
                             &job_id,
                             "playlist",
                             &format!(
-                                "Resolved playlist{title_str} ({} videos)",
-                                payload.subtasks.len()
+                                "Resolved playlist{title_str} ({n_subtasks} videos)",
                             ),
                         );
                     }
                 }
                 Err(e) => {
                     pipeline::emit_pipeline_text(
-                        &app,
+                        &sink,
                         &job_id,
                         "yt-dlp-meta",
                         &format!("Pre-resolve skipped: {e}"),
@@ -323,7 +303,7 @@ pub async fn run_process_queue_item(
             deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp")
         {
             match try_subs_fast_path(
-                &app,
+                &sink,
                 &job_id,
                 job_index,
                 &source,
@@ -342,7 +322,7 @@ pub async fn run_process_queue_item(
                 }
                 Err(e) => {
                     pipeline::emit_pipeline_text(
-                        &app,
+                        &sink,
                         &job_id,
                         "subs",
                         &format!("Subtitle fast-path skipped: {e}"),
@@ -360,7 +340,7 @@ pub async fn run_process_queue_item(
         };
 
     let prep = pipeline::prepare_media_audio(
-        Some((&app, job_id.as_str())),
+        Some((&sink, job_id.as_str())),
         source.clone(),
         source_kind.clone(),
         ffmpeg_path_override.clone(),
@@ -376,7 +356,7 @@ pub async fn run_process_queue_item(
 
     if settings.keep_downloaded_audio {
         save_downloaded_audio(
-            &app,
+            &sink,
             &job_id,
             &prep.source_media_files,
             &source,
@@ -434,7 +414,7 @@ pub async fn run_process_queue_item(
                     let existing = fs::read_to_string(&dest_path).unwrap_or_default();
                     if !existing.trim().is_empty() {
                         emit_progress(
-                            &app,
+                            &sink,
                             &job_id,
                             "transcribe",
                             &format!(
@@ -442,7 +422,7 @@ pub async fn run_process_queue_item(
                             ),
                         );
                         emit_subtask_status(
-                            &app,
+                            &sink,
                             &job_id,
                             track,
                             "skipped",
@@ -461,7 +441,7 @@ pub async fn run_process_queue_item(
         }
 
         emit_progress(
-            &app,
+            &sink,
             &job_id,
             "browser",
             "Prepared for in-app (WASM) transcription…",
@@ -507,7 +487,7 @@ pub async fn run_process_queue_item(
                 let existing = fs::read_to_string(&dest_path).unwrap_or_default();
                 if !existing.trim().is_empty() {
                     emit_progress(
-                        &app,
+                        &sink,
                         &job_id,
                         "transcribe",
                         &format!(
@@ -515,7 +495,7 @@ pub async fn run_process_queue_item(
                         ),
                     );
                     emit_subtask_status(
-                        &app,
+                        &sink,
                         &job_id,
                         track,
                         "skipped",
@@ -528,14 +508,14 @@ pub async fn run_process_queue_item(
         }
 
         emit_progress(
-            &app,
+            &sink,
             &job_id,
             "transcribe",
             &format!(
                 "Transcribing track {track}/{n_tracks} (splitting if file is large)…",
             ),
         );
-        emit_subtask_status(&app, &job_id, track, "running", None);
+        emit_subtask_status(&sink, &job_id, track, "running", None);
 
         let transcribe_result: Result<String, String> = match settings.transcription_mode {
             TranscriptionMode::HttpApi => {
@@ -569,7 +549,7 @@ pub async fn run_process_queue_item(
                     let model_path = models_dir.join(entry.file_name);
                     if !model_path.is_file() {
                         emit_progress(
-                            &app,
+                            &sink,
                             &job_id,
                             "model",
                             &format!(
@@ -577,7 +557,7 @@ pub async fn run_process_queue_item(
                                 entry.id, entry.size_mib
                             ),
                         );
-                        model_download::download_whisper_model_file(&app, entry, &models_dir)
+                        model_download::download_whisper_model_file(&sink, entry, &models_dir)
                             .await?;
                     } else if !model_download::file_matches_sha1(&model_path, entry.sha1_hex)? {
                         return Err(format!(
@@ -598,6 +578,7 @@ pub async fn run_process_queue_item(
                         &work_dir,
                         lang,
                         &cancel,
+                        &sink,
                         &app,
                         &job_id,
                     )
@@ -616,20 +597,20 @@ pub async fn run_process_queue_item(
                 // Cancellations are not "errors" from the subtask's perspective — the
                 // queue is being torn down. Don't flip the row to ✗.
                 if e != pipeline::JOB_CANCELLED_MSG {
-                    emit_subtask_status(&app, &job_id, track, "error", Some(e.clone()));
+                    emit_subtask_status(&sink, &job_id, track, "error", Some(e.clone()));
                 }
                 return Err(e);
             }
         };
 
-        emit_progress(&app, &job_id, "save", &format!("Writing transcript {track}/{n_tracks}…"));
+        emit_progress(&sink, &job_id, "save", &format!("Writing transcript {track}/{n_tracks}…"));
 
         if let Err(e) = fs::write(&dest_path, text.as_bytes()) {
             let msg = format!("Failed to write transcript: {e}");
-            emit_subtask_status(&app, &job_id, track, "error", Some(msg.clone()));
+            emit_subtask_status(&sink, &job_id, track, "error", Some(msg.clone()));
             return Err(msg);
         }
-        emit_subtask_status(&app, &job_id, track, "done", None);
+        emit_subtask_status(&sink, &job_id, track, "done", None);
         last_transcript = Some(dest_path);
     }
 
@@ -650,7 +631,7 @@ pub async fn run_process_queue_item(
     } else {
         format!("Saved {n_tracks} transcript file(s); last: {transcript_path}")
     };
-    emit_progress(&app, &job_id, "done", &summary);
+    emit_progress(&sink, &job_id, "done", &summary);
 
     Ok(ProcessQueueItemOutcome::Done {
         transcript_path: transcript_path.clone(),
@@ -664,7 +645,7 @@ pub async fn run_process_queue_item(
 /// so transcription keeps going.
 #[allow(clippy::too_many_arguments)]
 async fn save_downloaded_audio(
-    app: &tauri::AppHandle,
+    sink: &SinkHandle,
     job_id: &str,
     source_media_files: &[PathBuf],
     source: &str,
@@ -707,7 +688,7 @@ async fn save_downloaded_audio(
         } else if pipeline::is_probably_video(src_media) {
             let Some(ffmpeg) = deps::resolve_tool_path(ffmpeg_override, "ffmpeg") else {
                 pipeline::emit_pipeline_text(
-                    app,
+                    sink,
                     job_id,
                     "audio-save",
                     "Could not save audio: ffmpeg not found",
@@ -737,7 +718,7 @@ async fn save_downloaded_audio(
             // Local audio source — file is already audio, no point copying. Emit a note once.
             if ti == 0 {
                 pipeline::emit_pipeline_text(
-                    app,
+                    sink,
                     job_id,
                     "audio-save",
                     "Source is already an audio file — skipping audio save.",
@@ -749,7 +730,7 @@ async fn save_downloaded_audio(
         match save_result {
             Ok(dest) => {
                 pipeline::emit_pipeline_text(
-                    app,
+                    sink,
                     job_id,
                     "audio-save",
                     &format!("Saved audio: {}", dest.display()),
@@ -757,7 +738,7 @@ async fn save_downloaded_audio(
             }
             Err(e) => {
                 pipeline::emit_pipeline_text(
-                    app,
+                    sink,
                     job_id,
                     "audio-save",
                     &format!("Could not save audio (continuing with transcript): {e}"),
@@ -774,7 +755,7 @@ async fn save_downloaded_audio(
 /// `Err(_)` — actual write / I/O failure that should bubble up.
 #[allow(clippy::too_many_arguments)]
 async fn try_subs_fast_path(
-    app: &tauri::AppHandle,
+    sink: &SinkHandle,
     job_id: &str,
     job_index: u32,
     source: &str,
@@ -788,7 +769,7 @@ async fn try_subs_fast_path(
     let cookies = settings.cookies_from_browser.yt_dlp_arg();
     let js = settings.yt_dlp_js_runtimes.as_deref();
 
-    emit_progress(app, job_id, "subs", "Probing subtitles…");
+    emit_progress(sink, job_id, "subs", "Probing subtitles…");
     let probe = match subs::probe_subs(yt_dlp, source, cookies, js, cancel).await {
         Ok(p) => p,
         Err(e) => {
@@ -799,7 +780,7 @@ async fn try_subs_fast_path(
 
     let Some(lang) = subs::pick_priority_lang(&settings.subtitle_priority_langs, &probe) else {
         pipeline::emit_pipeline_text(
-            app,
+            sink,
             job_id,
             "subs",
             "No manual subtitles in priority languages — falling back to download + Whisper.",
@@ -812,7 +793,7 @@ async fn try_subs_fast_path(
     }
 
     emit_progress(
-        app,
+        sink,
         job_id,
         "subs",
         &format!("Found manual subtitles ({lang}) — fetching…"),
@@ -878,7 +859,7 @@ async fn try_subs_fast_path(
         let srt_dest = out_dir.join(&srt_filename);
         if let Err(e) = fs::copy(&srt_path, &srt_dest) {
             pipeline::emit_pipeline_text(
-                app,
+                sink,
                 job_id,
                 "subs",
                 &format!("Could not save .srt next to transcript: {e}"),
@@ -889,7 +870,7 @@ async fn try_subs_fast_path(
     let _ = fs::remove_dir_all(&work_dir);
 
     emit_subtask_status(
-        app,
+        sink,
         job_id,
         track,
         "done",
@@ -904,7 +885,7 @@ async fn try_subs_fast_path(
         .to_string();
 
     let summary = format!("Saved (subs {lang}): {transcript_path}");
-    emit_progress(app, job_id, "done", &summary);
+    emit_progress(sink, job_id, "done", &summary);
 
     Ok(Some(ProcessQueueItemOutcome::Done {
         transcript_path,

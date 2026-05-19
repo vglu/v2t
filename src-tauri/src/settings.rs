@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
+use utoipa::ToSchema;
 
 use crate::api_key_store;
 
@@ -20,7 +21,34 @@ fn default_subtitle_priority_langs() -> Vec<String> {
     vec!["uk".to_string(), "ru".to_string(), "en".to_string()]
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+fn default_api_server_port() -> u16 {
+    8788
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiServerSettings {
+    /// When true, an HTTP REST server starts on `127.0.0.1:{port}` while the app runs.
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_api_server_port")]
+    pub port: u16,
+    /// Static bearer token. Generated on first enable; visible in the API panel.
+    #[serde(default)]
+    pub bearer_token: String,
+}
+
+impl Default for ApiServerSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: default_api_server_port(),
+            bearer_token: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TranscriptionMode {
     #[default]
@@ -184,6 +212,9 @@ pub struct AppSettings {
     /// UI language; `Auto` lets the React layer derive from `navigator.language`.
     #[serde(default)]
     pub ui_language: UiLanguage,
+    /// REST API server config (M2 wave). Disabled by default; bind only to 127.0.0.1.
+    #[serde(default)]
+    pub api_server: ApiServerSettings,
 }
 
 impl Default for AppSettings {
@@ -214,6 +245,7 @@ impl Default for AppSettings {
             subtitle_priority_langs: default_subtitle_priority_langs(),
             keep_srt: false,
             ui_language: UiLanguage::Auto,
+            api_server: ApiServerSettings::default(),
         }
     }
 }
@@ -304,6 +336,15 @@ mod tests {
         assert!(json.contains("\"uiLanguage\":\"uk\""));
         let back: AppSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(back.ui_language, UiLanguage::Uk);
+    }
+
+    #[test]
+    fn missing_api_server_section_defaults_disabled() {
+        let json = r#"{"outputDir":null,"filenameTemplate":"{title}_{date}.txt","ffmpegPath":null,"ytDlpPath":null,"deleteAudioAfter":true,"apiBaseUrl":"https://api.openai.com/v1","apiModel":"whisper-1","apiKey":"","language":null}"#;
+        let s: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(!s.api_server.enabled);
+        assert_eq!(s.api_server.port, 8788);
+        assert!(s.api_server.bearer_token.is_empty());
     }
 
     #[test]

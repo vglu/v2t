@@ -12,46 +12,17 @@ use serde::Serialize;
 use sha2::Digest;
 use tauri::path::BaseDirectory;
 use tauri::AppHandle;
-use tauri::Emitter;
 use tauri::Manager;
 
 #[cfg(any(windows, target_os = "macos"))]
 use crate::tool_manifest::tools_manifest;
 
+pub(crate) use crate::progress::ToolDownloadEvent as ToolDownloadProgress;
+use crate::progress::{JobEvent, SinkHandle};
 use crate::settings::WhisperAcceleration;
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ToolDownloadProgress {
-    tool: String,
-    phase: String,
-    bytes_received: u64,
-    total_bytes: Option<u64>,
-    message: String,
-}
-
-impl ToolDownloadProgress {
-    /// Used from `whisper_bottle_macos`; on Windows/Linux this crate still compiles `tool_download` without that module.
-    #[allow(dead_code)]
-    pub(crate) fn new(
-        tool: impl Into<String>,
-        phase: impl Into<String>,
-        bytes_received: u64,
-        total_bytes: Option<u64>,
-        message: impl Into<String>,
-    ) -> Self {
-        Self {
-            tool: tool.into(),
-            phase: phase.into(),
-            bytes_received,
-            total_bytes,
-            message: message.into(),
-        }
-    }
-}
-
-pub(crate) fn emit(app: &AppHandle, payload: ToolDownloadProgress) {
-    let _ = app.emit("tool-download-progress", &payload);
+pub(crate) fn emit(sink: &SinkHandle, payload: ToolDownloadProgress) {
+    sink.emit(JobEvent::ToolDownload(payload));
 }
 
 pub fn managed_bin_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -92,14 +63,15 @@ pub fn default_documents_dir(app: &AppHandle) -> Result<PathBuf, String> {
 
 pub async fn download_managed_media_tools(
     _app: &AppHandle,
+    _sink: &SinkHandle,
 ) -> Result<DownloadedMediaTools, String> {
     #[cfg(windows)]
     {
-        return download_media_tools_inner(_app).await;
+        return download_media_tools_inner(_app, _sink).await;
     }
     #[cfg(target_os = "macos")]
     {
-        return download_media_tools_inner(_app).await;
+        return download_media_tools_inner(_app, _sink).await;
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
@@ -126,16 +98,17 @@ pub async fn download_managed_media_tools(
 /// **Linux:** not supported here — use distro packages or build from source.
 pub async fn download_whisper_cli_managed(
     _app: &AppHandle,
+    _sink: &SinkHandle,
     _acceleration: WhisperAcceleration,
 ) -> Result<DownloadedWhisperCli, String> {
     #[cfg(windows)]
     {
         let resolved = resolve_whisper_acceleration(_acceleration);
-        return download_whisper_cli_windows(_app, resolved).await;
+        return download_whisper_cli_windows(_app, _sink, resolved).await;
     }
     #[cfg(target_os = "macos")]
     {
-        return download_whisper_cli_macos_bottle_then_fallback(_app).await;
+        return download_whisper_cli_macos_bottle_then_fallback(_app, _sink).await;
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
@@ -184,10 +157,11 @@ pub fn locate_installed_cpu_whisper_cli(app: &AppHandle) -> Option<PathBuf> {
 /// Windows: `deno.exe` from GitHub release zip. macOS: `deno` from release zip.
 pub async fn install_deno_managed(
     _app: &AppHandle,
+    _sink: &SinkHandle,
 ) -> Result<InstalledDeno, String> {
     #[cfg(any(windows, target_os = "macos"))]
     {
-        return install_deno_inner(_app).await;
+        return install_deno_inner(_app, _sink).await;
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
@@ -199,7 +173,7 @@ pub async fn install_deno_managed(
 }
 
 #[cfg(any(windows, target_os = "macos"))]
-async fn install_deno_inner(app: &AppHandle) -> Result<InstalledDeno, String> {
+async fn install_deno_inner(app: &AppHandle, sink: &SinkHandle) -> Result<InstalledDeno, String> {
     let base = managed_bin_dir(app)?;
     std::fs::create_dir_all(&base).map_err(|e| format!("create bin dir: {e}"))?;
 
@@ -223,7 +197,7 @@ async fn install_deno_inner(app: &AppHandle) -> Result<InstalledDeno, String> {
     ));
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "deno".to_string(),
             phase: "downloading".to_string(),
@@ -234,10 +208,10 @@ async fn install_deno_inner(app: &AppHandle) -> Result<InstalledDeno, String> {
     );
 
     // No SHA check — using HTTPS redirect to latest release.
-    download_file_streaming(app, zip_url, &tmp_zip, "deno", "").await?;
+    download_file_streaming(sink, zip_url, &tmp_zip, "deno", "").await?;
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "deno".to_string(),
             phase: "extracting".to_string(),
@@ -289,7 +263,7 @@ async fn install_deno_inner(app: &AppHandle) -> Result<InstalledDeno, String> {
     }
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "deno".to_string(),
             phase: "done".to_string(),
@@ -307,6 +281,7 @@ async fn install_deno_inner(app: &AppHandle) -> Result<InstalledDeno, String> {
 #[cfg(windows)]
 async fn download_whisper_cli_windows(
     app: &AppHandle,
+    sink: &SinkHandle,
     acceleration: WhisperAcceleration,
 ) -> Result<DownloadedWhisperCli, String> {
     let base = managed_bin_dir(app)?;
@@ -336,7 +311,7 @@ async fn download_whisper_cli_windows(
     };
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "whisper-cli".to_string(),
             phase: "downloading".to_string(),
@@ -349,7 +324,7 @@ async fn download_whisper_cli_windows(
     );
 
     download_file_streaming(
-        app,
+        sink,
         &entry.url,
         &tmp_zip,
         "whisper-cli",
@@ -358,7 +333,7 @@ async fn download_whisper_cli_windows(
     .await?;
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "whisper-cli".to_string(),
             phase: "extracting".to_string(),
@@ -384,7 +359,7 @@ async fn download_whisper_cli_windows(
     }
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "whisper-cli".to_string(),
             phase: "done".to_string(),
@@ -438,6 +413,7 @@ fn extract_whisper_cpp_windows_zip(zip_path: &Path, dest_dir: &Path) -> Result<(
 #[cfg(target_os = "macos")]
 async fn download_whisper_cli_macos_bottle_then_fallback(
     app: &AppHandle,
+    sink: &SinkHandle,
 ) -> Result<DownloadedWhisperCli, String> {
     let base = managed_bin_dir(app)?;
     let dest_dir = base.join("whisper-cpp");
@@ -446,12 +422,12 @@ async fn download_whisper_cli_macos_bottle_then_fallback(
     }
     std::fs::create_dir_all(&dest_dir).map_err(|e| format!("create whisper-cpp dir: {e}"))?;
 
-    match crate::whisper_bottle_macos::download_whisper_cli_from_homebrew_bottle(app, &dest_dir).await
+    match crate::whisper_bottle_macos::download_whisper_cli_from_homebrew_bottle(sink, &dest_dir).await
     {
         Ok(p) => Ok(DownloadedWhisperCli {
             whisper_cli_path: p.to_string_lossy().into_owned(),
         }),
-        Err(bottle_err) => match locate_whisper_cli_macos(app) {
+        Err(bottle_err) => match locate_whisper_cli_macos(sink) {
             Ok(p) => Ok(p),
             Err(find_err) => Err(format!(
                 "Could not install whisper-cli from Homebrew bottle:\n{bottle_err}\n\nTried PATH/Homebrew search:\n{find_err}"
@@ -461,9 +437,9 @@ async fn download_whisper_cli_macos_bottle_then_fallback(
 }
 
 #[cfg(target_os = "macos")]
-fn locate_whisper_cli_macos(app: &AppHandle) -> Result<DownloadedWhisperCli, String> {
+fn locate_whisper_cli_macos(sink: &SinkHandle) -> Result<DownloadedWhisperCli, String> {
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "whisper-cli".to_string(),
             phase: "searching".to_string(),
@@ -484,7 +460,7 @@ fn locate_whisper_cli_macos(app: &AppHandle) -> Result<DownloadedWhisperCli, Str
 
     let path_str = found.to_string_lossy().into_owned();
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "whisper-cli".to_string(),
             phase: "done".to_string(),
@@ -500,7 +476,10 @@ fn locate_whisper_cli_macos(app: &AppHandle) -> Result<DownloadedWhisperCli, Str
 }
 
 #[cfg(windows)]
-async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTools, String> {
+async fn download_media_tools_inner(
+    app: &AppHandle,
+    sink: &SinkHandle,
+) -> Result<DownloadedMediaTools, String> {
     let dir = managed_bin_dir(app)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("create bin dir: {e}"))?;
 
@@ -508,7 +487,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     let ff_dest = dir.join("ffmpeg.exe");
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "yt-dlp".to_string(),
             phase: "downloading".to_string(),
@@ -520,7 +499,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
 
     let m = tools_manifest();
     download_file_streaming(
-        app,
+        sink,
         &m.windows_yt_dlp_exe.url,
         &yt_dest,
         "yt-dlp",
@@ -529,7 +508,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     .await?;
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "yt-dlp".to_string(),
             phase: "done".to_string(),
@@ -551,7 +530,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     ));
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "ffmpeg".to_string(),
             phase: "downloading".to_string(),
@@ -562,7 +541,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     );
 
     download_file_streaming(
-        app,
+        sink,
         &m.windows_ffmpeg_zip.url,
         &tmp_zip,
         "ffmpeg",
@@ -571,7 +550,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     .await?;
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "ffmpeg".to_string(),
             phase: "extracting".to_string(),
@@ -590,7 +569,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     let _ = std::fs::remove_file(&tmp_zip);
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "ffmpeg".to_string(),
             phase: "done".to_string(),
@@ -610,7 +589,10 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
 }
 
 #[cfg(target_os = "macos")]
-async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTools, String> {
+async fn download_media_tools_inner(
+    app: &AppHandle,
+    sink: &SinkHandle,
+) -> Result<DownloadedMediaTools, String> {
     let dir = managed_bin_dir(app)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("create bin dir: {e}"))?;
 
@@ -628,7 +610,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     };
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "yt-dlp".to_string(),
             phase: "downloading".to_string(),
@@ -639,7 +621,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     );
 
     download_file_streaming(
-        app,
+        sink,
         &m.macos_yt_dlp.url,
         &yt_dest,
         "yt-dlp",
@@ -649,7 +631,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     make_executable(&yt_dest)?;
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "yt-dlp".to_string(),
             phase: "done".to_string(),
@@ -663,7 +645,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     );
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "ffmpeg".to_string(),
             phase: "downloading".to_string(),
@@ -674,7 +656,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     );
 
     download_file_streaming(
-        app,
+        sink,
         &ff_entry.url,
         &ff_dest,
         "ffmpeg",
@@ -684,7 +666,7 @@ async fn download_media_tools_inner(app: &AppHandle) -> Result<DownloadedMediaTo
     make_executable(&ff_dest)?;
 
     emit(
-        app,
+        sink,
         ToolDownloadProgress {
             tool: "ffmpeg".to_string(),
             phase: "done".to_string(),
@@ -739,7 +721,7 @@ fn extract_ffmpeg_exe_from_zip(zip_path: &Path, dest_ffmpeg: &Path) -> Result<()
 
 #[cfg(any(windows, target_os = "macos"))]
 async fn download_file_streaming(
-    app: &AppHandle,
+    sink: &SinkHandle,
     url: &str,
     dest: &Path,
     tool_label: &str,
@@ -805,7 +787,7 @@ async fn download_file_streaming(
         if received.saturating_sub(last_emit) > 1024 * 1024 || total == Some(received) {
             last_emit = received;
             emit(
-                app,
+                sink,
                 ToolDownloadProgress {
                     tool: tool_label.to_string(),
                     phase: "downloading".to_string(),

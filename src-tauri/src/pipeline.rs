@@ -7,12 +7,9 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
-use tauri::AppHandle;
-use tauri::Emitter;
-
 use crate::deps;
 use crate::process_kill;
-use crate::session_log;
+use crate::progress::{JobEvent, PipelineLogEvent, QueueJobProgressEvent, SinkHandle};
 use crate::settings::DownloadedAudioFormat;
 use crate::yt_dlp_progress::{self, YtDlpEvent};
 
@@ -30,14 +27,6 @@ pub struct PrepareAudioResult {
     /// Not serialized to JS — kept as strings for the Tauri command shape.
     #[serde(skip_serializing)]
     pub source_media_files: Vec<PathBuf>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PipelineLogPayload {
-    job_id: String,
-    label: String,
-    message: String,
 }
 
 /// Heartbeat-based watchdog for yt-dlp: kill the child if no stderr line arrives
@@ -134,33 +123,29 @@ fn tail_with_ellipsis(s: &str, max_bytes: usize) -> String {
     format!("…{}", &s[start..])
 }
 
-pub(crate) fn emit_pipeline_log(app: &AppHandle, job_id: &str, label: &str, stderr: &[u8]) {
+pub(crate) fn emit_pipeline_log(sink: &SinkHandle, job_id: &str, label: &str, stderr: &[u8]) {
     let message = tail_stderr(stderr);
     if message.is_empty() {
         return;
     }
-    let payload = PipelineLogPayload {
+    sink.emit(JobEvent::PipelineLog(PipelineLogEvent {
         job_id: job_id.to_string(),
         label: label.to_string(),
-        message: message.clone(),
-    };
-    let _ = app.emit("pipeline-log", &payload);
-    session_log::try_append(app, Some(job_id), label, &message);
+        message,
+    }));
 }
 
-pub(crate) fn emit_pipeline_text(app: &AppHandle, job_id: &str, label: &str, text: &str) {
+pub(crate) fn emit_pipeline_text(sink: &SinkHandle, job_id: &str, label: &str, text: &str) {
     let t = text.trim();
     if t.is_empty() {
         return;
     }
     let message = tail_with_ellipsis(t, STDERR_TAIL);
-    let payload = PipelineLogPayload {
+    sink.emit(JobEvent::PipelineLog(PipelineLogEvent {
         job_id: job_id.to_string(),
         label: label.to_string(),
-        message: message.clone(),
-    };
-    let _ = app.emit("pipeline-log", &payload);
-    session_log::try_append(app, Some(job_id), label, &message);
+        message,
+    }));
 }
 
 fn apply_win_no_window(cmd: &mut Command) {
@@ -274,20 +259,6 @@ pub(crate) async fn run_cmd(
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct QueueJobProgressEmit {
-    job_id: String,
-    phase: String,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    subtask_index: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    subtask_total: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    subtask_percent: Option<u8>,
-}
-
 /// Shared subtask state for paired stdout/stderr reader tasks. yt-dlp prints
 /// `Downloading item N of M` on one pipe and the matching `[download] N% …`
 /// progress on the same pipe shortly after, but a paranoid implementation has
@@ -307,7 +278,7 @@ fn spawn_pipe_reader<R>(
     pipe: R,
     last_activity: Arc<Mutex<Instant>>,
     subtask_state: Arc<Mutex<SubtaskState>>,
-    emit_target: Option<(AppHandle, String)>,
+    emit_target: Option<(SinkHandle, String)>,
     phase_label: String,
 ) -> tokio::task::JoinHandle<Vec<u8>>
 where
@@ -327,7 +298,7 @@ where
                         *g = Instant::now();
                     }
                     full.extend_from_slice(line.as_bytes());
-                    if let Some((app, jid)) = emit_target.as_ref() {
+                    if let Some((sink, jid)) = emit_target.as_ref() {
                         if let Some(event) = yt_dlp_progress::parse_yt_dlp_line(line.trim_end()) {
                             // Update shared subtask counters before emitting so the
                             // payload always reflects the latest known item.
@@ -351,21 +322,14 @@ where
                             };
                             let msg = event.short_message();
                             if last_emitted.as_ref() != Some(&msg) {
-                                let payload = QueueJobProgressEmit {
+                                sink.emit(JobEvent::QueueJobProgress(QueueJobProgressEvent {
                                     job_id: jid.clone(),
                                     phase: phase_label.clone(),
                                     message: msg.clone(),
                                     subtask_index: sub_index,
                                     subtask_total: sub_total,
                                     subtask_percent: sub_percent,
-                                };
-                                let _ = app.emit("queue-job-progress", &payload);
-                                session_log::try_append(
-                                    app,
-                                    Some(jid.as_str()),
-                                    &phase_label,
-                                    &msg,
-                                );
+                                }));
                                 last_emitted = Some(msg);
                             }
                         }
@@ -396,7 +360,7 @@ pub(crate) async fn run_yt_dlp_streaming(
     args: &[String],
     heartbeat: Duration,
     cancel: &CancellationToken,
-    maybe_log: Option<(&AppHandle, &str)>,
+    maybe_log: Option<(&SinkHandle, &str)>,
     phase_label: &str,
 ) -> Result<std::process::Output, String> {
     let mut cmd = Command::new(program);
@@ -426,7 +390,7 @@ pub(crate) async fn run_yt_dlp_streaming(
 
     let last_activity: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
     let subtask_state: Arc<Mutex<SubtaskState>> = Arc::new(Mutex::new(SubtaskState::default()));
-    let emit_target = maybe_log.map(|(a, j)| (a.clone(), j.to_string()));
+    let emit_target = maybe_log.map(|(s, j)| (Arc::clone(s), j.to_string()));
 
     let stdout_task = spawn_pipe_reader(
         stdout,
@@ -508,7 +472,7 @@ pub(crate) async fn run_yt_dlp_streaming(
 
 /// Second yt-dlp pass: best video+audio merged to `mp4` (URL jobs only; used when user opts in).
 pub async fn download_best_video_mp4(
-    maybe_log: Option<(&AppHandle, &str)>,
+    maybe_log: Option<(&SinkHandle, &str)>,
     yt_dlp: &Path,
     url: &str,
     dest_mp4: &Path,
@@ -559,14 +523,14 @@ pub async fn download_best_video_mp4(
             tail_stderr(&out.stderr)
         ));
     }
-    if let Some((app, jid)) = maybe_log.as_ref() {
-        emit_pipeline_log(app, jid, "yt-dlp-video", &out.stderr);
+    if let Some((sink, jid)) = maybe_log.as_ref() {
+        emit_pipeline_log(sink, jid, "yt-dlp-video", &out.stderr);
     }
     Ok(())
 }
 
 pub async fn prepare_media_audio(
-    maybe_log: Option<(&AppHandle, &str)>,
+    maybe_log: Option<(&SinkHandle, &str)>,
     source: String,
     source_kind: String,
     ffmpeg_override: Option<String>,
@@ -662,8 +626,8 @@ pub async fn prepare_media_audio(
                 tail_stderr(&out.stderr)
             ));
         }
-        if let Some((app, jid)) = maybe_log.as_ref() {
-            emit_pipeline_log(app, jid, "yt-dlp", &out.stderr);
+        if let Some((sink, jid)) = maybe_log.as_ref() {
+            emit_pipeline_log(sink, jid, "yt-dlp", &out.stderr);
         }
 
         if cancel.is_cancelled() {
@@ -689,9 +653,9 @@ pub async fn prepare_media_audio(
                     {
                         Ok(()) => {}
                         Err(e) => {
-                            if let Some((app, jid)) = maybe_log.as_ref() {
+                            if let Some((sink, jid)) = maybe_log.as_ref() {
                                 emit_pipeline_text(
-                                    app,
+                                    sink,
                                     jid,
                                     "yt-dlp-video",
                                     &format!("Could not save video (continuing with transcript): {e}"),
@@ -735,8 +699,8 @@ pub async fn prepare_media_audio(
                 tail_stderr(&out.stderr)
             ));
         }
-        if let Some((app, jid)) = maybe_log.as_ref() {
-            emit_pipeline_log(app, jid, "ffmpeg", &out.stderr);
+        if let Some((sink, jid)) = maybe_log.as_ref() {
+            emit_pipeline_log(sink, jid, "ffmpeg", &out.stderr);
         }
         if !normalized.is_file() {
             let _ = fs::remove_dir_all(&work_dir);
