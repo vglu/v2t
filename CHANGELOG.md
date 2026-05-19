@@ -2,6 +2,29 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [1.8.0] - 2026-05-19
+
+### Добавлено
+
+- **Локальный REST API** — пока v2t запущен, поднимается HTTP-сервер на `127.0.0.1:<port>` (по умолчанию `8788`). Внешний сервис ставит задачи по URL или локальному файлу, опрашивает статус, забирает текст транскрипта, получает webhook на завершение. Подробная инструкция и примеры (curl, Python, sseclient, Flask-приёмник вебхуков): [`docs/API.md`](docs/API.md). Включается в `settings.json` секцией `apiServer: { enabled: true }` (или через Tauri-команду `api_server_apply`) — bearer-токен (32 байта hex) генерируется автоматически при первом enable.
+- **Эндпоинты v1**: `GET /v1/health`, `POST /v1/jobs`, `GET /v1/jobs/{id}`, `GET /v1/jobs/{id}/transcript`, `POST /v1/jobs/{id}/cancel`, `GET /v1/jobs/{id}/events` (SSE), `POST /v1/batches` (до 1000 items), `GET /v1/batches/{id}` (агрегированный статус). Атомарная валидация батча: ошибка в N-м item откатывает уже зарегистрированные. Глобальный лимит конкуррентных запусков — 2 (хардкод M3, далее настраивается).
+- **Webhook delivery** — POST на `callback.url` при достижении терминального статуса. Идемпотентный `X-V2T-Delivery-Id` (UUID), HMAC-SHA256 в `X-V2T-Signature` по `callback.secret`. 3 попытки с экспоненциальной задержкой, 4xx не ретраится.
+- **Swagger UI и OpenAPI 3.1** — без auth по `/v1/docs` и `/v1/openapi.json`. Кнопка Authorize в UI принимает bearer-токен; спека пригодна для client-codegen через `openapi-generator`.
+- **`ProgressSink` trait** — все события прогресса теперь идут через абстракцию (`progress.rs`). Реализации: `TauriSink` (webview + session log, прежнее поведение), `ApiJobSink` (REST registry + broadcast канал для SSE). Открыл возможность подключать произвольные приёмники без правки бизнес-кода.
+
+### Изменено
+
+- `job::run_process_queue_item` принимает `sink: SinkHandle` параметром (раньше внутри строил `TauriSink` из `AppHandle`).
+- Tauri-команды `process_queue_item`, `download_whisper_model`, `download_media_tools`, `download_whisper_cli`, `install_deno`, `browser_queue_job_finish` теперь конструируют `TauriSink` в `lib.rs` и пробрасывают вниз — wire-формат событий в JS остаётся прежним.
+- `AppSettings` получил секцию `apiServer: { enabled, port, bearerToken }` (всё с serde defaults — старые `settings.json` подгрузятся без правок).
+
+### Известные ограничения / scope M2-M3.5
+
+- **In-memory state** — батчи и история джобов живут только пока v2t запущен; рестарт = очистка. SQLite-персистентность запланирована на M4.
+- **Только localhost** — bind строго на `127.0.0.1`, без LAN-доступа и без CORS. Для удалённого потребителя нужен ваш собственный backend в качестве прокси.
+- **Hardcoded concurrency = 2** — больше нагружать локальную машину параллельным yt-dlp / ffmpeg / whisper рискованно. Настройка появится в M4.
+- **`browserWhisper` режим** недоступен через REST (нужен webview).
+
 ## [1.7.0] - 2026-04-30
 
 ### Добавлено
