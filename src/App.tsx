@@ -194,6 +194,30 @@ export default function App() {
         <h1>Video to Text</h1>
         <p className="tagline">{t("tagline")}</p>
         <div className="app-header-actions">
+          {appVersion ? (
+            <span className="app-version-badge" data-testid="app-version-badge">
+              <span className="app-version-badge__ver" data-testid="app-version">
+                v{appVersion}
+              </span>
+              {apiInfo ? (
+                <span
+                  className={
+                    apiInfo.running
+                      ? "app-version-badge__api app-version-badge__api--on"
+                      : "app-version-badge__api"
+                  }
+                  data-testid="api-status"
+                  title={
+                    apiInfo.running
+                      ? `${apiInfo.baseUrl}/v1/docs`
+                      : "REST API disabled — enable apiServer in settings.json"
+                  }
+                >
+                  {apiInfo.running ? `API :${apiInfo.port}` : "API off"}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
           <select
             className="app-lang-select"
             data-testid="header-language-switcher"
@@ -217,30 +241,6 @@ export default function App() {
             {t("header.setup_guide_label")}
           </button>
         </div>
-        {appVersion ? (
-          <div className="app-version-badge" data-testid="app-version-badge">
-            <span className="app-version-badge__ver" data-testid="app-version">
-              v{appVersion}
-            </span>
-            {apiInfo ? (
-              <span
-                className={
-                  apiInfo.running
-                    ? "app-version-badge__api app-version-badge__api--on"
-                    : "app-version-badge__api"
-                }
-                data-testid="api-status"
-                title={
-                  apiInfo.running
-                    ? `${apiInfo.baseUrl}/v1/docs`
-                    : "REST API disabled — enable apiServer in settings.json"
-                }
-              >
-                {apiInfo.running ? `API :${apiInfo.port} ●` : "API off"}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
       </header>
 
       <div className="app-tabs" role="tablist">

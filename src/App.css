@@ -7,6 +7,10 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+
+  /* Strong custom easing — built-in CSS easings lack punch (Emil Kowalski). */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --accent: #4c6ef5;
 }
 
 * {
@@ -15,6 +19,24 @@
 
 body {
   margin: 0;
+}
+
+/* Single keyboard-focus ring for everything interactive. Mouse clicks don't
+ * trigger :focus-visible, so this is keyboard-only — no ugly outline on click. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Motion is comprehension-only when the user opts out: kill movement, keep it instant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .app-root {
@@ -60,18 +82,17 @@ body {
   margin-left: 0;
 }
 
-/* Version + REST-API status badge. Full-width row under the header actions so
- * it never competes with the language switcher for space; right-aligned and
- * monospace so the version reads like a build stamp. */
+/* Version + REST-API status badge. Sits inline in the header actions row
+ * (left of the language switcher) so it reads like a quiet build stamp and
+ * doesn't claim its own line. */
 .app-version-badge {
-  flex-basis: 100%;
-  display: flex;
-  justify-content: flex-end;
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
+  margin-right: 0.15rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.72rem;
-  color: #6b7080;
+  color: #9097a8;
 }
 
 .app-version-badge__ver {
@@ -79,16 +100,33 @@ body {
 }
 
 .app-version-badge__api {
-  padding: 0.05rem 0.4rem;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
   border: 1px solid #2a2e3a;
-  color: #8b8fa3;
+  color: #9097a8;
+}
+
+/* Status pip via ::before so the dot color is independent of the label. */
+.app-version-badge__api::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: #6b7080;
 }
 
 .app-version-badge__api--on {
-  color: #4ade80;
+  color: #5fd98a;
   border-color: #245c3a;
   background: #11261a;
+}
+
+.app-version-badge__api--on::before {
+  background: #40c057;
+  box-shadow: 0 0 0 2px rgba(64, 192, 87, 0.25);
 }
 
 /* Compact UI-language switcher in the header. Width capped so the
@@ -121,10 +159,17 @@ button {
   cursor: pointer;
   background: #1c1f28;
   color: #e8e8ec;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease,
+    transform 120ms ease-out;
 }
 
 button:hover {
   border-color: #3d4456;
+}
+
+/* Instant press feedback — the single biggest "the UI heard me" detail. */
+button:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 button:disabled {
@@ -159,6 +204,14 @@ input[type="password"] {
   font-family: inherit;
   background: #0d0f14;
   color: #e8e8ec;
+  transition: border-color 150ms ease;
+}
+
+input[type="text"]:focus,
+input[type="url"]:focus,
+input[type="password"]:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 select {
@@ -171,11 +224,12 @@ select {
   background: #0d0f14;
   color: #e8e8ec;
   cursor: pointer;
+  transition: border-color 150ms ease;
 }
 
 select:focus {
   outline: none;
-  border-color: #4c6ef5;
+  border-color: var(--accent);
 }
 
 .deps {
@@ -252,6 +306,64 @@ select:focus {
 
 .readiness-needs-work {
   border-color: #4a2a2e;
+}
+
+/* Collapsed ready-state: one calm green line, details on demand. */
+.readiness-compact {
+  padding: 0;
+}
+
+.readiness-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.6rem 0.85rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.86rem;
+  color: #c8edd4;
+  user-select: none;
+}
+
+/* Replace the default disclosure triangle with a rotating chevron on the right. */
+.readiness-summary::-webkit-details-marker {
+  display: none;
+}
+
+.readiness-summary::after {
+  content: "▾";
+  margin-left: auto;
+  color: #6b9a7d;
+  font-size: 0.75rem;
+  transition: transform 150ms var(--ease-out);
+}
+
+.readiness-compact[open] .readiness-summary::after {
+  transform: rotate(180deg);
+}
+
+.readiness-summary .readiness-dot {
+  margin-top: 0;
+}
+
+.readiness-summary-text {
+  font-weight: 600;
+}
+
+.readiness-summary-mode {
+  font-size: 0.74rem;
+  color: #6b9a7d;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.readiness-compact-body {
+  padding: 0 0.85rem 0.75rem;
+}
+
+.readiness-compact-body .readiness-list {
+  padding-top: 0.5rem;
+  border-top: 1px solid #1e3d2e;
 }
 
 .readiness-head {
@@ -396,6 +508,11 @@ select:focus {
   justify-content: center;
   padding: 1rem;
   z-index: 1000;
+  transition: opacity 200ms ease;
+
+  @starting-style {
+    opacity: 0;
+  }
 }
 
 .onboarding-modal {
@@ -409,6 +526,13 @@ select:focus {
   background: #1a1d26;
   padding: 1.25rem 1.35rem 1rem;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  /* Modal is not anchored to a trigger → scale from center (Emil's exception). */
+  transition: opacity 200ms ease, transform 200ms var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
 
 .onboarding-modal-wide {
@@ -663,6 +787,12 @@ select:focus {
   font-size: 0.85rem;
   margin-bottom: 0.75rem;
   color: #a5b4fc;
+  transition: opacity 200ms ease, transform 200ms var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 .settings-panel {
@@ -836,6 +966,7 @@ button.lang-code-chip:hover {
 
 .help-details-body a {
   color: #a5b4fc;
+  transition: color 120ms ease;
 }
 
 .help-details-body a:hover {
@@ -861,6 +992,11 @@ button.lang-code-chip:hover {
   padding: 1rem;
   margin-bottom: 1rem;
   background: #14161d;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.drop-zone:hover {
+  border-color: #4c5570;
 }
 
 .drop-zone p {
@@ -937,7 +1073,7 @@ textarea {
 }
 
 .queue-table .muted {
-  color: #6b7080;
+  color: #8b8fa3;
   font-style: italic;
 }
 
@@ -1203,6 +1339,7 @@ progress.job-progress-bar::-moz-progress-bar {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color 120ms ease;
 }
 
 .subtask-link:hover {
@@ -1277,6 +1414,13 @@ button.subtask-retry:hover {
   padding: 0.5rem 1rem 0.45rem;
   cursor: pointer;
   margin-bottom: -1px;
+  transition: color 150ms ease, border-bottom-color 150ms ease;
+}
+
+/* Tab is a keyboard control but uses a bottom-border indicator — the default
+ * focus ring would clash; keep the ring but pull it in tight. */
+.app-tab:focus-visible {
+  outline-offset: -2px;
 }
 
 .app-tab:hover {

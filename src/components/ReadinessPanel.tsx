@@ -126,17 +126,71 @@ export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings
     });
   }
 
+  const rowsList = (
+    <ul className="readiness-list">
+      {rows.map((row) => (
+        <li key={row.id} className="readiness-row">
+          <StatusDot ok={row.ok} />
+          <div className="readiness-row-text">
+            <span className="readiness-row-label">{row.label}</span>
+            <span className="readiness-row-hint">{row.hint}</span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+
+  // Always present (sr-only) so automated checks and screen readers see status
+  // regardless of whether the panel is collapsed.
+  const statusSpans = (
+    <>
+      <span
+        className={`sr-only deps ${
+          toolsUnknown ? "deps-unknown" : ffmpegOk && ytDlpOk ? "deps-ok" : "deps-bad"
+        }`}
+        data-testid="deps-status"
+      />
+      <span className="sr-only" data-testid="ffmpeg-status">
+        {toolsUnknown ? "unknown" : ffmpegOk ? "ok" : "missing"}
+      </span>
+      <span className="sr-only" data-testid="ytdlp-status">
+        {toolsUnknown ? "unknown" : ytDlpOk ? "ok" : "missing"}
+      </span>
+    </>
+  );
+
+  const modeLabel = useLocal
+    ? t("row.whisper_cli.label")
+    : useBrowser
+      ? t("row.wasm_whisper.label")
+      : t("row.api_key.label");
+
+  // All green → collapse to a single satisfied line. The 5-row checklist is
+  // onboarding reassurance; once everything's set it shouldn't eat half the
+  // window on every launch. Click to re-expand the details.
+  if (allOk) {
+    return (
+      <details className="readiness readiness-all-ok readiness-compact" data-testid="readiness-panel">
+        <summary className="readiness-summary">
+          <span className="readiness-dot readiness-dot-ok" aria-hidden />
+          <span className="readiness-summary-text">{t("sub.all_ok")}</span>
+          <span className="readiness-summary-mode">{modeLabel}</span>
+        </summary>
+        <div className="readiness-compact-body">{rowsList}</div>
+        {statusSpans}
+      </details>
+    );
+  }
+
   return (
     <section
-      className={`readiness ${allOk ? "readiness-all-ok" : "readiness-needs-work"}`}
+      className="readiness readiness-needs-work"
       aria-label={t("panel_aria")}
       data-testid="readiness-panel"
     >
       <div className="readiness-head">
         <h2 className="readiness-title">{t("title")}</h2>
-        <p className="readiness-sub">
-          {allOk ? t("sub.all_ok") : t("sub.needs_work")}
-        </p>
+        <p className="readiness-sub">{t("sub.needs_work")}</p>
         {useLocal ? (
           <p className="readiness-mode-hint">
             <Trans i18nKey="mode_hint.local" t={t} components={{ strong: <strong /> }} />
@@ -155,45 +209,22 @@ export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings
             {t("tools_unknown")}
           </p>
         ) : null}
-        {!allOk ? (
-          <button
-            type="button"
-            className="readiness-settings-btn"
-            data-testid="readiness-open-settings"
-            onClick={onOpenSettings}
-          >
-            {t("open_settings_btn")}
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className="readiness-settings-btn"
+          data-testid="readiness-open-settings"
+          onClick={onOpenSettings}
+        >
+          {t("open_settings_btn")}
+        </button>
         {!toolsUnknown && (!ffmpegOk || !ytDlpOk) ? (
           <p className="readiness-tool-hint" data-testid="readiness-tool-hint">
             <Trans i18nKey="tool_hint" t={t} components={{ strong: <strong /> }} />
           </p>
         ) : null}
       </div>
-      <ul className="readiness-list">
-        {rows.map((row) => (
-          <li key={row.id} className="readiness-row">
-            <StatusDot ok={row.ok} />
-            <div className="readiness-row-text">
-              <span className="readiness-row-label">{row.label}</span>
-              <span className="readiness-row-hint">{row.hint}</span>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <span
-        className={`sr-only deps ${
-          toolsUnknown ? "deps-unknown" : ffmpegOk && ytDlpOk ? "deps-ok" : "deps-bad"
-        }`}
-        data-testid="deps-status"
-      />
-      <span className="sr-only" data-testid="ffmpeg-status">
-        {toolsUnknown ? "unknown" : ffmpegOk ? "ok" : "missing"}
-      </span>
-      <span className="sr-only" data-testid="ytdlp-status">
-        {toolsUnknown ? "unknown" : ytDlpOk ? "ok" : "missing"}
-      </span>
+      {rowsList}
+      {statusSpans}
     </section>
   );
 }
