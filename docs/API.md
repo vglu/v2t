@@ -140,7 +140,8 @@
 }
 ```
 
-`status` ∈ `queued | running | done | failed | cancelled`.
+`status` ∈ `queued | running | done | failed | cancelled | interrupted`.
+`interrupted` — задача была в работе, когда v2t остановился; после перезапуска восстановлена из БД, но уже не выполняется (нужно поставить заново).
 
 ### `GET /v1/jobs/{id}/transcript`
 
@@ -436,7 +437,9 @@ def hook():
 | M2 | ✅ done | REST + bearer + webhook (HMAC) |
 | M3 | ✅ done | Батчи до 1000 + SSE-стрим прогресса |
 | M3.5 | ✅ done | OpenAPI 3.1 + Swagger UI (`/v1/docs`, `/v1/openapi.json`) |
-| M4 | план | SQLite-персистентность: state переживает рестарт v2t |
-| M5 | план | Метрики, S3/MinIO выгрузка, UI-панель управления API |
+| M4 | ✅ done | SQLite-персистентность + UI-панель управления (Settings → REST API) |
+| M5 | план | Метрики, S3/MinIO выгрузка, авторестарт interrupted-задач |
 
-> Текущее состояние: in-memory. При рестарте v2t state теряется; in-flight задачи отменяются.
+> **Персистентность (M4):** джобы и батчи пишутся в `app_data/v2t-api.db` (SQLite, WAL). История переживает рестарт v2t. Задачи, бывшие в работе на момент остановки, при следующем старте помечаются `interrupted`. Сам REST-сервер живёт только пока запущено приложение.
+>
+> **Управление из UI:** Settings → секция **REST API** — тумблер вкл/выкл, порт, показ/копирование токена, регенерация, ссылка на Swagger. Можно не править `settings.json` руками.

@@ -1,6 +1,6 @@
 [package]
 name = "v2t"
-version = "1.8.2"
+version = "1.9.0"
 description = "Portable video/audio to text (v2t)"
 authors = ["you"]
 edition = "2021"
@@ -43,4 +43,5 @@ rand = "0.8"
 async-stream = "0.3"
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "8", features = ["axum"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 

@@ -182,6 +182,28 @@ impl ApiServerSupervisor {
         }
     }
 
+    /// Open the SQLite persistence DB and restore jobs/batches into memory.
+    /// Best-effort — failure leaves the registry in pure in-memory mode.
+    pub fn init_persistence(&self, app: &tauri::AppHandle) {
+        let dir = match app.path().app_data_dir() {
+            Ok(d) => d,
+            Err(e) => {
+                session_log::try_append(
+                    app,
+                    None,
+                    "api-server",
+                    &format!("db init skipped (no app_data_dir): {e}"),
+                );
+                return;
+            }
+        };
+        let _ = std::fs::create_dir_all(&dir);
+        let db_path = dir.join("v2t-api.db");
+        if let Err(e) = self.job_registry.init_db(&db_path) {
+            session_log::try_append(app, None, "api-server", &format!("db init failed: {e}"));
+        }
+    }
+
     /// Read current settings from disk and reconcile the server with them.
     /// Generates a bearer token on first enable and persists it back.
     pub fn apply_settings(&self, app: &tauri::AppHandle) -> Result<(), String> {
@@ -264,7 +286,7 @@ impl Default for ApiServerSupervisor {
     }
 }
 
-fn generate_bearer_token() -> String {
+pub(crate) fn generate_bearer_token() -> String {
     let mut buf = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut buf);
     hex::encode(buf)

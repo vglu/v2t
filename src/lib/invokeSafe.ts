@@ -289,3 +289,15 @@ export async function getApiServerInfo(): Promise<ApiServerInfo | null> {
     return null;
   }
 }
+
+/** Re-read settings.json and (re)start/stop the API server to match. Throws on
+ * failure (e.g. port busy) so the UI can show the reason. */
+export async function apiServerApply(): Promise<ApiServerInfo> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return await invoke<ApiServerInfo>("api_server_apply");
+}
+
+export async function apiServerRegenerateToken(): Promise<ApiServerInfo> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return await invoke<ApiServerInfo>("api_server_regenerate_token");
+}

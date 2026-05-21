@@ -268,12 +268,11 @@ struct ApiServerInfo {
     base_url: String,
 }
 
-#[tauri::command]
-fn get_api_server_info(
-    app: tauri::AppHandle,
-    supervisor: tauri::State<'_, ApiServerSupervisor>,
+fn build_api_server_info(
+    app: &tauri::AppHandle,
+    supervisor: &ApiServerSupervisor,
 ) -> Result<ApiServerInfo, String> {
-    let s = settings::load(&app)?;
+    let s = settings::load(app)?;
     let (running, port_opt) = supervisor.status();
     let port = port_opt.unwrap_or(s.api_server.port);
     Ok(ApiServerInfo {
@@ -285,6 +284,14 @@ fn get_api_server_info(
     })
 }
 
+#[tauri::command]
+fn get_api_server_info(
+    app: tauri::AppHandle,
+    supervisor: tauri::State<'_, ApiServerSupervisor>,
+) -> Result<ApiServerInfo, String> {
+    build_api_server_info(&app, &supervisor)
+}
+
 /// Re-read settings.json and reconcile the API server with them (start, stop, or restart).
 /// Call this from the frontend after `save_settings`.
 #[tauri::command]
@@ -293,7 +300,20 @@ fn api_server_apply(
     supervisor: tauri::State<'_, ApiServerSupervisor>,
 ) -> Result<ApiServerInfo, String> {
     supervisor.apply_settings(&app)?;
-    get_api_server_info(app, supervisor)
+    build_api_server_info(&app, &supervisor)
+}
+
+/// Generate a fresh bearer token, persist it, and restart the server if running.
+#[tauri::command]
+fn api_server_regenerate_token(
+    app: tauri::AppHandle,
+    supervisor: tauri::State<'_, ApiServerSupervisor>,
+) -> Result<ApiServerInfo, String> {
+    let mut s = settings::load(&app)?;
+    s.api_server.bearer_token = api_server::generate_bearer_token();
+    settings::save(&app, &s)?;
+    supervisor.apply_settings(&app)?;
+    build_api_server_info(&app, &supervisor)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -319,10 +339,12 @@ pub fn run() {
                     );
                 }
             });
-            // M2: bring up the REST API if it's enabled in settings.json. Best-effort —
-            // any failure (port busy, missing settings) is logged and never blocks
-            // startup of the GUI.
+            // M4: open the SQLite persistence DB and restore prior jobs/batches
+            // (in-flight ones become "interrupted"). Must run before the server
+            // starts accepting requests. M2: then bring up the REST API if enabled.
+            // Best-effort — any failure is logged and never blocks GUI startup.
             let supervisor = app.state::<ApiServerSupervisor>();
+            supervisor.init_persistence(&app.handle());
             if let Err(e) = supervisor.apply_settings(&app.handle()) {
                 session_log::try_append(
                     &app.handle(),
@@ -354,7 +376,8 @@ pub fn run() {
             session_log_append_ui,
             open_session_log,
             get_api_server_info,
-            api_server_apply
+            api_server_apply,
+            api_server_regenerate_token
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -1438,6 +1438,67 @@ button.subtask-retry:hover {
   color: #f59e0b;
 }
 
+/* REST API config block — grouped card so port/token/actions read as one unit. */
+.api-server-block {
+  margin-top: 0.5rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #2a2e3a;
+  border-radius: 10px;
+  background: #12151c;
+}
+
+.api-server-block .field:last-of-type,
+.api-server-block .queue-toolbar {
+  margin-bottom: 0;
+}
+
+.api-server-status {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+}
+
+.api-server-pip {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #6b7080;
+  flex-shrink: 0;
+}
+
+.api-server-pip--on {
+  background: #40c057;
+  box-shadow: 0 0 0 2px rgba(64, 192, 87, 0.25);
+}
+
+.api-server-status--on {
+  color: #5fd98a;
+  font-weight: 600;
+}
+
+.api-server-status--off {
+  color: #9097a8;
+}
+
+.api-server-docs-link {
+  margin-left: auto;
+  color: #a5b4fc;
+  text-decoration: none;
+  transition: color 120ms ease;
+}
+
+.api-server-docs-link:hover {
+  color: #c5d2ff;
+}
+
+/* Monospace for machine values (the hex bearer token). */
+input.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
 .field.mb-sm {
   margin-bottom: 0.5rem;
 }

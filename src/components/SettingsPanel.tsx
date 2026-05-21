@@ -2,14 +2,18 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import {
+  apiServerApply,
+  apiServerRegenerateToken,
   defaultDocumentsDir,
   defaultWhisperModelsDir,
   detectGpu,
   downloadMediaTools,
   downloadWhisperCli,
   downloadWhisperModel,
+  getApiServerInfo,
   installDeno,
   listWhisperModels,
+  type ApiServerInfo,
 } from "../lib/invokeSafe";
 import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
 import type {
@@ -92,6 +96,66 @@ export function SettingsPanel({
     received: number;
     total: number | null;
   } | null>(null);
+
+  // ---- REST API server panel ----
+  const [apiInfo, setApiInfo] = useState<ApiServerInfo | null>(null);
+  const [apiBusy, setApiBusy] = useState(false);
+  const [apiMsg, setApiMsg] = useState<string | null>(null);
+  const [apiErr, setApiErr] = useState<string | null>(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [tokenShown, setTokenShown] = useState(false);
+
+  useEffect(() => {
+    void getApiServerInfo().then((info) => {
+      if (info) setApiInfo(info);
+    });
+  }, []);
+
+  async function handleApiApply() {
+    setApiBusy(true);
+    setApiErr(null);
+    setApiMsg(null);
+    try {
+      // Persist current settings (incl. apiServer toggle/port) before the
+      // backend re-reads settings.json to reconcile the server.
+      await onPersistSettings(settings);
+      const info = await apiServerApply();
+      setApiInfo(info);
+      setApiMsg(info.running ? `Server running on :${info.port}` : "Server stopped");
+    } catch (e) {
+      setApiErr(typeof e === "string" ? e : e instanceof Error ? e.message : "Apply failed");
+    } finally {
+      setApiBusy(false);
+    }
+  }
+
+  async function handleApiRegenerate() {
+    setApiBusy(true);
+    setApiErr(null);
+    setApiMsg(null);
+    try {
+      const info = await apiServerRegenerateToken();
+      setApiInfo(info);
+      setTokenShown(true);
+      setApiMsg("New token generated");
+    } catch (e) {
+      setApiErr(typeof e === "string" ? e : e instanceof Error ? e.message : "Regenerate failed");
+    } finally {
+      setApiBusy(false);
+    }
+  }
+
+  async function handleCopyToken() {
+    const token = apiInfo?.bearerToken;
+    if (!token) return;
+    try {
+      await navigator.clipboard.writeText(token);
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — user can still reveal + select manually */
+    }
+  }
 
   const isWin = useMemo(() => isProbablyWindows(), []);
   const isMac = useMemo(() => isProbablyMac(), []);
@@ -1149,6 +1213,131 @@ export function SettingsPanel({
             <span>{t("subtitles.keep_srt")}</span>
           </label>
         </>
+      ) : null}
+
+      {/* REST API server. Developer-facing (tokens/ports/Swagger) — kept in
+          English deliberately; localizing it adds little for the audience. */}
+      <p className="settings-section-title">REST API</p>
+      <p className="hint">
+        Local HTTP server on 127.0.0.1 for submitting jobs from another service.
+        Off by default. Full reference: <code>docs/API.md</code>.
+      </p>
+      <label className="field checkbox">
+        <input
+          type="checkbox"
+          data-testid="api-server-toggle"
+          checked={settings.apiServer.enabled}
+          onChange={(e) =>
+            onChange({
+              ...settings,
+              apiServer: { ...settings.apiServer, enabled: e.target.checked },
+            })
+          }
+        />
+        <span>Enable REST API server</span>
+      </label>
+      {settings.apiServer.enabled ? (
+        <div className="api-server-block">
+          {apiInfo ? (
+            <p className="api-server-status" data-testid="api-server-status-line">
+              <span
+                className={
+                  apiInfo.running
+                    ? "api-server-pip api-server-pip--on"
+                    : "api-server-pip"
+                }
+                aria-hidden
+              />
+              <span
+                className={
+                  apiInfo.running ? "api-server-status--on" : "api-server-status--off"
+                }
+              >
+                {apiInfo.running ? `Running on ${apiInfo.baseUrl}` : "Stopped"}
+              </span>
+              {apiInfo.running ? (
+                <a
+                  className="api-server-docs-link"
+                  href={`${apiInfo.baseUrl}/v1/docs`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Swagger UI ↗
+                </a>
+              ) : null}
+            </p>
+          ) : null}
+
+          <label className="field">
+            <span>Port</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              data-testid="api-server-port"
+              value={String(settings.apiServer.port)}
+              onChange={(e) => {
+                const n = parseInt(e.target.value.replace(/\D/g, ""), 10);
+                onChange({
+                  ...settings,
+                  apiServer: {
+                    ...settings.apiServer,
+                    port: Number.isFinite(n) ? Math.min(n, 65535) : 0,
+                  },
+                });
+              }}
+              placeholder="8788"
+            />
+          </label>
+
+          {apiInfo?.bearerToken ? (
+            <label className="field">
+              <span>Bearer token</span>
+              <div className="row-gap">
+                <input
+                  className="mono"
+                  type={tokenShown ? "text" : "password"}
+                  readOnly
+                  data-testid="api-server-token"
+                  value={apiInfo.bearerToken}
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <button type="button" onClick={() => setTokenShown((v) => !v)}>
+                  {tokenShown ? "Hide" : "Show"}
+                </button>
+                <button type="button" onClick={() => void handleCopyToken()}>
+                  {tokenCopied ? "Copied ✓" : "Copy"}
+                </button>
+              </div>
+              <p className="hint">
+                Send as <code>Authorization: Bearer &lt;token&gt;</code>.
+              </p>
+            </label>
+          ) : (
+            <p className="hint">Token is generated when you first apply the server.</p>
+          )}
+
+          <div className="queue-toolbar">
+            <button
+              type="button"
+              className="primary"
+              data-testid="api-server-apply"
+              disabled={apiBusy}
+              onClick={() => void handleApiApply()}
+            >
+              {apiBusy ? "Applying…" : "Apply / restart server"}
+            </button>
+            <button
+              type="button"
+              disabled={apiBusy}
+              onClick={() => void handleApiRegenerate()}
+            >
+              Regenerate token
+            </button>
+          </div>
+
+          {apiMsg ? <p className="hint">{apiMsg}</p> : null}
+          {apiErr ? <p className="hint hint--warn">{apiErr}</p> : null}
+        </div>
       ) : null}
 
       <button type="button" className="primary" disabled={saving} onClick={onSave}>
