@@ -9,8 +9,11 @@ import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "./i18n";
 import {
   checkDependencies,
   defaultDocumentsDir,
+  getApiServerInfo,
+  getAppVersion,
   loadSettings,
   saveSettings,
+  type ApiServerInfo,
 } from "./lib/invokeSafe";
 import {
   defaultAppSettings,
@@ -57,6 +60,8 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [documentsPath, setDocumentsPath] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [apiInfo, setApiInfo] = useState<ApiServerInfo | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
@@ -100,6 +105,15 @@ export default function App() {
       setWizardOpen(true);
     }
   }, [settingsHydrated, settings.onboardingCompleted]);
+
+  // App version (from the bundle) + REST API status for the header badge.
+  // Both are best-effort: outside the Tauri runtime they stay null/hidden.
+  useEffect(() => {
+    void (async () => {
+      setAppVersion(await getAppVersion());
+      setApiInfo(await getApiServerInfo());
+    })();
+  }, [settingsHydrated, settings.apiServer]);
 
   const readinessComplete = useMemo(() => {
     if (!deps) return false;
@@ -203,6 +217,30 @@ export default function App() {
             {t("header.setup_guide_label")}
           </button>
         </div>
+        {appVersion ? (
+          <div className="app-version-badge" data-testid="app-version-badge">
+            <span className="app-version-badge__ver" data-testid="app-version">
+              v{appVersion}
+            </span>
+            {apiInfo ? (
+              <span
+                className={
+                  apiInfo.running
+                    ? "app-version-badge__api app-version-badge__api--on"
+                    : "app-version-badge__api"
+                }
+                data-testid="api-status"
+                title={
+                  apiInfo.running
+                    ? `${apiInfo.baseUrl}/v1/docs`
+                    : "REST API disabled — enable apiServer in settings.json"
+                }
+              >
+                {apiInfo.running ? `API :${apiInfo.port} ●` : "API off"}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       <div className="app-tabs" role="tablist">

@@ -207,9 +207,39 @@ impl ApiServerSupervisor {
             bearer_token: s.api_server.bearer_token.clone(),
             concurrency: Arc::new(Semaphore::new(API_MAX_CONCURRENT_JOBS)),
         });
+
+        // Bind synchronously *here* so a busy port (or any bind failure) surfaces
+        // immediately to the caller (`api_server_apply` → UI) instead of dying
+        // silently inside the spawned task. Status is then truthful: we only mark
+        // the server "running" after a successful bind.
+        let addr = format!("127.0.0.1:{port}");
+        let std_listener = std::net::TcpListener::bind(&addr)
+            .map_err(|e| format!("bind {addr}: {e} (is the port already in use?)"))?;
+        std_listener
+            .set_nonblocking(true)
+            .map_err(|e| format!("set_nonblocking: {e}"))?;
+        session_log::try_append(
+            app,
+            None,
+            "api-server",
+            &format!("listening on http://{addr}"),
+        );
+
         let app_for_log = app.clone();
         let handle = tauri::async_runtime::spawn(async move {
-            if let Err(e) = serve(state, port).await {
+            let listener = match tokio::net::TcpListener::from_std(std_listener) {
+                Ok(l) => l,
+                Err(e) => {
+                    session_log::try_append(
+                        &app_for_log,
+                        None,
+                        "api-server",
+                        &format!("failed to adopt listener: {e}"),
+                    );
+                    return;
+                }
+            };
+            if let Err(e) = serve(state, listener).await {
                 session_log::try_append(
                     &app_for_log,
                     None,
@@ -240,18 +270,11 @@ fn generate_bearer_token() -> String {
     hex::encode(buf)
 }
 
-/// Bind + serve. Returns only on shutdown / fatal error.
-pub async fn serve(state: Arc<ApiServerState>, port: u16) -> Result<(), String> {
-    let addr = format!("127.0.0.1:{port}");
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .map_err(|e| format!("bind {addr}: {e}"))?;
-    session_log::try_append(
-        &state.app,
-        None,
-        "api-server",
-        &format!("listening on http://{addr}"),
-    );
+/// Serve on an already-bound listener. Returns only on shutdown / fatal error.
+pub async fn serve(
+    state: Arc<ApiServerState>,
+    listener: tokio::net::TcpListener,
+) -> Result<(), String> {
     let router = router(state);
     axum::serve(listener, router)
         .await

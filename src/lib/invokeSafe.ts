@@ -261,3 +261,31 @@ export async function releaseQueueJobSlot(jobId: string): Promise<void> {
     /* web / tests */
   }
 }
+
+/** App version baked into the bundle (from `tauri.conf.json`). Authoritative
+ * for "which build am I running". Returns null outside the Tauri runtime. */
+export async function getAppVersion(): Promise<string | null> {
+  try {
+    const { getVersion } = await import("@tauri-apps/api/app");
+    return await getVersion();
+  } catch {
+    return null;
+  }
+}
+
+export interface ApiServerInfo {
+  enabled: boolean;
+  running: boolean;
+  port: number;
+  bearerToken: string;
+  baseUrl: string;
+}
+
+export async function getApiServerInfo(): Promise<ApiServerInfo | null> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<ApiServerInfo>("get_api_server_info");
+  } catch {
+    return null;
+  }
+}

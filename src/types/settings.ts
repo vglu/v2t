@@ -71,6 +71,15 @@ export type AppSettings = {
   keepSrt: boolean;
   /** UI language. "auto" derives from navigator.language. */
   uiLanguage: UiLanguage;
+  /** Local REST API server config (bind 127.0.0.1 only). */
+  apiServer: ApiServerSettings;
+};
+
+export type ApiServerSettings = {
+  enabled: boolean;
+  port: number;
+  /** Static bearer token; auto-generated on first enable. */
+  bearerToken: string;
 };
 
 export const defaultAppSettings: AppSettings = {
@@ -99,6 +108,7 @@ export const defaultAppSettings: AppSettings = {
   subtitlePriorityLangs: ["uk", "ru", "en"],
   keepSrt: false,
   uiLanguage: "auto",
+  apiServer: { enabled: false, port: 8788, bearerToken: "" },
 };
 
 export type DependencyReport = {

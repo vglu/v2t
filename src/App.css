@@ -60,6 +60,37 @@ body {
   margin-left: 0;
 }
 
+/* Version + REST-API status badge. Full-width row under the header actions so
+ * it never competes with the language switcher for space; right-aligned and
+ * monospace so the version reads like a build stamp. */
+.app-version-badge {
+  flex-basis: 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  color: #6b7080;
+}
+
+.app-version-badge__ver {
+  letter-spacing: 0.01em;
+}
+
+.app-version-badge__api {
+  padding: 0.05rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid #2a2e3a;
+  color: #8b8fa3;
+}
+
+.app-version-badge__api--on {
+  color: #4ade80;
+  border-color: #245c3a;
+  background: #11261a;
+}
+
 /* Compact UI-language switcher in the header. Width capped so the
  * collapsed view stays ~80px (flag emoji + 2-letter ISO code). The native
  * dropdown opens below and is full-width by browser default — no custom
