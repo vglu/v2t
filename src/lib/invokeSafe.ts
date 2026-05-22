@@ -6,11 +6,13 @@ import type {
 import type { PrepareAudioResult } from "../types/pipeline";
 import type {
   AppSettings,
+  CostEstimate,
   DependencyReport,
   DownloadedMediaTools,
   DownloadedWhisperCli,
   GpuInfo,
   InstalledDeno,
+  ModelValidationResult,
   WhisperAcceleration,
   WhisperModelMeta,
 } from "../types/settings";
@@ -300,4 +302,27 @@ export async function apiServerApply(): Promise<ApiServerInfo> {
 export async function apiServerRegenerateToken(): Promise<ApiServerInfo> {
   const { invoke } = await import("@tauri-apps/api/core");
   return await invoke<ApiServerInfo>("api_server_regenerate_token");
+}
+
+export async function validateGeminiModel(
+  apiKey: string,
+  model: string,
+): Promise<ModelValidationResult | null> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<ModelValidationResult>("validate_gemini_model", { apiKey, model });
+  } catch {
+    return null;
+  }
+}
+
+export async function estimateOcrBatch(
+  sources: string[],
+): Promise<CostEstimate | null> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<CostEstimate>("estimate_ocr_batch", { sources });
+  } catch {
+    return null;
+  }
 }

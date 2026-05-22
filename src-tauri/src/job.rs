@@ -85,7 +85,7 @@ fn emit_subtask_status(
     }));
 }
 
-fn require_output_dir(settings: &AppSettings) -> Result<PathBuf, String> {
+pub fn require_output_dir(settings: &AppSettings) -> Result<PathBuf, String> {
     let Some(ref dir) = settings.output_dir else {
         return Err("Choose output folder in Settings".to_string());
     };
@@ -212,6 +212,13 @@ pub async fn run_process_queue_item(
     cancel: CancellationToken,
 ) -> Result<ProcessQueueItemOutcome, String> {
     let out_dir = require_output_dir(&settings)?;
+
+    // Vision fast-path: route image/document files before the audio pipeline.
+    if crate::vision::is_vision_input(&source) {
+        return crate::vision::run_vision_job(
+            &app, &sink, &job_id, job_index, &source, &display_label, &settings, &cancel,
+        ).await;
+    }
 
     let ffmpeg_pb = deps::resolve_tool_path(ffmpeg_path_override.as_deref(), "ffmpeg")
         .ok_or_else(|| "ffmpeg not found (settings or folder next to app)".to_string())?;

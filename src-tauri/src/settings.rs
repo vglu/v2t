@@ -25,6 +25,14 @@ fn default_api_server_port() -> u16 {
     8788
 }
 
+fn default_gemini_model() -> String {
+    "gemini-2.5-flash".to_string()
+}
+
+fn default_gemini_free_tier() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiServerSettings {
@@ -46,6 +54,14 @@ impl Default for ApiServerSettings {
             bearer_token: String::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum VisionMode {
+    #[default]
+    Disabled,
+    Gemini,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default, ToSchema)]
@@ -212,6 +228,18 @@ pub struct AppSettings {
     /// UI language; `Auto` lets the React layer derive from `navigator.language`.
     #[serde(default)]
     pub ui_language: UiLanguage,
+    /// Vision/OCR mode — Disabled by default.
+    #[serde(default)]
+    pub vision_mode: VisionMode,
+    /// Gemini model for Vision OCR.
+    #[serde(default = "default_gemini_model")]
+    pub gemini_model: String,
+    /// Google API key for Gemini; cleared from disk, stored in keyring.
+    #[serde(default)]
+    pub gemini_api_key: String,
+    /// True = warn about free-tier rate limits in UI.
+    #[serde(default = "default_gemini_free_tier")]
+    pub gemini_free_tier: bool,
     /// REST API server config (M2 wave). Disabled by default; bind only to 127.0.0.1.
     #[serde(default)]
     pub api_server: ApiServerSettings,
@@ -245,6 +273,10 @@ impl Default for AppSettings {
             subtitle_priority_langs: default_subtitle_priority_langs(),
             keep_srt: false,
             ui_language: UiLanguage::Auto,
+            vision_mode: VisionMode::Disabled,
+            gemini_model: default_gemini_model(),
+            gemini_api_key: String::new(),
+            gemini_free_tier: true,
             api_server: ApiServerSettings::default(),
         }
     }
@@ -282,12 +314,26 @@ pub fn load(app: &tauri::AppHandle) -> Result<AppSettings, String> {
         }
     }
 
+    match crate::gemini_key_store::get() {
+        Ok(Some(k)) => s.gemini_api_key = k,
+        Ok(None) => {
+            if !s.gemini_api_key.is_empty() {
+                let k = std::mem::take(&mut s.gemini_api_key);
+                let _ = crate::gemini_key_store::set(&k);
+                s.gemini_api_key = k;
+            }
+        }
+        Err(_) => {}
+    }
+
     Ok(s)
 }
 
 pub fn save(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
     api_key_store::set(&settings.api_key)?;
+    crate::gemini_key_store::set(&settings.gemini_api_key)?;
     let mut for_disk = settings.clone();
+    for_disk.gemini_api_key.clear();
     for_disk.api_key.clear();
     let path = settings_path(app)?;
     let raw = serde_json::to_string_pretty(&for_disk)
@@ -345,6 +391,14 @@ mod tests {
         assert!(!s.api_server.enabled);
         assert_eq!(s.api_server.port, 8788);
         assert!(s.api_server.bearer_token.is_empty());
+    }
+
+    #[test]
+    fn vision_mode_defaults_disabled() {
+        let s = AppSettings::default();
+        assert_eq!(s.vision_mode, VisionMode::Disabled);
+        assert_eq!(s.gemini_model, "gemini-2.5-flash");
+        assert!(s.gemini_free_tier);
     }
 
     #[test]

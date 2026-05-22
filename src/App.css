@@ -1515,3 +1515,12 @@ input.mono {
 .onboarding-error-callout.mt-sm {
   margin-top: 0.5rem;
 }
+
+.ocr-cost-badge {
+  font-size: 0.78rem;
+  color: var(--color-text-muted, #888);
+  padding: 4px 8px;
+  background: var(--color-surface-alt, rgba(0,0,0,0.04));
+  border-radius: 4px;
+  margin-bottom: 6px;
+}

@@ -13,12 +13,14 @@ import {
   getAppVersion,
   loadSettings,
   saveSettings,
+  validateGeminiModel,
   type ApiServerInfo,
 } from "./lib/invokeSafe";
 import {
   defaultAppSettings,
   type AppSettings,
   type DependencyReport,
+  type ModelValidationResult,
   type UiLanguage,
 } from "./types/settings";
 import "./App.css";
@@ -105,6 +107,31 @@ export default function App() {
       setWizardOpen(true);
     }
   }, [settingsHydrated, settings.onboardingCompleted]);
+
+  // Gemini model validation at startup
+  useEffect(() => {
+    if (!settingsHydrated) return;
+    if (settings.visionMode !== "gemini") return;
+    if (!settings.geminiApiKey) return;
+
+    validateGeminiModel(settings.geminiApiKey, settings.geminiModel).then(
+      (result: ModelValidationResult | null) => {
+        if (!result) return;
+        if (!result.isValid && result.suggestedReplacement) {
+          const oldModel = settings.geminiModel;
+          const newModel = result.suggestedReplacement;
+          const updated = { ...settingsRef.current, geminiModel: newModel };
+          setSettings(updated);
+          saveSettings(updated);
+          setToast(
+            `Gemini model "${oldModel}" is deprecated → switched to "${newModel}". Check Settings → Vision.`,
+          );
+        }
+      },
+    );
+    // Run once after hydration; model key won't change during session
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsHydrated]);
 
   // App version (from the bundle) + REST API status for the header badge.
   // Both are best-effort: outside the Tauri runtime they stay null/hidden.

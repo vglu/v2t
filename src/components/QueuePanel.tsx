@@ -4,6 +4,7 @@ import { Trans, useTranslation } from "react-i18next";
 import {
   browserQueueJobFinish,
   cancelQueueJob,
+  estimateOcrBatch,
   openSessionLog,
   processQueueItem,
   releaseQueueJobSlot,
@@ -23,7 +24,7 @@ import type {
   SubtaskState,
   SubtaskStatus,
 } from "../types/queue";
-import type { AppSettings } from "../types/settings";
+import type { AppSettings, CostEstimate } from "../types/settings";
 import { JobProgressBar } from "./JobProgressBar";
 import { SubtaskList } from "./SubtaskList";
 
@@ -100,11 +101,30 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
   const stopRequestedRef = useRef(false);
   const currentJobIdRef = useRef<string | null>(null);
   const [queueRunning, setQueueRunning] = useState(false);
+  const [ocrEstimate, setOcrEstimate] = useState<CostEstimate | null>(null);
 
   const setQueueActive = useCallback((active: boolean) => {
     runningRef.current = active;
     setQueueRunning(active);
   }, []);
+
+  useEffect(() => {
+    const IMAGE_DOC_EXTS = new Set([
+      "jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif", "pdf", "docx",
+    ]);
+    function isVisionSource(src: string) {
+      const ext = src.split(".").pop()?.toLowerCase() ?? "";
+      return IMAGE_DOC_EXTS.has(ext);
+    }
+    const ocrSources = jobs
+      .filter((j) => j.status === "pending" && isVisionSource(j.source))
+      .map((j) => j.source);
+    if (ocrSources.length === 0 || settings.visionMode !== "gemini") {
+      setOcrEstimate(null);
+      return;
+    }
+    estimateOcrBatch(ocrSources).then((est) => setOcrEstimate(est ?? null));
+  }, [jobs, settings.visionMode]);
 
   const appendLog = useCallback((line: string) => {
     const ts = new Date().toISOString().slice(11, 19);
@@ -638,6 +658,17 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
       <button type="button" data-testid="add-urls" onClick={addUrlsFromDraft}>
         {t("btn.add_urls")}
       </button>
+
+      {ocrEstimate !== null && ocrEstimate.imageCount > 0 && (
+        <div className="ocr-cost-badge">
+          🖼 {ocrEstimate.imageCount} image{ocrEstimate.imageCount !== 1 ? "s" : ""}/doc
+          {settings.geminiModel === "gemini-2.5-flash-lite"
+            ? ` — est. $${ocrEstimate.flashLiteCostUsd.toFixed(4)}`
+            : ` — est. $${ocrEstimate.flashCostUsd.toFixed(4)}`}
+          {settings.geminiFreeTier &&
+            ` | ~${Math.ceil(ocrEstimate.freeTierSeconds / 60)} min on free tier`}
+        </div>
+      )}
 
       <div className="queue-run-row">
         <button

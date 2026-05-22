@@ -159,6 +159,24 @@
     "priority_hint": "Priorité des sous-titres",
     "keep_srt": "Également enregistrer le fichier .srt original à côté du transcrit .txt"
   },
+  "vision": {
+    "section": "Vision / OCR",
+    "mode_label": "Mode",
+    "mode_disabled": "Disabled",
+    "mode_gemini": "Gemini Vision",
+    "api_key_label": "Google API Key",
+    "api_key_placeholder": "AIza…",
+    "model_label": "Model",
+    "model_flash": "Gemini 2.5 Flash (recommended)",
+    "model_flash_lite": "Gemini 2.5 Flash-Lite (faster, cheaper)",
+    "free_tier_label": "I'm on the free tier",
+    "free_tier_hint": "Free tier: ~10 req/min, ~250 images/day. Enable billing in Google AI Studio for unlimited use.",
+    "pricing_link": "Gemini pricing ↗",
+    "pricing_url": "https://ai.google.dev/gemini-api/docs/pricing",
+    "disabled_hint": "When disabled, image and document files dropped into the queue will return an error. Enable Gemini Vision to process them.",
+    "cost_per_image_flash": "~$0.001 / image",
+    "cost_per_image_lite": "~$0.0003 / image"
+  },
   "btn_save": "Enregistrer les paramètres",
   "btn_saving": "Sauvegarde…"
 }

@@ -4,6 +4,10 @@ use std::path::Path;
 const MEDIA_EXTENSIONS: &[&str] = &[
     "mp4", "mkv", "mov", "webm", "avi", "wmv", "m4v", "mp3", "wav", "m4a", "flac", "ogg", "opus",
     "aac", "wma",
+    // image types
+    "jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif",
+    // document types
+    "pdf", "docx",
 ];
 
 fn is_media_file(path: &Path) -> bool {

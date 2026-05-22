@@ -44,4 +44,6 @@ async-stream = "0.3"
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "8", features = ["axum"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+lopdf = "0.34"
+base64 = { version = "0.22", features = ["std"] }
 

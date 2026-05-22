@@ -1,6 +1,9 @@
 mod api_job_registry;
 mod api_key_store;
 mod api_server;
+mod doc_extract;
+mod gemini_key_store;
+mod vision;
 mod audio_save;
 mod cancel_registry;
 mod deps;
@@ -268,6 +271,24 @@ struct ApiServerInfo {
     base_url: String,
 }
 
+#[tauri::command]
+async fn validate_gemini_model(
+    api_key: String,
+    model: String,
+) -> vision::ModelValidationResult {
+    let http = reqwest::Client::new();
+    vision::validate_model(&http, &api_key, &model).await
+}
+
+#[tauri::command]
+fn estimate_ocr_batch(sources: Vec<String>) -> vision::CostEstimate {
+    let count = sources
+        .iter()
+        .filter(|s| vision::is_vision_input(s))
+        .count() as u32;
+    vision::estimate_cost(count)
+}
+
 fn build_api_server_info(
     app: &tauri::AppHandle,
     supervisor: &ApiServerSupervisor,
@@ -377,7 +398,9 @@ pub fn run() {
             open_session_log,
             get_api_server_info,
             api_server_apply,
-            api_server_regenerate_token
+            api_server_regenerate_token,
+            validate_gemini_model,
+            estimate_ocr_batch
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -22,6 +22,7 @@ import type {
   GpuInfo,
   TranscriptionMode,
   UiLanguage,
+  VisionMode,
   WhisperAcceleration,
   WhisperModelMeta,
 } from "../types/settings";
@@ -817,6 +818,82 @@ export function SettingsPanel({
           </>
         )}
       </div>
+
+      {/* Vision / OCR section */}
+      <p className="settings-section-title" aria-label={t("vision.section")}>
+        {t("vision.section")}
+      </p>
+
+      <label className="field">
+        <span>{t("vision.mode_label")}</span>
+        <div className="onboarding-radio-group" role="radiogroup">
+          {(["disabled", "gemini"] as VisionMode[]).map((mode) => (
+            <label className="onboarding-radio" key={mode}>
+              <input
+                type="radio"
+                name="visionMode"
+                value={mode}
+                checked={settings.visionMode === mode}
+                onChange={() => onChange({ ...settings, visionMode: mode })}
+              />
+              <span>
+                {mode === "disabled" ? t("vision.mode_disabled") : t("vision.mode_gemini")}
+              </span>
+            </label>
+          ))}
+        </div>
+      </label>
+
+      {settings.visionMode === "disabled" && (
+        <p className="hint">{t("vision.disabled_hint")}</p>
+      )}
+
+      {settings.visionMode === "gemini" && (
+        <>
+          <label className="field">
+            <span>{t("vision.api_key_label")}</span>
+            <input
+              type="password"
+              value={settings.geminiApiKey}
+              placeholder={t("vision.api_key_placeholder")}
+              onChange={(e) => onChange({ ...settings, geminiApiKey: e.target.value })}
+              autoComplete="off"
+            />
+          </label>
+
+          <label className="field">
+            <span>{t("vision.model_label")}</span>
+            <select
+              value={settings.geminiModel}
+              onChange={(e) => onChange({ ...settings, geminiModel: e.target.value })}
+            >
+              <option value="gemini-2.5-flash">
+                {t("vision.model_flash")} — {t("vision.cost_per_image_flash")}
+              </option>
+              <option value="gemini-2.5-flash-lite">
+                {t("vision.model_flash_lite")} — {t("vision.cost_per_image_lite")}
+              </option>
+            </select>
+          </label>
+
+          <label className="field checkbox">
+            <input
+              type="checkbox"
+              checked={settings.geminiFreeTier}
+              onChange={(e) => onChange({ ...settings, geminiFreeTier: e.target.checked })}
+            />
+            <span>{t("vision.free_tier_label")}</span>
+          </label>
+          {settings.geminiFreeTier && (
+            <p className="hint">
+              {t("vision.free_tier_hint")}{" "}
+              <a href={t("vision.pricing_url")} target="_blank" rel="noopener noreferrer">
+                {t("vision.pricing_link")}
+              </a>
+            </p>
+          )}
+        </>
+      )}
 
       <p className="settings-section-title">{t("section.media_tools")}</p>
       {showManagedToolDownloads ? (

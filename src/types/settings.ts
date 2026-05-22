@@ -3,6 +3,8 @@ export type TranscriptionMode =
   | "localWhisper"
   | "browserWhisper";
 
+export type VisionMode = "disabled" | "gemini";
+
 /** Browser to pull yt-dlp cookies from. "auto" = OS default; "none" = disabled. */
 export type CookiesFromBrowser = "auto" | "chrome" | "brave" | "edge" | "firefox" | "none";
 
@@ -73,6 +75,14 @@ export type AppSettings = {
   uiLanguage: UiLanguage;
   /** Local REST API server config (bind 127.0.0.1 only). */
   apiServer: ApiServerSettings;
+  /** Vision / OCR mode. "disabled" = no OCR processing. */
+  visionMode: VisionMode;
+  /** Gemini model for Vision OCR (e.g. "gemini-2.5-flash"). */
+  geminiModel: string;
+  /** Google API key for Gemini Vision. */
+  geminiApiKey: string;
+  /** True = user is on free tier; show rate limit warnings. */
+  geminiFreeTier: boolean;
 };
 
 export type ApiServerSettings = {
@@ -109,6 +119,10 @@ export const defaultAppSettings: AppSettings = {
   keepSrt: false,
   uiLanguage: "auto",
   apiServer: { enabled: false, port: 8788, bearerToken: "" },
+  visionMode: "disabled",
+  geminiModel: "gemini-2.5-flash",
+  geminiApiKey: "",
+  geminiFreeTier: true,
 };
 
 export type DependencyReport = {
@@ -139,4 +153,17 @@ export type DownloadedWhisperCli = {
 
 export type InstalledDeno = {
   jsRuntimes: string;
+};
+
+export type ModelValidationResult = {
+  isValid: boolean;
+  suggestedReplacement: string | null;
+  error: string | null;
+};
+
+export type CostEstimate = {
+  imageCount: number;
+  flashCostUsd: number;
+  flashLiteCostUsd: number;
+  freeTierSeconds: number;
 };
