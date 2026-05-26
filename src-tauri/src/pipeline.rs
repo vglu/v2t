@@ -27,6 +27,10 @@ pub struct PrepareAudioResult {
     /// Not serialized to JS — kept as strings for the Tauri command shape.
     #[serde(skip_serializing)]
     pub source_media_files: Vec<PathBuf>,
+    /// True when URL inputs were already extracted to audio by yt-dlp (`-x`).
+    /// False for local files and for URL fallback downloads that kept the raw media.
+    #[serde(skip_serializing)]
+    pub source_media_files_are_audio: bool,
 }
 
 /// Heartbeat-based watchdog for yt-dlp: kill the child if no stderr line arrives
@@ -57,6 +61,47 @@ fn push_yt_dlp_cookies(args: &mut Vec<String>, browser: Option<&str>) {
     };
     args.push("--cookies-from-browser".into());
     args.push(b.to_string());
+}
+
+fn build_yt_dlp_download_args(
+    source: &str,
+    template: &str,
+    js: Option<&str>,
+    cookies: Option<&str>,
+    extract_audio: bool,
+    audio_format_for_yt_dlp: Option<DownloadedAudioFormat>,
+) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    push_yt_dlp_js_runtimes(&mut args, js);
+    push_yt_dlp_cookies(&mut args, cookies);
+    args.extend([
+        "--newline".into(),
+        "--encoding".into(),
+        "utf-8".into(),
+        "--no-mtime".into(),
+    ]);
+    if extract_audio {
+        args.push("-x".into());
+        if let Some(fmt) = audio_format_for_yt_dlp.and_then(|f| f.yt_dlp_arg()) {
+            args.push("--audio-format".into());
+            args.push(fmt.into());
+            args.push("--audio-quality".into());
+            args.push("0".into());
+        }
+    }
+    if youtube_watch_url_should_use_no_playlist(source) {
+        args.push("--no-playlist".into());
+    }
+    args.push("-o".into());
+    args.push(template.to_string());
+    args.push(source.to_string());
+    args
+}
+
+fn yt_dlp_extract_audio_probe_failed(stderr: &[u8]) -> bool {
+    String::from_utf8_lossy(stderr)
+        .to_lowercase()
+        .contains("unable to obtain file audio codec with ffprobe")
 }
 
 /// YouTube copies `watch?v=…&list=…` links; yt-dlp then downloads the **entire** playlist (slow,
@@ -559,7 +604,8 @@ pub async fn prepare_media_audio(
     let work_dir = std::env::temp_dir().join(format!("v2t-work-{nanos}"));
     fs::create_dir_all(&work_dir).map_err(|e| format!("create work dir: {e}"))?;
 
-    let input_files: Vec<PathBuf> = if source_kind == "url" || (source_kind != "file" && is_http_url(&source))
+    let (input_files, source_media_files_are_audio): (Vec<PathBuf>, bool) = if source_kind == "url"
+        || (source_kind != "file" && is_http_url(&source))
     {
         let yt_dlp = deps::resolve_tool_path(yt_dlp_override.as_deref(), "yt-dlp")
             .ok_or_else(|| "yt-dlp not found (needed for URLs)".to_string())?;
@@ -573,36 +619,16 @@ pub async fn prepare_media_audio(
 
         let js = yt_dlp_js_runtimes.as_deref();
         let cookies = cookies_from_browser.as_deref();
-        let mut args: Vec<String> = Vec::new();
-        push_yt_dlp_js_runtimes(&mut args, js);
-        push_yt_dlp_cookies(&mut args, cookies);
-        // `--newline` forces yt-dlp to terminate each progress update with `\n`
-        // instead of `\r`-overwriting one line. Required for our line-by-line
-        // streaming reader to see updates as they happen rather than as one
-        // mega-line at the end of the download. `--encoding utf-8` is yt-dlp's
-        // own belt-and-braces fix for the same Windows cp1252 crash that
-        // PYTHONIOENCODING addresses at the env level.
-        args.extend([
-            "--newline".into(),
-            "--encoding".into(),
-            "utf-8".into(),
-            "-x".into(),
-            "--no-mtime".into(),
-        ]);
-        if let Some(fmt) = audio_format_for_yt_dlp.and_then(|f| f.yt_dlp_arg()) {
-            args.push("--audio-format".into());
-            args.push(fmt.into());
-            args.push("--audio-quality".into());
-            args.push("0".into());
-        }
-        if youtube_watch_url_should_use_no_playlist(&source) {
-            args.push("--no-playlist".into());
-        }
-        args.push("-o".into());
-        args.push(template);
-        args.push(source.clone());
+        let args = build_yt_dlp_download_args(
+            &source,
+            &template,
+            js,
+            cookies,
+            true,
+            audio_format_for_yt_dlp,
+        );
 
-        let out = match run_yt_dlp_streaming(
+        let mut out = match run_yt_dlp_streaming(
             &yt_dlp,
             &args,
             YT_DLP_HEARTBEAT,
@@ -618,6 +644,42 @@ pub async fn prepare_media_audio(
                 return Err(e);
             }
         };
+        let mut source_media_files_are_audio = true;
+        if !out.status.success() && yt_dlp_extract_audio_probe_failed(&out.stderr) {
+            if let Some((sink, jid)) = maybe_log.as_ref() {
+                emit_pipeline_text(
+                    sink,
+                    jid,
+                    "yt-dlp",
+                    "yt-dlp audio postprocessing failed; retrying download without -x and extracting audio via ffmpeg.",
+                );
+            }
+            let retry_args = build_yt_dlp_download_args(
+                &source,
+                &template,
+                js,
+                cookies,
+                false,
+                None,
+            );
+            out = match run_yt_dlp_streaming(
+                &yt_dlp,
+                &retry_args,
+                YT_DLP_HEARTBEAT,
+                cancel,
+                maybe_log,
+                "yt-dlp",
+            )
+            .await
+            {
+                Ok(o) => o,
+                Err(e) => {
+                    let _ = fs::remove_dir_all(&work_dir);
+                    return Err(e);
+                }
+            };
+            source_media_files_are_audio = false;
+        }
         if !out.status.success() {
             let _ = fs::remove_dir_all(&work_dir);
             return Err(format!(
@@ -667,14 +729,14 @@ pub async fn prepare_media_audio(
             }
         }
 
-        media
+        (media, source_media_files_are_audio)
     } else {
         let p = PathBuf::from(&source);
         if !p.is_file() {
             let _ = fs::remove_dir_all(&work_dir);
             return Err(format!("File not found: {}", source));
         }
-        vec![p]
+        (vec![p], false)
     };
 
     if cancel.is_cancelled() {
@@ -731,6 +793,7 @@ pub async fn prepare_media_audio(
         wav_paths,
         summary,
         source_media_files: input_files,
+        source_media_files_are_audio,
     })
 }
 
@@ -791,5 +854,27 @@ mod tests {
         assert!(joined.contains("16000"));
         assert!(joined.contains("pcm_s16le"));
         assert!(args.iter().any(|a| a == "-i"));
+    }
+
+    #[test]
+    fn yt_dlp_probe_failure_is_detected() {
+        let stderr = b"ERROR: Postprocessing: WARNING: unable to obtain file audio codec with ffprobe";
+        assert!(yt_dlp_extract_audio_probe_failed(stderr));
+        assert!(!yt_dlp_extract_audio_probe_failed(b"ERROR: unsupported URL"));
+    }
+
+    #[test]
+    fn yt_dlp_retry_args_skip_audio_extraction_flags() {
+        let args = build_yt_dlp_download_args(
+            "https://vt.tiktok.com/example",
+            "C:/tmp/v2t-%(id)s.%(ext)s",
+            None,
+            None,
+            false,
+            Some(DownloadedAudioFormat::M4a),
+        );
+        assert!(!args.iter().any(|a| a == "-x"));
+        assert!(!args.iter().any(|a| a == "--audio-format"));
+        assert!(!args.iter().any(|a| a == "--audio-quality"));
     }
 }

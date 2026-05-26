@@ -366,6 +366,7 @@ pub async fn run_process_queue_item(
             &sink,
             &job_id,
             &prep.source_media_files,
+            prep.source_media_files_are_audio,
             &source,
             &source_kind,
             &display_label,
@@ -646,15 +647,17 @@ pub async fn run_process_queue_item(
     })
 }
 
-/// Save extracted audio for each source track into `out_dir`. URL jobs copy the
-/// first-pass yt-dlp output (already in the requested format); local video jobs
-/// invoke ffmpeg. Local audio sources are skipped. Errors are logged and swallowed
-/// so transcription keeps going.
+/// Save extracted audio for each source track into `out_dir`. URL jobs usually copy
+/// the first-pass yt-dlp audio output, but may also receive raw media when yt-dlp
+/// had to skip `-x` postprocessing; those cases are extracted via ffmpeg here.
+/// Local video jobs also invoke ffmpeg. Local audio sources are skipped. Errors are
+/// logged and swallowed so transcription keeps going.
 #[allow(clippy::too_many_arguments)]
 async fn save_downloaded_audio(
     sink: &SinkHandle,
     job_id: &str,
     source_media_files: &[PathBuf],
+    source_media_files_are_audio: bool,
     source: &str,
     source_kind: &str,
     display_label: &str,
@@ -673,7 +676,7 @@ async fn save_downloaded_audio(
         }
         let track = (ti + 1) as u32;
 
-        let save_result: Result<PathBuf, String> = if is_url {
+        let save_result: Result<PathBuf, String> = if is_url && source_media_files_are_audio {
             // yt-dlp already produced the exact format we want (or the original
             // container when format == Original). Just copy with the real extension.
             let ext = src_media
@@ -721,6 +724,23 @@ async fn save_downloaded_audio(
                 cancel,
             )
             .await
+        } else if is_url {
+            let ext = src_media
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("m4a")
+                .to_string();
+            let name = output_template::audio_filename_from_transcript_template(
+                &settings.filename_template,
+                display_label,
+                date,
+                job_index,
+                track,
+                source,
+                &ext,
+            );
+            let dest = out_dir.join(&name);
+            audio_save::copy_downloaded_audio(src_media, &dest).map(|_| dest)
         } else {
             // Local audio source — file is already audio, no point copying. Emit a note once.
             if ti == 0 {
