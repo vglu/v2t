@@ -181,6 +181,11 @@ fn resolve_ffprobe_near_ffmpeg(ffmpeg: &Path) -> Option<PathBuf> {
     }
 }
 
+fn resolve_ffprobe(ffmpeg: &Path, ffmpeg_override: Option<&str>) -> Option<PathBuf> {
+    resolve_ffprobe_near_ffmpeg(ffmpeg)
+        .or_else(|| deps::resolve_tool_path(ffmpeg_override, "ffprobe"))
+}
+
 fn clear_work_dir_media_files(dir: &Path) -> Result<(), String> {
     for entry in fs::read_dir(dir).map_err(|e| format!("read_dir: {e}"))? {
         let path = entry.map_err(|e| format!("read_dir entry: {e}"))?.path();
@@ -214,17 +219,94 @@ async fn media_has_audio_stream(
     Ok(!String::from_utf8_lossy(&out.stdout).trim().is_empty())
 }
 
+async fn ffmpeg_stderr_shows_audio_stream(
+    ffmpeg: &Path,
+    input: &Path,
+    cancel: &CancellationToken,
+) -> Result<bool, String> {
+    let args = vec![
+        "-hide_banner".into(),
+        "-i".into(),
+        input.to_string_lossy().into_owned(),
+    ];
+    let out = run_cmd(ffmpeg, &args, FFPROBE_TIMEOUT, cancel).await?;
+    Ok(ffmpeg_stderr_indicates_audio(&String::from_utf8_lossy(&out.stderr)))
+}
+
+fn ffmpeg_stderr_indicates_audio(stderr: &str) -> bool {
+    stderr
+        .lines()
+        .any(|line| line.contains("Stream #") && line.contains("Audio:"))
+}
+
+async fn media_file_has_audio(
+    ffmpeg: &Path,
+    ffmpeg_override: Option<&str>,
+    input: &Path,
+    cancel: &CancellationToken,
+) -> Result<bool, String> {
+    if let Some(ffprobe) = resolve_ffprobe(ffmpeg, ffmpeg_override) {
+        if media_has_audio_stream(&ffprobe, input, cancel).await? {
+            return Ok(true);
+        }
+    }
+    ffmpeg_stderr_shows_audio_stream(ffmpeg, input, cancel).await
+}
+
 async fn any_media_lacks_audio(
-    ffprobe: &Path,
+    ffmpeg: &Path,
+    ffmpeg_override: Option<&str>,
     files: &[PathBuf],
     cancel: &CancellationToken,
 ) -> Result<bool, String> {
     for path in files {
-        if !media_has_audio_stream(ffprobe, path, cancel).await? {
+        if !media_file_has_audio(ffmpeg, ffmpeg_override, path, cancel).await? {
             return Ok(true);
         }
     }
     Ok(false)
+}
+
+async fn download_yt_dlp_with_args(
+    yt_dlp: &Path,
+    args: &[String],
+    cancel: &CancellationToken,
+    maybe_log: Option<(&SinkHandle, &str)>,
+    log_label: &str,
+) -> Result<std::process::Output, String> {
+    run_yt_dlp_streaming(yt_dlp, args, YT_DLP_HEARTBEAT, cancel, maybe_log, log_label).await
+}
+
+async fn retry_yt_dlp_merged_video_audio(
+    source: &str,
+    template: &str,
+    js: Option<&str>,
+    cookies: Option<&str>,
+    yt_dlp: &Path,
+    work_dir: &Path,
+    cancel: &CancellationToken,
+    maybe_log: Option<(&SinkHandle, &str)>,
+) -> Result<std::process::Output, String> {
+    if let Some((sink, jid)) = maybe_log.as_ref() {
+        emit_pipeline_text(
+            sink,
+            jid,
+            "yt-dlp",
+            "Downloaded file has no audio track; retrying merged video+audio (bv*+ba/b).",
+        );
+    }
+    clear_work_dir_media_files(work_dir)?;
+    let merge_args = build_yt_dlp_download_args(
+        source,
+        template,
+        js,
+        cookies,
+        false,
+        None,
+        Some(YT_DLP_RETRY_MERGE_FORMAT),
+        Some("mp4"),
+    );
+    download_yt_dlp_with_args(yt_dlp, &merge_args, cancel, maybe_log, "yt-dlp").await
 }
 
 pub fn tail_stderr(data: &[u8]) -> String {
@@ -784,57 +866,45 @@ pub async fn prepare_media_audio(
 
         let mut media = sorted_downloaded_media(&work_dir)?;
 
-        if let Some(ffprobe) = resolve_ffprobe_near_ffmpeg(&ffmpeg) {
-            if any_media_lacks_audio(&ffprobe, &media, cancel).await? {
-                if let Some((sink, jid)) = maybe_log.as_ref() {
-                    emit_pipeline_text(
-                        sink,
-                        jid,
-                        "yt-dlp",
-                        "Downloaded file has no audio track; retrying merged video+audio (bv*+ba/b).",
-                    );
-                }
-                clear_work_dir_media_files(&work_dir)?;
-                let merge_args = build_yt_dlp_download_args(
-                    &source,
-                    &template,
-                    js,
-                    cookies,
-                    false,
-                    None,
-                    Some(YT_DLP_RETRY_MERGE_FORMAT),
-                    Some("mp4"),
-                );
-                out = match run_yt_dlp_streaming(
-                    &yt_dlp,
-                    &merge_args,
-                    YT_DLP_HEARTBEAT,
-                    cancel,
-                    maybe_log,
-                    "yt-dlp",
-                )
-                .await
-                {
-                    Ok(o) => o,
-                    Err(e) => {
-                        let _ = fs::remove_dir_all(&work_dir);
-                        return Err(e);
-                    }
-                };
-                if !out.status.success() {
+        if any_media_lacks_audio(
+            &ffmpeg,
+            ffmpeg_override.as_deref(),
+            &media,
+            cancel,
+        )
+        .await?
+        {
+            out = match retry_yt_dlp_merged_video_audio(
+                &source,
+                &template,
+                js,
+                cookies,
+                &yt_dlp,
+                &work_dir,
+                cancel,
+                maybe_log,
+            )
+            .await
+            {
+                Ok(o) => o,
+                Err(e) => {
                     let _ = fs::remove_dir_all(&work_dir);
-                    return Err(format!(
-                        "yt-dlp merged download failed (exit {}): {}",
-                        out.status.code().unwrap_or(-1),
-                        tail_stderr(&out.stderr)
-                    ));
+                    return Err(e);
                 }
-                if let Some((sink, jid)) = maybe_log.as_ref() {
-                    emit_pipeline_log(sink, jid, "yt-dlp", &out.stderr);
-                }
-                media = sorted_downloaded_media(&work_dir)?;
-                source_media_files_are_audio = false;
+            };
+            if !out.status.success() {
+                let _ = fs::remove_dir_all(&work_dir);
+                return Err(format!(
+                    "yt-dlp merged download failed (exit {}): {}",
+                    out.status.code().unwrap_or(-1),
+                    tail_stderr(&out.stderr)
+                ));
             }
+            if let Some((sink, jid)) = maybe_log.as_ref() {
+                emit_pipeline_log(sink, jid, "yt-dlp", &out.stderr);
+            }
+            media = sorted_downloaded_media(&work_dir)?;
+            source_media_files_are_audio = false;
         }
 
         if keep_downloaded_video {
@@ -882,20 +952,18 @@ pub async fn prepare_media_audio(
         return Err(JOB_CANCELLED_MSG.to_string());
     }
 
-    let ffprobe = resolve_ffprobe_near_ffmpeg(&ffmpeg);
+    let ffmpeg_override_ref = ffmpeg_override.as_deref();
     let mut wav_paths: Vec<String> = Vec::new();
     for (i, input_media) in input_files.iter().enumerate() {
         if cancel.is_cancelled() {
             let _ = fs::remove_dir_all(&work_dir);
             return Err(JOB_CANCELLED_MSG.to_string());
         }
-        if let Some(probe) = ffprobe.as_ref() {
-            if !media_has_audio_stream(probe, input_media, cancel).await? {
-                let _ = fs::remove_dir_all(&work_dir);
-                return Err(
-                    "Downloaded media has no audio track. The source may be video-only, or yt-dlp could not fetch the audio stream. Try updating yt-dlp or use a different URL.".to_string(),
-                );
-            }
+        if !media_file_has_audio(&ffmpeg, ffmpeg_override_ref, input_media, cancel).await? {
+            let _ = fs::remove_dir_all(&work_dir);
+            return Err(
+                "Downloaded media has no audio track. The source may be video-only, or yt-dlp could not fetch the audio stream. Try updating yt-dlp or use a different URL.".to_string(),
+            );
         }
         let normalized = work_dir.join(format!("normalized_{i}.wav"));
         let ff_args = build_ffmpeg_normalize_args(input_media, &normalized);
@@ -1029,6 +1097,15 @@ mod tests {
         assert!(!args.iter().any(|a| a == "--audio-quality"));
         let f_pos = args.iter().position(|a| a == "-f").expect("-f flag");
         assert_eq!(args.get(f_pos + 1).map(String::as_str), Some("ba/b"));
+    }
+
+    #[test]
+    fn ffmpeg_stderr_indicates_audio_detects_stream_line() {
+        let stderr = "  Stream #0:0[0x2](und): Video: hevc\n  Stream #0:1(und): Audio: aac (LC)";
+        assert!(ffmpeg_stderr_indicates_audio(stderr));
+        assert!(!ffmpeg_stderr_indicates_audio(
+            "  Stream #0:0[0x2](und): Video: hevc (Main)"
+        ));
     }
 
     #[test]

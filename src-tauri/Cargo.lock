@@ -5200,7 +5200,7 @@ dependencies = [
 
 [[package]]
 name = "v2t"
-version = "2.0.3"
+version = "2.0.4"
 dependencies = [
  "async-stream",
  "axum",
