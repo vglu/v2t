@@ -39,7 +39,7 @@ urlencoding = "2"
 axum = "0.7"
 uuid = { version = "1", features = ["v4"] }
 hmac = "0.12"
-rand = "0.8"
+rand = "0.9"
 async-stream = "0.3"
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "8", features = ["axum"] }
