@@ -44,6 +44,7 @@ test-results/
 # Private / local material — keep out of public repos
 # (skills, BA tasks, personal notes, machine-local agent copies)
 # -----------------------------------------------------------------------------
+.claude/worktrees/
 .cursor/agents/
 .cursor/skills/
 .cursor/tasks/
