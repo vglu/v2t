@@ -2,6 +2,12 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.5] - 2026-06-17
+
+### Исправлено
+
+- **TikTok: корневая причина video-only.** yt-dlp по умолчанию брал HEVC (`bytevc1_1080p`, ~8.35 MiB) — в скачанном MP4 нет воспроизводимой аудиодорожки, хотя в списке форматов `acodec=aac`. Для TikTok-URL теперь сразу используется селектор H.264 + AAC (`b[vcodec^=avc1]/…/download/b`). Локально проверено на `https://vt.tiktok.com/ZSQXqHkn8` — WAV ~4.3 MB / ~134 s.
+
 ## [2.0.4] - 2026-06-17
 
 ### Исправлено

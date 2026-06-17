@@ -65,8 +65,16 @@ fn push_yt_dlp_cookies(args: &mut Vec<String>, browser: Option<&str>) {
 
 /// yt-dlp format when `-x` postprocessing fails: best audio stream, else best single file.
 const YT_DLP_RETRY_BEST_AUDIO_FORMAT: &str = "ba/b";
-/// Last resort for DASH sources (TikTok etc.): merge best video + best audio.
+/// Last resort for DASH sources: merge best video + best audio.
 const YT_DLP_RETRY_MERGE_FORMAT: &str = "bv*+ba/b";
+/// TikTok HEVC (bytevc1) downloads often mux without a playable audio track; prefer H.264 + AAC.
+const YT_DLP_TIKTOK_H264_FORMAT: &str =
+    "b[vcodec^=avc1][acodec!=none]/b[vcodec^=h264][acodec!=none]/download/b";
+
+pub(crate) fn is_tiktok_url(url: &str) -> bool {
+    let lower = url.trim().to_lowercase();
+    lower.contains("tiktok.com")
+}
 
 fn build_yt_dlp_download_args(
     source: &str,
@@ -307,6 +315,38 @@ async fn retry_yt_dlp_merged_video_audio(
         Some("mp4"),
     );
     download_yt_dlp_with_args(yt_dlp, &merge_args, cancel, maybe_log, "yt-dlp").await
+}
+
+async fn retry_yt_dlp_tiktok_h264(
+    source: &str,
+    template: &str,
+    js: Option<&str>,
+    cookies: Option<&str>,
+    yt_dlp: &Path,
+    work_dir: &Path,
+    cancel: &CancellationToken,
+    maybe_log: Option<(&SinkHandle, &str)>,
+) -> Result<std::process::Output, String> {
+    if let Some((sink, jid)) = maybe_log.as_ref() {
+        emit_pipeline_text(
+            sink,
+            jid,
+            "yt-dlp",
+            "TikTok HEVC stream had no audio; retrying with H.264 + AAC format.",
+        );
+    }
+    clear_work_dir_media_files(work_dir)?;
+    let args = build_yt_dlp_download_args(
+        source,
+        template,
+        js,
+        cookies,
+        false,
+        None,
+        Some(YT_DLP_TIKTOK_H264_FORMAT),
+        None,
+    );
+    download_yt_dlp_with_args(yt_dlp, &args, cancel, maybe_log, "yt-dlp").await
 }
 
 pub fn tail_stderr(data: &[u8]) -> String {
@@ -781,16 +821,30 @@ pub async fn prepare_media_audio(
 
         let js = yt_dlp_js_runtimes.as_deref();
         let cookies = cookies_from_browser.as_deref();
-        let args = build_yt_dlp_download_args(
-            &source,
-            &template,
-            js,
-            cookies,
-            true,
-            audio_format_for_yt_dlp,
-            None,
-            None,
-        );
+        let tiktok = is_tiktok_url(&source);
+        let args = if tiktok {
+            build_yt_dlp_download_args(
+                &source,
+                &template,
+                js,
+                cookies,
+                false,
+                audio_format_for_yt_dlp,
+                Some(YT_DLP_TIKTOK_H264_FORMAT),
+                None,
+            )
+        } else {
+            build_yt_dlp_download_args(
+                &source,
+                &template,
+                js,
+                cookies,
+                true,
+                audio_format_for_yt_dlp,
+                None,
+                None,
+            )
+        };
 
         let mut out = match run_yt_dlp_streaming(
             &yt_dlp,
@@ -808,8 +862,8 @@ pub async fn prepare_media_audio(
                 return Err(e);
             }
         };
-        let mut source_media_files_are_audio = true;
-        if !out.status.success() && yt_dlp_extract_audio_probe_failed(&out.stderr) {
+        let mut source_media_files_are_audio = !tiktok;
+        if !tiktok && !out.status.success() && yt_dlp_extract_audio_probe_failed(&out.stderr) {
             if let Some((sink, jid)) = maybe_log.as_ref() {
                 emit_pipeline_text(
                     sink,
@@ -905,6 +959,48 @@ pub async fn prepare_media_audio(
             }
             media = sorted_downloaded_media(&work_dir)?;
             source_media_files_are_audio = false;
+
+            if any_media_lacks_audio(
+                &ffmpeg,
+                ffmpeg_override.as_deref(),
+                &media,
+                cancel,
+            )
+            .await?
+            && is_tiktok_url(&source)
+            {
+                out = match retry_yt_dlp_tiktok_h264(
+                    &source,
+                    &template,
+                    js,
+                    cookies,
+                    &yt_dlp,
+                    &work_dir,
+                    cancel,
+                    maybe_log,
+                )
+                .await
+                {
+                    Ok(o) => o,
+                    Err(e) => {
+                        let _ = fs::remove_dir_all(&work_dir);
+                        return Err(e);
+                    }
+                };
+                if !out.status.success() {
+                    let _ = fs::remove_dir_all(&work_dir);
+                    return Err(format!(
+                        "yt-dlp TikTok H.264 download failed (exit {}): {}",
+                        out.status.code().unwrap_or(-1),
+                        tail_stderr(&out.stderr)
+                    ));
+                }
+                if let Some((sink, jid)) = maybe_log.as_ref() {
+                    emit_pipeline_log(sink, jid, "yt-dlp", &out.stderr);
+                }
+                media = sorted_downloaded_media(&work_dir)?;
+                source_media_files_are_audio = false;
+            }
         }
 
         if keep_downloaded_video {
@@ -1097,6 +1193,30 @@ mod tests {
         assert!(!args.iter().any(|a| a == "--audio-quality"));
         let f_pos = args.iter().position(|a| a == "-f").expect("-f flag");
         assert_eq!(args.get(f_pos + 1).map(String::as_str), Some("ba/b"));
+    }
+
+    #[test]
+    fn is_tiktok_url_detects_short_links() {
+        assert!(is_tiktok_url("https://vt.tiktok.com/ZSQXqHkn8"));
+        assert!(is_tiktok_url("https://vm.tiktok.com/abc"));
+        assert!(is_tiktok_url("https://www.tiktok.com/@user/video/1"));
+        assert!(!is_tiktok_url("https://youtube.com/watch?v=x"));
+    }
+
+    #[test]
+    fn tiktok_initial_args_use_h264_format_not_extract_audio() {
+        let args = build_yt_dlp_download_args(
+            "https://vt.tiktok.com/example",
+            "C:/tmp/v2t-%(id)s.%(ext)s",
+            None,
+            None,
+            false,
+            None,
+            Some(YT_DLP_TIKTOK_H264_FORMAT),
+            None,
+        );
+        assert!(!args.iter().any(|a| a == "-x"));
+        assert!(args.windows(2).any(|w| w[0] == "-f" && w[1].contains("avc1")));
     }
 
     #[test]
