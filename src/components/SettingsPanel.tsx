@@ -335,6 +335,7 @@ export function SettingsPanel({
         ytDlpPath: p.ytDlpPath,
       });
       setToolDlMsg(t("media_tools.tools_msg_done"));
+      onRefreshReadiness?.();
     } catch (e) {
       const msg =
         typeof e === "string"

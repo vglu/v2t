@@ -875,10 +875,8 @@ function FragmentRow({
   );
 }
 
-/** Strip `list=` and friends from a YouTube watch URL so retry never re-fans
- * out into the whole playlist. yt-dlp's `youtube_watch_url_should_use_no_playlist`
- * (pipeline.rs) catches the same case server-side, but doing it here too is
- * defense in depth and gives the user a cleaner-looking URL in the queue. */
+/** Strip `list=` from a YouTube watch URL so retry enqueues a single video,
+ * not the whole playlist again. */
 export function stripPlaylistParams(url: string): string {
   try {
     const u = new URL(url);

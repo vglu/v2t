@@ -294,6 +294,7 @@ export function OnboardingWizard({
       const p = await downloadMediaTools();
       const next = { ...settings, ffmpegPath: p.ffmpegPath, ytDlpPath: p.ytDlpPath };
       await persistSettings(next);
+      refreshReadiness();
       setToolsInstallSuccess(true);
       setToolDlMsg(null);
     } catch (e) {

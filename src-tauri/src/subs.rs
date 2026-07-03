@@ -57,17 +57,29 @@ pub fn parse_probe(json: &str) -> Result<SubsProbe, String> {
     serde_json::from_str(json).map_err(|e| format!("Failed to parse yt-dlp JSON: {e}"))
 }
 
-/// True for `youtube.com/playlist?list=…` and the bare-list YT-Music variant.
-/// `watch?v=…&list=…` returns false because we treat that as a single video
-/// (yt-dlp `--no-playlist` already strips the playlist context). Used to gate
-/// the fast-path: probing one URL for a multi-entry playlist would only return
-/// the first entry's subtitles, leading to silently wrong transcripts for the
-/// rest.
+/// True when the URL should download/transcribe a **multi-video playlist**, not a single item.
+/// Includes `playlist?list=…` pages and browser-style `watch?v=…&list=…` links.
+/// Used to gate the subtitle fast-path (probing one URL would only return the first entry).
 pub fn is_pure_playlist_url(url: &str) -> bool {
     let lower = url.trim().to_lowercase();
-    lower.contains("youtube.com/playlist")
+    if lower.contains("youtube.com/playlist")
         || lower.contains("/feed/playlists")
         || lower.contains("music.youtube.com/playlist")
+    {
+        return true;
+    }
+    let on_youtube = lower.contains("youtube.com")
+        || lower.contains("youtu.be")
+        || lower.contains("youtube-nocookie.com")
+        || lower.contains("music.youtube.com");
+    if !on_youtube || !lower.contains("list=") {
+        return false;
+    }
+    lower.contains("watch?")
+        || lower.contains("youtu.be/")
+        || lower.contains("/shorts/")
+        || lower.contains("/live/")
+        || lower.contains("/embed/")
 }
 
 /// Walk `priorities` in order; for each, return the first matching key from
@@ -101,7 +113,6 @@ pub fn pick_priority_lang(priorities: &[String], probe: &SubsProbe) -> Option<St
 }
 
 /// `yt-dlp --skip-download --dump-json --no-warnings -- <url>` — single line of JSON.
-/// Adds `--no-playlist` for `watch?v=…&list=…` shaped URLs so we get one record.
 pub async fn probe_subs(
     yt_dlp: &Path,
     url: &str,
@@ -123,9 +134,6 @@ pub async fn probe_subs(
     {
         args.push("--js-runtimes".into());
         args.push(j.to_string());
-    }
-    if crate::pipeline::youtube_watch_url_should_use_no_playlist(url) {
-        args.push("--no-playlist".into());
     }
     args.extend([
         "--skip-download".into(),
@@ -194,9 +202,6 @@ pub async fn download_srt(
     {
         args.push("--js-runtimes".into());
         args.push(j.to_string());
-    }
-    if crate::pipeline::youtube_watch_url_should_use_no_playlist(url) {
-        args.push("--no-playlist".into());
     }
     args.extend([
         "--skip-download".into(),
@@ -430,15 +435,18 @@ mod tests {
     }
 
     #[test]
-    fn is_pure_playlist_url_detects_only_playlist_pages() {
+    fn is_pure_playlist_url_detects_playlist_pages_and_watch_list_links() {
         assert!(is_pure_playlist_url(
             "https://www.youtube.com/playlist?list=PL123"
         ));
         assert!(is_pure_playlist_url(
             "https://music.youtube.com/playlist?list=OLAK"
         ));
-        assert!(!is_pure_playlist_url(
+        assert!(is_pure_playlist_url(
             "https://www.youtube.com/watch?v=abc&list=PL123"
+        ));
+        assert!(is_pure_playlist_url(
+            "https://youtu.be/abc?list=PL123"
         ));
         assert!(!is_pure_playlist_url("https://www.youtube.com/watch?v=abc"));
         assert!(!is_pure_playlist_url("https://example.com/x"));

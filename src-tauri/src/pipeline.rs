@@ -111,9 +111,6 @@ fn build_yt_dlp_download_args(
             args.push(merge.into());
         }
     }
-    if youtube_watch_url_should_use_no_playlist(source) {
-        args.push("--no-playlist".into());
-    }
     args.push("-o".into());
     args.push(template.to_string());
     args.push(source.to_string());
@@ -124,31 +121,6 @@ fn yt_dlp_extract_audio_probe_failed(stderr: &[u8]) -> bool {
     String::from_utf8_lossy(stderr)
         .to_lowercase()
         .contains("unable to obtain file audio codec with ffprobe")
-}
-
-/// YouTube copies `watch?v=…&list=…` links; yt-dlp then downloads the **entire** playlist (slow,
-/// rate limits, failures). For watch / youtu.be URLs with `list=` we only want the `v=` video.
-/// Pure `youtube.com/playlist?list=…` links are left unchanged so full playlists still work.
-pub(crate) fn youtube_watch_url_should_use_no_playlist(url: &str) -> bool {
-    let lower = url.trim().to_lowercase();
-    let on_youtube = lower.contains("youtube.com")
-        || lower.contains("youtu.be")
-        || lower.contains("youtube-nocookie.com")
-        || lower.contains("music.youtube.com");
-    if !on_youtube {
-        return false;
-    }
-    if lower.contains("youtube.com/playlist") {
-        return false;
-    }
-    if !lower.contains("list=") {
-        return false;
-    }
-    lower.contains("watch?")
-        || lower.contains("youtu.be/")
-        || lower.contains("/shorts/")
-        || lower.contains("/live/")
-        || lower.contains("/embed/")
 }
 
 /// Arguments for ffmpeg: 16 kHz mono PCM WAV (Whisper-friendly).
@@ -738,9 +710,6 @@ pub async fn download_best_video_mp4(
     let mut args: Vec<String> = Vec::new();
     push_yt_dlp_js_runtimes(&mut args, yt_dlp_js_runtimes);
     push_yt_dlp_cookies(&mut args, cookies_from_browser);
-    if youtube_watch_url_should_use_no_playlist(url) {
-        args.push("--no-playlist".into());
-    }
     args.extend([
         "--newline".into(),
         "--encoding".into(),
@@ -1121,20 +1090,21 @@ mod tests {
     }
 
     #[test]
-    fn youtube_no_playlist_flag_matches_browser_style_links() {
-        assert!(youtube_watch_url_should_use_no_playlist(
-            "https://www.youtube.com/watch?v=CwzZuMhk_SI&list=PLkoMD"
-        ));
-        assert!(youtube_watch_url_should_use_no_playlist(
-            "https://youtu.be/CwzZuMhk_SI?list=PLkoMD"
-        ));
-        assert!(!youtube_watch_url_should_use_no_playlist(
-            "https://www.youtube.com/watch?v=CwzZuMhk_SI"
-        ));
-        assert!(!youtube_watch_url_should_use_no_playlist(
-            "https://www.youtube.com/playlist?list=PLkoMD"
-        ));
-        assert!(!youtube_watch_url_should_use_no_playlist("https://example.com/x?list=1"));
+    fn yt_dlp_download_args_do_not_force_no_playlist_for_watch_list_urls() {
+        let args = build_yt_dlp_download_args(
+            "https://www.youtube.com/watch?v=abc&list=PL123",
+            "/tmp/v2t-%(id)s.%(ext)s",
+            None,
+            None,
+            true,
+            None,
+            None,
+            None,
+        );
+        assert!(
+            !args.iter().any(|a| a == "--no-playlist"),
+            "watch+list URLs should download the full playlist: {args:?}"
+        );
     }
 
     #[test]

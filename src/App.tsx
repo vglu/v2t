@@ -189,6 +189,7 @@ export default function App() {
   }
 
   async function persistSettings(next: AppSettings) {
+    settingsRef.current = next;
     setSettings(next);
     setSaving(true);
     setToast(null);
