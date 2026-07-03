@@ -53,6 +53,44 @@ fn rewrite_suffix_to_ext(name: &str, ext: &str) -> String {
     }
 }
 
+/// When a job has multiple tracks (playlist) and the template omits `{track}`,
+/// append `_t{N}` before the extension so outputs do not overwrite each other.
+pub fn disambiguate_playlist_filename(
+    template: &str,
+    name: &str,
+    track: u32,
+    n_tracks: u32,
+) -> String {
+    if n_tracks <= 1 || template.contains("{track}") {
+        return name.to_string();
+    }
+    inject_track_suffix(name, track)
+}
+
+fn inject_track_suffix(name: &str, track: u32) -> String {
+    if let Some(dot) = name.rfind('.') {
+        let (base, ext) = name.split_at(dot);
+        format!("{base}_t{track}{ext}")
+    } else {
+        format!("{name}_t{track}")
+    }
+}
+
+/// Output filename for one job track (txt / arbitrary ext).
+pub fn format_job_output_filename(
+    template: &str,
+    title: &str,
+    date: &str,
+    index: u32,
+    track: u32,
+    n_tracks: u32,
+    source: &str,
+    ext: &str,
+) -> String {
+    let name = format_output_filename(template, title, date, index, track, source, ext);
+    disambiguate_playlist_filename(template, &name, track, n_tracks)
+}
+
 /// Video file next to transcript: same template rules with `ext = mp4`.
 pub fn video_filename_from_transcript_template(
     template: &str,
@@ -79,9 +117,96 @@ pub fn audio_filename_from_transcript_template(
     format_output_filename(template, title, date, index, track, source, ext)
 }
 
+/// Audio filename for a job track; auto-suffixes when `n_tracks > 1` and template has no `{track}`.
+pub fn audio_filename_for_job(
+    template: &str,
+    title: &str,
+    date: &str,
+    index: u32,
+    track: u32,
+    n_tracks: u32,
+    source: &str,
+    ext: &str,
+) -> String {
+    disambiguate_playlist_filename(
+        template,
+        &audio_filename_from_transcript_template(template, title, date, index, track, source, ext),
+        track,
+        n_tracks,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn playlist_auto_suffix_when_template_omits_track() {
+        let t = "{title}_{date}.txt";
+        assert_eq!(
+            format_job_output_filename(t, "Clip", "2026-07-03", 1, 1, 3, "url", "txt"),
+            "Clip_2026-07-03_t1.txt"
+        );
+        assert_eq!(
+            format_job_output_filename(t, "Clip", "2026-07-03", 1, 2, 3, "url", "txt"),
+            "Clip_2026-07-03_t2.txt"
+        );
+        assert_eq!(
+            audio_filename_for_job(t, "Clip", "2026-07-03", 1, 3, 3, "url", "m4a"),
+            "Clip_2026-07-03_t3.m4a"
+        );
+    }
+
+    #[test]
+    fn single_track_no_auto_suffix_without_placeholder() {
+        assert_eq!(
+            format_job_output_filename(
+                "{title}_{date}.txt",
+                "Clip",
+                "2026-07-03",
+                1,
+                1,
+                1,
+                "url",
+                "txt",
+            ),
+            "Clip_2026-07-03.txt"
+        );
+    }
+
+    #[test]
+    fn explicit_track_placeholder_not_doubled() {
+        assert_eq!(
+            format_job_output_filename(
+                "{title}_{date}_t{track}.txt",
+                "Clip",
+                "2026-07-03",
+                1,
+                2,
+                5,
+                "url",
+                "txt",
+            ),
+            "Clip_2026-07-03_t2.txt"
+        );
+    }
+
+    #[test]
+    fn user_default_template_eleven_unique_playlist_outputs() {
+        let template = "{title}_{date}.txt";
+        let title = "https___www.youtube.com_watch_v=6r7";
+        let date = "2026-07-03";
+        let names: Vec<String> = (1..=11)
+            .map(|track| {
+                format_job_output_filename(template, title, date, 1, track, 11, "url", "txt")
+            })
+            .collect();
+        assert_eq!(names.len(), 11);
+        let unique: std::collections::HashSet<_> = names.iter().collect();
+        assert_eq!(unique.len(), 11, "expected 11 unique paths, got {names:?}");
+        assert_eq!(names[0], "https___www.youtube.com_watch_v=6r7_2026-07-03_t1.txt");
+        assert_eq!(names[10], "https___www.youtube.com_watch_v=6r7_2026-07-03_t11.txt");
+    }
 
     #[test]
     fn sanitize_strips_illegal() {

@@ -29,6 +29,31 @@ function rewriteTxtSuffixToMp4(name: string): string {
   return `${name}.mp4`;
 }
 
+/** When a job has multiple tracks and the template omits `{track}`, append `_t{N}` before the extension. */
+export function disambiguatePlaylistFilename(
+  template: string,
+  name: string,
+  track: number,
+  nTracks: number,
+): string {
+  if (nTracks <= 1 || template.includes("{track}")) {
+    return name;
+  }
+  const dot = name.lastIndexOf(".");
+  if (dot >= 0) {
+    return `${name.slice(0, dot)}_t${track}${name.slice(dot)}`;
+  }
+  return `${name}_t${track}`;
+}
+
+export function formatJobOutputFilename(
+  template: string,
+  ctx: FilenameContext & { nTracks: number },
+): string {
+  const base = formatOutputFilename(template, ctx);
+  return disambiguatePlaylistFilename(template, base, ctx.track, ctx.nTracks);
+}
+
 /** Replace `{title}`, `{date}`, `{index}`, `{track}`, `{source}`, `{ext}`. */
 export function formatOutputFilename(
   template: string,

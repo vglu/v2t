@@ -361,6 +361,12 @@ pub async fn run_process_queue_item(
     )
     .await?;
 
+    if prep.wav_paths.is_empty() {
+        return Err("No WAV paths produced".to_string());
+    }
+
+    let n_tracks = prep.wav_paths.len() as u32;
+
     if settings.keep_downloaded_audio {
         save_downloaded_audio(
             &sink,
@@ -372,6 +378,7 @@ pub async fn run_process_queue_item(
             &display_label,
             &date,
             job_index,
+            n_tracks,
             &settings,
             &out_dir,
             ffmpeg_path_override.as_deref(),
@@ -380,17 +387,12 @@ pub async fn run_process_queue_item(
         .await;
     }
 
-    if prep.wav_paths.is_empty() {
-        return Err("No WAV paths produced".to_string());
-    }
-
     let work_dir = PathBuf::from(&prep.wav_paths[0])
         .parent()
         .map(Path::to_path_buf)
         .ok_or("WAV path has no parent")?;
 
     let lang = settings.language.as_deref();
-    let n_tracks = prep.wav_paths.len();
 
     if matches!(settings.transcription_mode, TranscriptionMode::BrowserWhisper) {
         let mut tracks: Vec<BrowserTrackInfo> = Vec::new();
@@ -399,12 +401,13 @@ pub async fn run_process_queue_item(
                 return Err(pipeline::JOB_CANCELLED_MSG.to_string());
             }
             let track = (ti + 1) as u32;
-            let filename = output_template::format_output_filename(
+            let filename = output_template::format_job_output_filename(
                 &settings.filename_template,
                 &display_label,
                 &date,
                 job_index,
                 track,
+                n_tracks,
                 &source,
                 "txt",
             );
@@ -473,12 +476,13 @@ pub async fn run_process_queue_item(
         let track = (ti + 1) as u32;
         let wav_path = Path::new(wav_s);
 
-        let filename = output_template::format_output_filename(
+        let filename = output_template::format_job_output_filename(
             &settings.filename_template,
             &display_label,
             &date,
             job_index,
             track,
+            n_tracks,
             &source,
             "txt",
         );
@@ -663,6 +667,7 @@ async fn save_downloaded_audio(
     display_label: &str,
     date: &str,
     job_index: u32,
+    n_tracks: u32,
     settings: &AppSettings,
     out_dir: &Path,
     ffmpeg_override: Option<&str>,
@@ -684,12 +689,13 @@ async fn save_downloaded_audio(
                 .and_then(|e| e.to_str())
                 .unwrap_or("m4a")
                 .to_string();
-            let name = output_template::audio_filename_from_transcript_template(
+            let name = output_template::audio_filename_for_job(
                 &settings.filename_template,
                 display_label,
                 date,
                 job_index,
                 track,
+                n_tracks,
                 source,
                 &ext,
             );
@@ -717,8 +723,8 @@ async fn save_downloaded_audio(
                 out_dir,
                 settings.downloaded_audio_format,
                 move |ext: &str| {
-                    output_template::audio_filename_from_transcript_template(
-                        &template, &display, &date_s, job_index, track, &source_s, ext,
+                    output_template::audio_filename_for_job(
+                        &template, &display, &date_s, job_index, track, n_tracks, &source_s, ext,
                     )
                 },
                 cancel,
@@ -730,12 +736,13 @@ async fn save_downloaded_audio(
                 .and_then(|e| e.to_str())
                 .unwrap_or("m4a")
                 .to_string();
-            let name = output_template::audio_filename_from_transcript_template(
+            let name = output_template::audio_filename_for_job(
                 &settings.filename_template,
                 display_label,
                 date,
                 job_index,
                 track,
+                n_tracks,
                 source,
                 &ext,
             );

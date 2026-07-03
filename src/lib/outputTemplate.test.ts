@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatJobOutputFilename,
   formatOutputFilename,
   sanitizeFilenameSegment,
   videoFilenameFromTranscriptTemplate,
@@ -62,5 +63,22 @@ describe("formatOutputFilename", () => {
       source: "s",
     });
     expect(v).toBe("X_2026-01-01.mp4");
+  });
+
+  it("playlist auto-suffix for default template without {track}", () => {
+    const names = Array.from({ length: 11 }, (_, i) =>
+      formatJobOutputFilename("{title}_{date}.txt", {
+        title: "Playlist",
+        date: "2026-07-03",
+        index: 1,
+        track: i + 1,
+        nTracks: 11,
+        source: "url",
+        ext: "txt",
+      }),
+    );
+    expect(new Set(names).size).toBe(11);
+    expect(names[0]).toBe("Playlist_2026-07-03_t1.txt");
+    expect(names[10]).toBe("Playlist_2026-07-03_t11.txt");
   });
 });
