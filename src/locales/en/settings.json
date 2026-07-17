@@ -19,7 +19,11 @@
     "folder_placeholder": "Not set",
     "browse": "Browse…",
     "use_documents": "Use Documents",
-    "hint": "<strong>Use Documents</strong> sets your OS \"Documents\" folder and saves settings. You can change it anytime with Browse."
+    "hint": "<strong>Use Documents</strong> sets your OS \"Documents\" folder and saves settings. You can change it anytime with Browse.",
+    "export_webvtt_label": "Export timed transcript as WebVTT",
+    "export_webvtt_hint": "Creates an additional .vtt file with segment timestamps next to each .txt transcript. The plain-text file is still created. Speaker labels from source subtitles are preserved when present (this is not ASR speaker diarization).",
+    "label_speakers_label": "Label speakers (Person 1 / Person 2)",
+    "label_speakers_hint": "Labels speakers as Person 1 / Person 2 using local tinydiarize (experimental, best for English). Requires ggml-small.en-tdrz model. Not real names."
   },
   "transcription": {
     "mode_label": "Transcription mode",

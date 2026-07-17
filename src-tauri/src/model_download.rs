@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 
 use futures_util::StreamExt;
-use tokio::io::AsyncWriteExt;
 use sha1::{Digest, Sha1};
 use tauri::AppHandle;
 use tauri::Manager;
+use tokio::io::AsyncWriteExt;
 
 use crate::progress::{JobEvent, ModelDownloadEvent, SinkHandle};
-use crate::whisper_catalog::WhisperModelCatalogEntry;
+use crate::whisper_catalog::{WhisperModelCatalogEntry, SILERO_VAD_MODEL};
 
 fn emit(sink: &SinkHandle, payload: ModelDownloadEvent) {
     sink.emit(JobEvent::ModelDownload(payload));
@@ -36,9 +36,7 @@ pub fn file_matches_sha1(path: &Path, expected_hex: &str) -> Result<bool, String
     let mut h = Sha1::new();
     let mut buf = vec![0u8; 1024 * 1024];
     loop {
-        let n = f
-            .read(&mut buf)
-            .map_err(|e| format!("read model: {e}"))?;
+        let n = f.read(&mut buf).map_err(|e| format!("read model: {e}"))?;
         if n == 0 {
             break;
         }
@@ -53,6 +51,20 @@ pub async fn download_whisper_model_file(
     entry: &'static WhisperModelCatalogEntry,
     models_dir: &Path,
 ) -> Result<(), String> {
+    download_catalog_bin(sink, entry, models_dir).await?;
+    // Best-effort companion for WebVTT: Silero VAD (~1 MiB). Failure must not
+    // block the ASR model the user asked for.
+    if entry.id != SILERO_VAD_MODEL.id {
+        let _ = download_catalog_bin(sink, &SILERO_VAD_MODEL, models_dir).await;
+    }
+    Ok(())
+}
+
+async fn download_catalog_bin(
+    sink: &SinkHandle,
+    entry: &'static WhisperModelCatalogEntry,
+    models_dir: &Path,
+) -> Result<(), String> {
     std::fs::create_dir_all(models_dir).map_err(|e| format!("create models dir: {e}"))?;
 
     let dest = models_dir.join(entry.file_name);
@@ -62,10 +74,7 @@ pub async fn download_whisper_model_file(
             ModelDownloadEvent {
                 model_id: entry.id.to_string(),
                 phase: "done".to_string(),
-                bytes_received: dest
-                    .metadata()
-                    .map(|m| m.len())
-                    .unwrap_or(0),
+                bytes_received: dest.metadata().map(|m| m.len()).unwrap_or(0),
                 total_bytes: None,
                 message: "Model already present".to_string(),
             },
@@ -125,8 +134,7 @@ pub async fn download_whisper_model_file(
             }
         };
         hasher.update(&chunk);
-        file
-            .write_all(&chunk)
+        file.write_all(&chunk)
             .await
             .map_err(|e| format!("write partial: {e}"))?;
         received += chunk.len() as u64;

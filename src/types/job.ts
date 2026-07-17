@@ -20,6 +20,7 @@ export type ProcessQueueItemOutcome =
       deleteAudioAfter: boolean;
       language: string | null;
       whisperModelId: string;
+      exportWebVtt: boolean;
     };
 
 export type QueueJobProgressPayload = {

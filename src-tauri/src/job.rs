@@ -13,10 +13,14 @@ use crate::pipeline;
 use crate::progress::{JobEvent, QueueJobProgressEvent, SinkHandle, SubtaskStatusEvent, TauriSink};
 use crate::settings::{AppSettings, TranscriptionMode};
 use crate::subs;
+use crate::timed_transcript::{
+    outputs_complete_for_resume, write_transcript_pair, TimedTranscript,
+};
 use crate::transcribe;
 use crate::whisper_catalog;
 use crate::whisper_local;
 use crate::yt_dlp_metadata;
+use tauri::Manager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,6 +49,8 @@ pub enum ProcessQueueItemOutcome {
         language: Option<String>,
         #[serde(rename = "whisperModelId")]
         whisper_model_id: String,
+        #[serde(rename = "exportWebVtt")]
+        export_webvtt: bool,
     },
 }
 
@@ -119,19 +125,87 @@ fn validate_browser_transcript_paths(
     Ok(())
 }
 
-/// After WASM transcription in the webview: write `.txt` files, optional cleanup, unregister job.
-pub fn finish_browser_queue_job(
+fn write_browser_track_result(
+    track: &BrowserTrackInfo,
+    result: &TimedTranscript,
+    export_webvtt: bool,
+) -> Result<(), String> {
+    if track.skip_transcribe {
+        return Ok(());
+    }
+    write_transcript_pair(Path::new(&track.transcript_path), result, export_webvtt)
+        .map(|_| ())
+        .map_err(|e| format!("Failed to write transcript pair: {e}"))
+}
+
+fn resolve_stable_checkpoint_dir(
+    app: &tauri::AppHandle,
+    wav_path: &Path,
+    settings: &AppSettings,
+) -> Result<PathBuf, String> {
+    use crate::timed_transcript::{normalize_http_provider_scope, LOCAL_WHISPER_PROVIDER_SCOPE};
+
+    let use_tdrz = settings.transcription_mode == TranscriptionMode::LocalWhisper
+        && settings.export_webvtt
+        && settings.label_speakers;
+    let (mode, provider_scope, model) = match settings.transcription_mode {
+        TranscriptionMode::HttpApi => (
+            "httpApi",
+            normalize_http_provider_scope(&settings.api_base_url),
+            settings.api_model.as_str(),
+        ),
+        TranscriptionMode::LocalWhisper => (
+            "localWhisper",
+            LOCAL_WHISPER_PROVIDER_SCOPE.to_string(),
+            // tinydiarize overrides the selected ggml — include that in the cache key.
+            if use_tdrz {
+                "small.en-tdrz"
+            } else {
+                settings.whisper_model.as_str()
+            },
+        ),
+        TranscriptionMode::BrowserWhisper => (
+            "browserWhisper",
+            "browserWhisper".to_string(),
+            settings.whisper_model.as_str(),
+        ),
+    };
+    let language_for_key = if use_tdrz {
+        Some("en")
+    } else {
+        settings.language.as_deref()
+    };
+    let key = transcribe::build_chunk_checkpoint_key(
+        wav_path,
+        mode,
+        &provider_scope,
+        model,
+        language_for_key,
+        settings.export_webvtt,
+    )?;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app_data_dir: {e}"))?
+        .join("chunk-checkpoints")
+        .join(key);
+    Ok(dir)
+}
+
+/// Write browser/WASM results as a transcript pair when `export_webvtt` is set.
+pub fn finish_browser_queue_job_timed(
     app: &tauri::AppHandle,
     registry: &JobCancelRegistry,
     job_id: &str,
     tracks: &[BrowserTrackInfo],
-    texts: &[String],
+    results: &[TimedTranscript],
     work_dir: &str,
     delete_audio_after: bool,
     output_dir: &Path,
+    export_webvtt: bool,
 ) -> Result<ProcessQueueItemResult, String> {
-    if tracks.len() != texts.len() {
-        return Err("tracks and texts length mismatch".to_string());
+    if tracks.len() != results.len() {
+        return Err("tracks and results length mismatch".to_string());
     }
     let Some(cancel) = registry.token_for(job_id) else {
         return Err("Job is not active".to_string());
@@ -142,7 +216,7 @@ pub fn finish_browser_queue_job(
     let sink: SinkHandle = TauriSink::handle(app.clone());
 
     let n_tracks = tracks.len();
-    for (t, text) in tracks.iter().zip(texts.iter()) {
+    for (t, result) in tracks.iter().zip(results.iter()) {
         if cancel.is_cancelled() {
             return Err(pipeline::JOB_CANCELLED_MSG.to_string());
         }
@@ -159,9 +233,8 @@ pub fn finish_browser_queue_job(
                         .unwrap_or("file")
                 ),
             );
-            fs::write(&t.transcript_path, text.as_bytes())
-                .map_err(|e| format!("Failed to write transcript: {e}"))?;
         }
+        write_browser_track_result(t, result, export_webvtt)?;
     }
 
     let last_transcript = tracks
@@ -216,8 +289,16 @@ pub async fn run_process_queue_item(
     // Vision fast-path: route image/document files before the audio pipeline.
     if crate::vision::is_vision_input(&source) {
         return crate::vision::run_vision_job(
-            &app, &sink, &job_id, job_index, &source, &display_label, &settings, &cancel,
-        ).await;
+            &app,
+            &sink,
+            &job_id,
+            job_index,
+            &source,
+            &display_label,
+            &settings,
+            &cancel,
+        )
+        .await;
     }
 
     let ffmpeg_pb = deps::resolve_tool_path(ffmpeg_path_override.as_deref(), "ffmpeg")
@@ -225,32 +306,35 @@ pub async fn run_process_queue_item(
 
     let date = Utc::now().format("%Y-%m-%d").to_string();
 
-    let video_output_path: Option<PathBuf> =
-        if settings.keep_downloaded_video && (source_kind == "url" || pipeline::is_http_url(&source))
-        {
-            let name = output_template::video_filename_from_transcript_template(
-                &settings.filename_template,
-                &display_label,
-                &date,
-                job_index,
-                1,
-                &source,
-            );
-            Some(out_dir.join(name))
-        } else {
-            None
-        };
+    let video_output_path: Option<PathBuf> = if settings.keep_downloaded_video
+        && (source_kind == "url" || pipeline::is_http_url(&source))
+    {
+        let name = output_template::video_filename_from_transcript_template(
+            &settings.filename_template,
+            &display_label,
+            &date,
+            job_index,
+            1,
+            &source,
+        );
+        Some(out_dir.join(name))
+    } else {
+        None
+    };
 
-    emit_progress(&sink, &job_id, "prepare", "Preparing audio (yt-dlp / ffmpeg)…");
+    emit_progress(
+        &sink,
+        &job_id,
+        "prepare",
+        "Preparing audio (yt-dlp / ffmpeg)…",
+    );
 
     // Pre-resolve playlist metadata before download so the UI can render the
     // per-video subtask list (titles + clickable links) up-front. Best-effort:
     // any failure (private playlist, single video, no internet, yt-dlp version
     // mismatch) is logged and silently ignored — pipeline continues unchanged.
     if (source_kind == "url" || pipeline::is_http_url(&source)) && !cancel.is_cancelled() {
-        if let Some(yt_dlp) =
-            deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp")
-        {
+        if let Some(yt_dlp) = deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp") {
             match yt_dlp_metadata::resolve_playlist_metadata(
                 &yt_dlp,
                 &source,
@@ -279,9 +363,7 @@ pub async fn run_process_queue_item(
                             &sink,
                             &job_id,
                             "playlist",
-                            &format!(
-                                "Resolved playlist{title_str} ({n_subtasks} videos)",
-                            ),
+                            &format!("Resolved playlist{title_str} ({n_subtasks} videos)",),
                         );
                     }
                 }
@@ -306,9 +388,7 @@ pub async fn run_process_queue_item(
         && !subs::is_pure_playlist_url(&source)
         && !cancel.is_cancelled()
     {
-        if let Some(yt_dlp) =
-            deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp")
-        {
+        if let Some(yt_dlp) = deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp") {
             match try_subs_fast_path(
                 &sink,
                 &job_id,
@@ -325,26 +405,23 @@ pub async fn run_process_queue_item(
             {
                 Ok(Some(outcome)) => return Ok(outcome),
                 Ok(None) => {
-                    // No manual subs in priority langs — fall through to normal pipeline.
+                    // No manual subs / malformed timed SRT — fall through to normal pipeline.
                 }
                 Err(e) => {
-                    pipeline::emit_pipeline_text(
-                        &sink,
-                        &job_id,
-                        "subs",
-                        &format!("Subtitle fast-path skipped: {e}"),
-                    );
+                    // Cancel and output-pair I/O must not fall back to Whisper.
+                    return Err(e);
                 }
             }
         }
     }
 
-    let audio_format_for_yt_dlp =
-        if settings.keep_downloaded_audio && (source_kind == "url" || pipeline::is_http_url(&source)) {
-            Some(settings.downloaded_audio_format)
-        } else {
-            None
-        };
+    let audio_format_for_yt_dlp = if settings.keep_downloaded_audio
+        && (source_kind == "url" || pipeline::is_http_url(&source))
+    {
+        Some(settings.downloaded_audio_format)
+    } else {
+        None
+    };
 
     let prep = pipeline::prepare_media_audio(
         Some((&sink, job_id.as_str())),
@@ -353,7 +430,10 @@ pub async fn run_process_queue_item(
         ffmpeg_path_override.clone(),
         yt_dlp_path_override,
         settings.yt_dlp_js_runtimes.clone(),
-        settings.cookies_from_browser.yt_dlp_arg().map(str::to_string),
+        settings
+            .cookies_from_browser
+            .yt_dlp_arg()
+            .map(str::to_string),
         &cancel,
         settings.keep_downloaded_video,
         video_output_path,
@@ -394,7 +474,10 @@ pub async fn run_process_queue_item(
 
     let lang = settings.language.as_deref();
 
-    if matches!(settings.transcription_mode, TranscriptionMode::BrowserWhisper) {
+    if matches!(
+        settings.transcription_mode,
+        TranscriptionMode::BrowserWhisper
+    ) {
         let mut tracks: Vec<BrowserTrackInfo> = Vec::new();
         for (ti, wav_s) in prep.wav_paths.iter().enumerate() {
             if cancel.is_cancelled() {
@@ -417,31 +500,21 @@ pub async fn run_process_queue_item(
             }
 
             let mut skip_transcribe = false;
-            if dest_path.is_file() {
-                let nonempty = fs::metadata(&dest_path)
-                    .map(|m| m.len() > 0)
-                    .unwrap_or(false);
-                if nonempty {
-                    let existing = fs::read_to_string(&dest_path).unwrap_or_default();
-                    if !existing.trim().is_empty() {
-                        emit_progress(
-                            &sink,
-                            &job_id,
-                            "transcribe",
-                            &format!(
-                                "Track {track}/{n_tracks}: using existing transcript (resume)",
-                            ),
-                        );
-                        emit_subtask_status(
-                            &sink,
-                            &job_id,
-                            track,
-                            "skipped",
-                            Some("already done".to_string()),
-                        );
-                        skip_transcribe = true;
-                    }
-                }
+            if outputs_complete_for_resume(&dest_path, settings.export_webvtt)? {
+                emit_progress(
+                    &sink,
+                    &job_id,
+                    "transcribe",
+                    &format!("Track {track}/{n_tracks}: using existing transcript (resume)",),
+                );
+                emit_subtask_status(
+                    &sink,
+                    &job_id,
+                    track,
+                    "skipped",
+                    Some("already done".to_string()),
+                );
+                skip_transcribe = true;
             }
 
             tracks.push(BrowserTrackInfo {
@@ -464,6 +537,7 @@ pub async fn run_process_queue_item(
             delete_audio_after: settings.delete_audio_after,
             language: settings.language.clone(),
             whisper_model_id: settings.whisper_model.clone(),
+            export_webvtt: settings.export_webvtt,
         });
     }
 
@@ -491,119 +565,136 @@ pub async fn run_process_queue_item(
             fs::create_dir_all(parent).map_err(|e| format!("create_dir_all: {e}"))?;
         }
 
-        if dest_path.is_file() {
-            let nonempty = fs::metadata(&dest_path)
-                .map(|m| m.len() > 0)
-                .unwrap_or(false);
-            if nonempty {
-                let existing = fs::read_to_string(&dest_path).unwrap_or_default();
-                if !existing.trim().is_empty() {
-                    emit_progress(
-                        &sink,
-                        &job_id,
-                        "transcribe",
-                        &format!(
-                            "Track {track}/{n_tracks}: using existing transcript (resume)",
-                        ),
-                    );
-                    emit_subtask_status(
-                        &sink,
-                        &job_id,
-                        track,
-                        "skipped",
-                        Some("already done".to_string()),
-                    );
-                    last_transcript = Some(dest_path);
-                    continue;
-                }
-            }
+        if outputs_complete_for_resume(&dest_path, settings.export_webvtt)? {
+            emit_progress(
+                &sink,
+                &job_id,
+                "transcribe",
+                &format!("Track {track}/{n_tracks}: using existing transcript (resume)",),
+            );
+            emit_subtask_status(
+                &sink,
+                &job_id,
+                track,
+                "skipped",
+                Some("already done".to_string()),
+            );
+            last_transcript = Some(dest_path);
+            continue;
         }
 
         emit_progress(
             &sink,
             &job_id,
             "transcribe",
-            &format!(
-                "Transcribing track {track}/{n_tracks} (splitting if file is large)…",
-            ),
+            &format!("Transcribing track {track}/{n_tracks} (splitting if file is large)…",),
         );
         emit_subtask_status(&sink, &job_id, track, "running", None);
 
-        let transcribe_result: Result<String, String> = match settings.transcription_mode {
-            TranscriptionMode::HttpApi => {
-                transcribe::transcribe_wav_maybe_split(
-                    wav_path,
-                    &ffmpeg_pb,
-                    &work_dir,
-                    &settings.api_base_url,
-                    &settings.api_model,
-                    &settings.api_key,
-                    lang,
-                    &cancel,
-                )
-                .await
-            }
-            TranscriptionMode::LocalWhisper => {
-                async {
-                    let models_dir = model_download::resolve_models_dir(
-                        &app,
-                        settings.whisper_models_dir.as_deref(),
-                    )?;
-                    std::fs::create_dir_all(&models_dir)
-                        .map_err(|e| format!("create models dir: {e}"))?;
-                    let entry = whisper_catalog::catalog_entry(&settings.whisper_model)
-                        .ok_or_else(|| {
-                            format!(
-                                "Unknown whisper model '{}' (pick a model in Settings)",
-                                settings.whisper_model
-                            )
-                        })?;
-                    let model_path = models_dir.join(entry.file_name);
-                    if !model_path.is_file() {
-                        emit_progress(
-                            &sink,
-                            &job_id,
-                            "model",
-                            &format!(
-                                "Downloading ggml model '{}' (~{} MiB)…",
-                                entry.id, entry.size_mib
-                            ),
-                        );
-                        model_download::download_whisper_model_file(&sink, entry, &models_dir)
-                            .await?;
-                    } else if !model_download::file_matches_sha1(&model_path, entry.sha1_hex)? {
-                        return Err(format!(
-                            "Model file {} failed SHA-1 check. Delete it and download again.",
-                            model_path.display()
-                        ));
-                    }
-                    let cli =
-                        deps::resolve_whisper_cli_path(settings.whisper_cli_path.as_deref())
-                            .ok_or_else(|| {
-                                "whisper-cli not found. Build whisper.cpp, set path in Settings, or place whisper-cli (or main) next to the app.".to_string()
-                            })?;
-                    whisper_local::transcribe_wav_maybe_split_whisper(
+        let checkpoint_dir = resolve_stable_checkpoint_dir(&app, wav_path, &settings)?;
+
+        let transcribe_result: Result<transcribe::TimedTranscribeOutcome, String> =
+            match settings.transcription_mode {
+                TranscriptionMode::HttpApi => {
+                    transcribe::transcribe_wav_maybe_split(
                         wav_path,
-                        &cli,
-                        &model_path,
                         &ffmpeg_pb,
                         &work_dir,
+                        &checkpoint_dir,
+                        &settings.api_base_url,
+                        &settings.api_model,
+                        &settings.api_key,
                         lang,
+                        settings.export_webvtt,
                         &cancel,
-                        &sink,
-                        &app,
-                        &job_id,
                     )
                     .await
                 }
-                .await
-            }
-            TranscriptionMode::BrowserWhisper => {
-                Err("Browser Whisper handled earlier".to_string())
-            }
-        };
+                TranscriptionMode::LocalWhisper => {
+                    async {
+                        let models_dir = model_download::resolve_models_dir(
+                            &app,
+                            settings.whisper_models_dir.as_deref(),
+                        )?;
+                        std::fs::create_dir_all(&models_dir)
+                            .map_err(|e| format!("create models dir: {e}"))?;
+                        let label_speakers = settings.export_webvtt && settings.label_speakers;
+                        let entry = if label_speakers {
+                            whisper_catalog::catalog_entry("small.en-tdrz").ok_or_else(|| {
+                                "Speaker labels require catalog model 'small.en-tdrz'".to_string()
+                            })?
+                        } else {
+                            whisper_catalog::catalog_entry(&settings.whisper_model).ok_or_else(
+                                || {
+                                    format!(
+                                        "Unknown whisper model '{}' (pick a model in Settings)",
+                                        settings.whisper_model
+                                    )
+                                },
+                            )?
+                        };
+                        let model_path = models_dir.join(entry.file_name);
+                        if label_speakers {
+                            if !model_path.is_file() {
+                                return Err(
+                                    "Speaker labels require model 'small.en-tdrz' (ggml-small.en-tdrz.bin). Download it from Settings → Whisper models, then retry."
+                                        .to_string(),
+                                );
+                            }
+                            if !model_download::file_matches_sha1(&model_path, entry.sha1_hex)? {
+                                return Err(format!(
+                                    "Model file {} failed SHA-1 check. Delete it and download again.",
+                                    model_path.display()
+                                ));
+                            }
+                        } else if !model_path.is_file() {
+                            emit_progress(
+                                &sink,
+                                &job_id,
+                                "model",
+                                &format!(
+                                    "Downloading ggml model '{}' (~{} MiB)…",
+                                    entry.id, entry.size_mib
+                                ),
+                            );
+                            model_download::download_whisper_model_file(&sink, entry, &models_dir)
+                                .await?;
+                        } else if !model_download::file_matches_sha1(&model_path, entry.sha1_hex)? {
+                            return Err(format!(
+                                "Model file {} failed SHA-1 check. Delete it and download again.",
+                                model_path.display()
+                            ));
+                        }
+                        let cli =
+                            deps::resolve_whisper_cli_path(settings.whisper_cli_path.as_deref())
+                                .ok_or_else(|| {
+                                    "whisper-cli not found. Build whisper.cpp, set path in Settings, or place whisper-cli (or main) next to the app.".to_string()
+                                })?;
+                        whisper_local::transcribe_wav_maybe_split_whisper(
+                            wav_path,
+                            &cli,
+                            &model_path,
+                            &ffmpeg_pb,
+                            &work_dir,
+                            &checkpoint_dir,
+                            lang,
+                            settings.export_webvtt,
+                            label_speakers,
+                            &cancel,
+                            &sink,
+                            &app,
+                            &job_id,
+                        )
+                        .await
+                    }
+                    .await
+                }
+                TranscriptionMode::BrowserWhisper => {
+                    Err("Browser Whisper handled earlier".to_string())
+                }
+            };
 
-        let text = match transcribe_result {
+        let outcome = match transcribe_result {
             Ok(t) => t,
             Err(e) => {
                 // Cancellations are not "errors" from the subtask's perspective — the
@@ -615,13 +706,34 @@ pub async fn run_process_queue_item(
             }
         };
 
-        emit_progress(&sink, &job_id, "save", &format!("Writing transcript {track}/{n_tracks}…"));
+        emit_progress(
+            &sink,
+            &job_id,
+            "save",
+            &format!("Writing transcript {track}/{n_tracks}…"),
+        );
 
-        if let Err(e) = fs::write(&dest_path, text.as_bytes()) {
-            let msg = format!("Failed to write transcript: {e}");
+        if let Err(e) =
+            write_transcript_pair(&dest_path, &outcome.transcript, settings.export_webvtt)
+        {
+            let msg = format!("Failed to write transcript pair: {e}");
             emit_subtask_status(&sink, &job_id, track, "error", Some(msg.clone()));
             return Err(msg);
         }
+
+        // Cleanup stable checkpoints only after the required output pair is saved.
+        if let Some(dir) = outcome.chunk_checkpoint_dir.as_ref() {
+            match settings.transcription_mode {
+                TranscriptionMode::HttpApi => {
+                    transcribe::cleanup_api_chunk_checkpoints(dir);
+                }
+                TranscriptionMode::LocalWhisper => {
+                    whisper_local::cleanup_whisper_chunk_checkpoints(dir);
+                }
+                TranscriptionMode::BrowserWhisper => {}
+            }
+        }
+
         emit_subtask_status(&sink, &job_id, track, "done", None);
         last_transcript = Some(dest_path);
     }
@@ -780,13 +892,12 @@ async fn save_downloaded_audio(
             }
         }
     }
-
 }
 
 /// Attempt the subtitle fast-path for a single-video URL.
 /// `Ok(Some(Done))` — fast-path completed and wrote the transcript.
-/// `Ok(None)` — no usable manual subs; caller falls through to the normal pipeline.
-/// `Err(_)` — actual write / I/O failure that should bubble up.
+/// `Ok(None)` — no usable manual subs / malformed timed SRT; caller falls through.
+/// `Err(_)` — cancel or output I/O failure that must bubble (no Whisper fallback).
 #[allow(clippy::too_many_arguments)]
 async fn try_subs_fast_path(
     sink: &SinkHandle,
@@ -807,8 +918,16 @@ async fn try_subs_fast_path(
     let probe = match subs::probe_subs(yt_dlp, source, cookies, js, cancel).await {
         Ok(p) => p,
         Err(e) => {
-            // Best-effort: don't fail the job, just log and let the caller fall back.
-            return Err(e);
+            if e == pipeline::JOB_CANCELLED_MSG {
+                return Err(e);
+            }
+            pipeline::emit_pipeline_text(
+                sink,
+                job_id,
+                "subs",
+                &format!("Subtitle probe skipped: {e}"),
+            );
+            return Ok(None);
         }
     };
 
@@ -844,7 +963,16 @@ async fn try_subs_fast_path(
             Ok(p) => p,
             Err(e) => {
                 let _ = fs::remove_dir_all(&work_dir);
-                return Err(e);
+                if e == pipeline::JOB_CANCELLED_MSG {
+                    return Err(e);
+                }
+                pipeline::emit_pipeline_text(
+                    sink,
+                    job_id,
+                    "subs",
+                    &format!("Subtitle fetch skipped: {e}"),
+                );
+                return Ok(None);
             }
         };
 
@@ -855,10 +983,28 @@ async fn try_subs_fast_path(
             return Err(format!("Failed to read .srt: {e}"));
         }
     };
-    let plain = subs::srt_to_plain_text(&srt_text);
-    if plain.trim().is_empty() {
+    let timed = match subs::srt_to_timed_transcript(&srt_text, settings.export_webvtt) {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = fs::remove_dir_all(&work_dir);
+            pipeline::emit_pipeline_text(
+                sink,
+                job_id,
+                "subs",
+                &format!("Subtitle timing unusable ({e}) — falling back to download + Whisper."),
+            );
+            return Ok(None);
+        }
+    };
+    if timed.text.trim().is_empty() {
         let _ = fs::remove_dir_all(&work_dir);
-        return Err("Subtitle file converted to empty text — falling back".to_string());
+        pipeline::emit_pipeline_text(
+            sink,
+            job_id,
+            "subs",
+            "Subtitle file converted to empty text — falling back to download + Whisper.",
+        );
+        return Ok(None);
     }
 
     let track = 1u32;
@@ -875,9 +1021,9 @@ async fn try_subs_fast_path(
     if let Some(parent) = dest_path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("create_dir_all: {e}"))?;
     }
-    if let Err(e) = fs::write(&dest_path, plain.as_bytes()) {
+    if let Err(e) = write_transcript_pair(&dest_path, &timed, settings.export_webvtt) {
         let _ = fs::remove_dir_all(&work_dir);
-        return Err(format!("Failed to write transcript: {e}"));
+        return Err(format!("Failed to write transcript pair: {e}"));
     }
 
     if settings.keep_srt {
@@ -925,4 +1071,155 @@ async fn try_subs_fast_path(
         transcript_path,
         summary,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::timed_transcript::{format_webvtt, TimedSegment};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn test_dir(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir =
+            std::env::temp_dir().join(format!("v2t-job-{}-{nonce}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn resume_requires_vtt_pair_when_export_enabled() {
+        let dir = test_dir("resume");
+        let txt = dir.join("track.txt");
+        fs::write(&txt, "hello").unwrap();
+        assert!(!outputs_complete_for_resume(&txt, true).unwrap());
+        assert!(outputs_complete_for_resume(&txt, false).unwrap());
+
+        let vtt = txt.with_extension("vtt");
+        fs::write(&vtt, "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n").unwrap();
+        assert!(outputs_complete_for_resume(&txt, true).unwrap());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn multi_track_pair_naming_uses_same_stem() {
+        let dir = test_dir("names");
+        let t1 = dir.join("show_t1.txt");
+        let t2 = dir.join("show_t2.txt");
+        write_transcript_pair(
+            &t1,
+            &TimedTranscript {
+                text: "one".into(),
+                segments: vec![TimedSegment {
+                    start_ms: 0,
+                    end_ms: 100,
+                    text: "one".into(),
+                    speaker: None,
+                }],
+            },
+            true,
+        )
+        .unwrap();
+        write_transcript_pair(
+            &t2,
+            &TimedTranscript {
+                text: "two".into(),
+                segments: vec![TimedSegment {
+                    start_ms: 0,
+                    end_ms: 200,
+                    text: "two".into(),
+                    speaker: None,
+                }],
+            },
+            true,
+        )
+        .unwrap();
+        assert!(dir.join("show_t1.vtt").is_file());
+        assert!(dir.join("show_t2.vtt").is_file());
+        assert_ne!(
+            fs::read_to_string(dir.join("show_t1.vtt")).unwrap(),
+            fs::read_to_string(dir.join("show_t2.vtt")).unwrap()
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn missing_vtt_after_txt_only_is_incomplete() {
+        let dir = test_dir("incomplete");
+        let txt = dir.join("only.txt");
+        fs::write(&txt, "body").unwrap();
+        assert!(!outputs_complete_for_resume(&txt, true).unwrap());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn format_webvtt_from_segments_is_valid() {
+        let vtt = format_webvtt(&[TimedSegment {
+            start_ms: 1_500,
+            end_ms: 2_000,
+            text: "cue".into(),
+            speaker: None,
+        }])
+        .unwrap();
+        assert!(vtt.starts_with("WEBVTT"));
+        assert!(vtt.contains("00:00:01.500 --> 00:00:02.000"));
+    }
+
+    #[test]
+    fn browser_prepared_serializes_job_specific_export_flag() {
+        let outcome = ProcessQueueItemOutcome::BrowserPrepared {
+            tracks: vec![],
+            work_dir: "C:\\work".to_string(),
+            delete_audio_after: false,
+            language: None,
+            whisper_model_id: "base".to_string(),
+            export_webvtt: true,
+        };
+        let json = serde_json::to_value(outcome).unwrap();
+        assert_eq!(json["kind"], "browserPrepared");
+        assert_eq!(json["exportWebVtt"], true);
+    }
+
+    #[test]
+    fn browser_track_writer_honors_enabled_and_disabled_export_flags() {
+        let dir = test_dir("browser-finish");
+        let timed_path = dir.join("timed.txt");
+        let timed_track = BrowserTrackInfo {
+            wav_path: dir.join("timed.wav").to_string_lossy().into_owned(),
+            transcript_path: timed_path.to_string_lossy().into_owned(),
+            skip_transcribe: false,
+        };
+        let timed = TimedTranscript {
+            text: "hello".to_string(),
+            segments: vec![TimedSegment {
+                start_ms: 0,
+                end_ms: 1_000,
+                text: "hello".to_string(),
+                speaker: None,
+            }],
+        };
+        write_browser_track_result(&timed_track, &timed, true).unwrap();
+        assert_eq!(fs::read_to_string(&timed_path).unwrap(), "hello");
+        assert!(timed_path.with_extension("vtt").is_file());
+
+        let plain_path = dir.join("plain.txt");
+        let plain_track = BrowserTrackInfo {
+            wav_path: dir.join("plain.wav").to_string_lossy().into_owned(),
+            transcript_path: plain_path.to_string_lossy().into_owned(),
+            skip_transcribe: false,
+        };
+        write_browser_track_result(
+            &plain_track,
+            &TimedTranscript::plain_text_only("legacy"),
+            false,
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(&plain_path).unwrap(), "legacy");
+        assert!(!plain_path.with_extension("vtt").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
 }

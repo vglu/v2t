@@ -19,7 +19,11 @@
     "folder_placeholder": "Wählen Sie einen Ordner für die Ausgabe…",
     "browse": "Durchsuchen…",
     "use_documents": "Verwenden Sie Dokumente",
-    "hint": "<strong>Verwenden Sie Dokumente</strong> legt Ihren Betriebssystemordner \"Dokumente\" fest und speichert die Einstellungen. Sie können ihn jederzeit mit Blättern ändern."
+    "hint": "<strong>Verwenden Sie Dokumente</strong> legt Ihren Betriebssystemordner \"Dokumente\" fest und speichert die Einstellungen. Sie können ihn jederzeit mit Blättern ändern.",
+    "export_webvtt_label": "Transkript mit Zeitstempeln als WebVTT exportieren",
+    "export_webvtt_hint": "Erstellt neben jedem .txt-Transkript eine zusätzliche .vtt-Datei mit Segment-Zeitstempeln. Die Klartextdatei wird weiterhin erstellt. Sprecherbezeichnungen aus Quelluntertiteln werden übernommen, sofern vorhanden (keine ASR-Sprecherdiarisierung).",
+    "label_speakers_label": "Sprecher kennzeichnen (Person 1 / Person 2)",
+    "label_speakers_hint": "Kennzeichnet Sprecher als Person 1 / Person 2 mit lokalem tinydiarize (experimentell, am besten für Englisch). Erfordert das Modell ggml-small.en-tdrz. Keine echten Namen."
   },
   "transcription": {
     "mode_label": "Transkriptionsmodus",

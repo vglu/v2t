@@ -6,7 +6,8 @@
 //!
 //! Endpoints:
 //! - `GET  /v1/health`                — liveness, no auth
-//! - `POST /v1/jobs`                  — submit a single job (JSON body)
+//! - `POST /v1/jobs`                  — submit a single job (JSON body;
+//!   `options.exportWebVtt` / `options.labelSpeakers` override Settings)
 //! - `GET  /v1/jobs/{id}`             — job state
 //! - `GET  /v1/jobs/{id}/transcript`  — transcript text (when done)
 //! - `POST /v1/jobs/{id}/cancel`      — cooperative cancel
@@ -262,12 +263,7 @@ impl ApiServerSupervisor {
                 }
             };
             if let Err(e) = serve(state, listener).await {
-                session_log::try_append(
-                    &app_for_log,
-                    None,
-                    "api-server",
-                    &format!("stopped: {e}"),
-                );
+                session_log::try_append(&app_for_log, None, "api-server", &format!("stopped: {e}"));
             }
         });
         if let Ok(mut g) = self.task.lock() {
@@ -332,6 +328,14 @@ struct SubmitJobOptions {
     /// `httpApi` | `localWhisper`. `browserWhisper` is rejected — it requires a webview.
     transcription_mode: Option<TranscriptionMode>,
     whisper_model: Option<String>,
+    /// Override Settings → Export WebVTT for this job. Omitted → keep app settings.
+    /// Explicit rename: serde camelCase would emit `exportWebvtt`, UI/API use `exportWebVtt`.
+    #[serde(default, rename = "exportWebVtt")]
+    export_webvtt: Option<bool>,
+    /// Override Settings → Label speakers (Person 1 / Person 2). Requires Local Whisper +
+    /// tinydiarize model. When set to `true`, also enables WebVTT export for the job.
+    #[serde(default)]
+    label_speakers: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -403,13 +407,7 @@ fn check_auth(state: &ApiServerState, headers: &HeaderMap) -> Result<(), Respons
 }
 
 fn error_response(status: StatusCode, msg: impl Into<String>) -> Response {
-    (
-        status,
-        Json(ApiErrorBody {
-            error: msg.into(),
-        }),
-    )
-        .into_response()
+    (status, Json(ApiErrorBody { error: msg.into() })).into_response()
 }
 
 #[utoipa::path(
@@ -524,7 +522,10 @@ fn prepare_job(
             ));
         }
         effective.transcription_mode = mode;
-    } else if matches!(effective.transcription_mode, TranscriptionMode::BrowserWhisper) {
+    } else if matches!(
+        effective.transcription_mode,
+        TranscriptionMode::BrowserWhisper
+    ) {
         return Err(error_response(
             StatusCode::BAD_REQUEST,
             "Current settings use browserWhisper. Set transcriptionMode in the request body (e.g. 'localWhisper' or 'httpApi').",
@@ -533,7 +534,23 @@ fn prepare_job(
     if let Some(model) = options.whisper_model {
         effective.whisper_model = model;
     }
-    if effective.output_dir.as_deref().map(str::trim).unwrap_or("").is_empty() {
+    if let Some(export_webvtt) = options.export_webvtt {
+        effective.export_webvtt = export_webvtt;
+    }
+    if let Some(label_speakers) = options.label_speakers {
+        effective.label_speakers = label_speakers;
+        // Speaker labels are written into the WebVTT pair; force export on when requested.
+        if label_speakers {
+            effective.export_webvtt = true;
+        }
+    }
+    if effective
+        .output_dir
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty()
+    {
         return Err(error_response(
             StatusCode::BAD_REQUEST,
             "outputDir not set in settings; pass options.outputDir in the request body",
@@ -611,6 +628,12 @@ fn merge_options(
         whisper_model: i
             .and_then(|o| o.whisper_model.clone())
             .or_else(|| d.and_then(|o| o.whisper_model.clone())),
+        export_webvtt: i
+            .and_then(|o| o.export_webvtt)
+            .or_else(|| d.and_then(|o| o.export_webvtt)),
+        label_speakers: i
+            .and_then(|o| o.label_speakers)
+            .or_else(|| d.and_then(|o| o.label_speakers)),
     }
 }
 
@@ -685,8 +708,9 @@ fn spawn_api_job(state: Arc<ApiServerState>, prepared: PreparedJob) {
                 });
             }
             Ok(ProcessQueueItemOutcome::BrowserPrepared { .. }) => {
-                let msg = "browserWhisper outcome reached an API job — this is a bug; reject earlier."
-                    .to_string();
+                let msg =
+                    "browserWhisper outcome reached an API job — this is a bug; reject earlier."
+                        .to_string();
                 registry.mark_failed(&job_id, msg.clone());
                 webhook_event = "job.failed";
                 webhook_data = serde_json::json!({ "status": "failed", "error": msg });
@@ -694,7 +718,11 @@ fn spawn_api_job(state: Arc<ApiServerState>, prepared: PreparedJob) {
             Err(e) => {
                 registry.mark_failed(&job_id, e.clone());
                 let is_cancel = e == pipeline::JOB_CANCELLED_MSG;
-                webhook_event = if is_cancel { "job.cancelled" } else { "job.failed" };
+                webhook_event = if is_cancel {
+                    "job.cancelled"
+                } else {
+                    "job.failed"
+                };
                 webhook_data = serde_json::json!({
                     "status": if is_cancel { "cancelled" } else { "failed" },
                     "error": e,
@@ -707,8 +735,7 @@ fn spawn_api_job(state: Arc<ApiServerState>, prepared: PreparedJob) {
                 url: cb.url,
                 secret: cb.secret,
             };
-            if let Err(err) =
-                webhook::deliver(&target, webhook_event, &job_id, &webhook_data).await
+            if let Err(err) = webhook::deliver(&target, webhook_event, &job_id, &webhook_data).await
             {
                 session_log::try_append(
                     &app,
@@ -825,7 +852,11 @@ async fn cancel_job(
             format!("No active job with id: {id}"),
         );
     }
-    (StatusCode::ACCEPTED, Json(serde_json::json!({ "cancelled": true }))).into_response()
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({ "cancelled": true })),
+    )
+        .into_response()
 }
 
 // ---------- Batches ----------
@@ -885,7 +916,10 @@ async fn submit_batch(
     if req.items.len() > API_MAX_BATCH_SIZE {
         return error_response(
             StatusCode::BAD_REQUEST,
-            format!("batch size {} exceeds max {API_MAX_BATCH_SIZE}", req.items.len()),
+            format!(
+                "batch size {} exceeds max {API_MAX_BATCH_SIZE}",
+                req.items.len()
+            ),
         );
     }
 
@@ -927,7 +961,9 @@ async fn submit_batch(
     }
 
     let job_ids: Vec<String> = prepared.iter().map(|p| p.job_id.clone()).collect();
-    state.job_registry.insert_batch(batch_id.clone(), job_ids.clone());
+    state
+        .job_registry
+        .insert_batch(batch_id.clone(), job_ids.clone());
 
     for p in prepared {
         spawn_api_job(state.clone(), p);
@@ -1049,4 +1085,42 @@ fn job_events_stream(
 fn sse_event_for<T: Serialize>(name: &str, payload: &T) -> Result<Event, serde_json::Error> {
     let json = serde_json::to_string(payload)?;
     Ok(Event::default().event(name).data(json))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_options_item_overrides_batch_export_and_speakers() {
+        let batch = SubmitJobOptions {
+            export_webvtt: Some(false),
+            label_speakers: Some(false),
+            whisper_model: Some("medium".into()),
+            ..Default::default()
+        };
+        let item = SubmitJobOptions {
+            export_webvtt: Some(true),
+            label_speakers: Some(true),
+            ..Default::default()
+        };
+        let merged = merge_options(Some(&batch), Some(&item));
+        assert_eq!(merged.export_webvtt, Some(true));
+        assert_eq!(merged.label_speakers, Some(true));
+        assert_eq!(merged.whisper_model.as_deref(), Some("medium"));
+    }
+
+    #[test]
+    fn submit_job_options_accept_camel_case_export_flags() {
+        let parsed: SubmitJobOptions = serde_json::from_str(
+            r#"{"exportWebVtt":true,"labelSpeakers":true,"transcriptionMode":"localWhisper"}"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.export_webvtt, Some(true));
+        assert_eq!(parsed.label_speakers, Some(true));
+        assert_eq!(
+            parsed.transcription_mode,
+            Some(TranscriptionMode::LocalWhisper)
+        );
+    }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "v2t"
-version = "2.0.7"
+version = "2.0.8"
 description = "Portable video/audio to text (v2t)"
 authors = ["you"]
 edition = "2021"

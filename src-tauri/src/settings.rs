@@ -225,6 +225,13 @@ pub struct AppSettings {
     /// next to the `.txt` transcript (preserves timings).
     #[serde(default)]
     pub keep_srt: bool,
+    /// Also save a timed WebVTT transcript next to the plain-text output.
+    #[serde(default, rename = "exportWebVtt")]
+    pub export_webvtt: bool,
+    /// Label speakers as Person 1 / Person 2 via local whisper.cpp tinydiarize (`-tdrz`).
+    /// Experimental; requires `ggml-small.en-tdrz` and WebVTT export. Ignored for HTTP/browser.
+    #[serde(default, rename = "labelSpeakers")]
+    pub label_speakers: bool,
     /// UI language; `Auto` lets the React layer derive from `navigator.language`.
     #[serde(default)]
     pub ui_language: UiLanguage,
@@ -272,6 +279,8 @@ impl Default for AppSettings {
             use_subtitles_when_available: false,
             subtitle_priority_langs: default_subtitle_priority_langs(),
             keep_srt: false,
+            export_webvtt: false,
+            label_speakers: false,
             ui_language: UiLanguage::Auto,
             vision_mode: VisionMode::Disabled,
             gemini_model: default_gemini_model(),
@@ -411,5 +420,39 @@ mod tests {
             vec!["uk".to_string(), "ru".to_string(), "en".to_string()]
         );
         assert!(!s.keep_srt);
+    }
+
+    #[test]
+    fn missing_export_webvtt_defaults_false() {
+        let json = r#"{"outputDir":null,"filenameTemplate":"{title}_{date}.txt","ffmpegPath":null,"ytDlpPath":null,"deleteAudioAfter":true,"apiBaseUrl":"https://api.openai.com/v1","apiModel":"whisper-1","apiKey":"","language":null}"#;
+        let s: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(!s.export_webvtt);
+    }
+
+    #[test]
+    fn export_webvtt_uses_typescript_wire_name() {
+        let mut s = AppSettings::default();
+        s.export_webvtt = true;
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains(r#""exportWebVtt":true"#));
+        let back: AppSettings = serde_json::from_str(&json).unwrap();
+        assert!(back.export_webvtt);
+    }
+
+    #[test]
+    fn missing_label_speakers_defaults_false() {
+        let json = r#"{"outputDir":null,"filenameTemplate":"{title}_{date}.txt","ffmpegPath":null,"ytDlpPath":null,"deleteAudioAfter":true,"apiBaseUrl":"https://api.openai.com/v1","apiModel":"whisper-1","apiKey":"","language":null}"#;
+        let s: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(!s.label_speakers);
+    }
+
+    #[test]
+    fn label_speakers_uses_typescript_wire_name() {
+        let mut s = AppSettings::default();
+        s.label_speakers = true;
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains(r#""labelSpeakers":true"#));
+        let back: AppSettings = serde_json::from_str(&json).unwrap();
+        assert!(back.label_speakers);
     }
 }

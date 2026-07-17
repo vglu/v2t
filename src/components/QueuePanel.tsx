@@ -437,17 +437,25 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
             if (!outDir) {
               throw new Error(t("error.output_dir_required"));
             }
-            let texts: string[];
+            const exportWebVtt = outcome.exportWebVtt;
+            let results: Awaited<ReturnType<typeof transcribeBrowserTracks>>;
+            let browserSlotReleased = false;
+            const releaseBrowserSlotOnce = () => {
+              if (browserSlotReleased) return;
+              browserSlotReleased = true;
+              void releaseQueueJobSlot(job.id);
+            };
             try {
-              texts = await transcribeBrowserTracks({
+              results = await transcribeBrowserTracks({
                 whisperModelId: outcome.whisperModelId,
                 tracks: outcome.tracks,
                 language: outcome.language,
+                exportWebVtt,
                 shouldStop: () => stopRequestedRef.current,
                 onProgress: (m) => appendLog(`[browser] ${m}`),
               });
             } catch (e) {
-              void releaseQueueJobSlot(job.id);
+              releaseBrowserSlotOnce();
               const msg =
                 e instanceof Error
                   ? e.message
@@ -456,14 +464,26 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
               void sessionLogAppendUi(`[browser-error] ${msg}`);
               throw e;
             }
-            result = await browserQueueJobFinish({
-              jobId: job.id,
-              tracks: outcome.tracks,
-              texts,
-              workDir: outcome.workDir,
-              deleteAudioAfter: outcome.deleteAudioAfter,
-              outputDir: outDir,
-            });
+            // Stop may arrive after WASM resolves; never finish/write pairs.
+            if (stopRequestedRef.current) {
+              releaseBrowserSlotOnce();
+              throw new Error("Job cancelled");
+            }
+            try {
+              result = await browserQueueJobFinish({
+                jobId: job.id,
+                tracks: outcome.tracks,
+                results,
+                workDir: outcome.workDir,
+                deleteAudioAfter: outcome.deleteAudioAfter,
+                outputDir: outDir,
+                exportWebVtt,
+                shouldStop: () => stopRequestedRef.current,
+              });
+            } catch (e) {
+              releaseBrowserSlotOnce();
+              throw e;
+            }
           } else {
             result = outcome;
           }
