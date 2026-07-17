@@ -16,6 +16,7 @@ import type {
   WhisperAcceleration,
   WhisperModelMeta,
 } from "../types/settings";
+import type { TimedTranscript } from "../types/timedTranscript";
 
 export async function loadSettings(): Promise<AppSettings | null> {
   try {
@@ -229,22 +230,31 @@ export async function processQueueItem(args: {
 export async function browserQueueJobFinish(args: {
   jobId: string;
   tracks: BrowserTrackInfo[];
-  texts: string[];
+  results: TimedTranscript[];
   workDir: string;
   deleteAudioAfter: boolean;
   outputDir: string;
+  exportWebVtt: boolean;
+  shouldStop: () => boolean;
 }): Promise<ProcessQueueItemResult> {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
+    if (args.shouldStop()) {
+      throw new Error("Job cancelled");
+    }
     return await invoke<ProcessQueueItemResult>("browser_queue_job_finish", {
       jobId: args.jobId,
       tracks: args.tracks,
-      texts: args.texts,
+      results: args.results,
       workDir: args.workDir,
       deleteAudioAfter: args.deleteAudioAfter,
       outputDir: args.outputDir,
+      exportWebVtt: args.exportWebVtt,
     });
   } catch (e) {
+    if (e instanceof Error && e.message === "Job cancelled") {
+      throw e;
+    }
     const msg =
       typeof e === "string"
         ? e

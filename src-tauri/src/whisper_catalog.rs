@@ -57,6 +57,14 @@ pub const WHISPER_MODEL_CATALOG: &[WhisperModelCatalogEntry] = &[
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
         sha1_hex: "55356645c2b361a969dfd0ef2c5a50d530afd8d5",
     },
+    // English tinydiarize model for experimental Person 1 / Person 2 labels (`-tdrz`).
+    WhisperModelCatalogEntry {
+        id: "small.en-tdrz",
+        file_name: "ggml-small.en-tdrz.bin",
+        size_mib: 466,
+        url: "https://huggingface.co/akashmjn/tinydiarize-whisper.cpp/resolve/main/ggml-small.en-tdrz.bin",
+        sha1_hex: "b6c6e7e89af1a35c08e6de56b66ca6a02a2fdfa1",
+    },
     WhisperModelCatalogEntry {
         id: "medium",
         file_name: "ggml-medium.bin",
@@ -73,8 +81,21 @@ pub const WHISPER_MODEL_CATALOG: &[WhisperModelCatalogEntry] = &[
     },
 ];
 
+/// Silero VAD ggml used by whisper.cpp `--vad` for cleaner timed cues.
+/// Not listed in the ASR model picker; downloaded alongside Whisper models.
+pub const SILERO_VAD_MODEL: WhisperModelCatalogEntry = WhisperModelCatalogEntry {
+    id: "silero-vad",
+    file_name: "ggml-silero-v6.2.0.bin",
+    size_mib: 1,
+    url: "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin",
+    sha1_hex: "470e5d9d094ddba2f0a512cecc3732a252188abd",
+};
+
 pub fn catalog_entry(model_id: &str) -> Option<&'static WhisperModelCatalogEntry> {
     let key = model_id.trim();
+    if key.eq_ignore_ascii_case(SILERO_VAD_MODEL.id) {
+        return Some(&SILERO_VAD_MODEL);
+    }
     WHISPER_MODEL_CATALOG
         .iter()
         .find(|e| e.id.eq_ignore_ascii_case(key))
@@ -89,5 +110,20 @@ mod tests {
         assert!(catalog_entry("base").is_some());
         assert!(catalog_entry("BASE").is_some());
         assert!(catalog_entry("nope").is_none());
+    }
+
+    #[test]
+    fn catalog_resolves_silero_vad_companion() {
+        let entry = catalog_entry("silero-vad").expect("silero-vad");
+        assert_eq!(entry.file_name, "ggml-silero-v6.2.0.bin");
+        assert_eq!(entry.sha1_hex, SILERO_VAD_MODEL.sha1_hex);
+    }
+
+    #[test]
+    fn catalog_resolves_tinydiarize_small_en() {
+        let entry = catalog_entry("small.en-tdrz").expect("small.en-tdrz");
+        assert_eq!(entry.file_name, "ggml-small.en-tdrz.bin");
+        assert_eq!(entry.sha1_hex, "b6c6e7e89af1a35c08e6de56b66ca6a02a2fdfa1");
+        assert!(list_models_for_ui().iter().any(|m| m.id == "small.en-tdrz"));
     }
 }

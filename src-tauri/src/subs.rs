@@ -128,10 +128,7 @@ pub async fn probe_subs(
         args.push("--cookies-from-browser".into());
         args.push(b.to_string());
     }
-    if let Some(j) = yt_dlp_js_runtimes
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(j) = yt_dlp_js_runtimes.map(str::trim).filter(|s| !s.is_empty()) {
         args.push("--js-runtimes".into());
         args.push(j.to_string());
     }
@@ -196,10 +193,7 @@ pub async fn download_srt(
         args.push("--cookies-from-browser".into());
         args.push(b.to_string());
     }
-    if let Some(j) = yt_dlp_js_runtimes
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(j) = yt_dlp_js_runtimes.map(str::trim).filter(|s| !s.is_empty()) {
         args.push("--js-runtimes".into());
         args.push(j.to_string());
     }
@@ -251,10 +245,40 @@ pub async fn download_srt(
 /// SSA / HTML tags (`<i>`, `{\an8}`), and collapse blanks. Lines from one cue
 /// are joined with a single space; cues are separated by a newline so the
 /// reader still sees natural paragraph breaks.
+///
+/// Thin wrapper over [`srt_to_timed_transcript`] so existing callers and tests
+/// keep a plain-text-only entry point.
+#[allow(dead_code)] // public crate API retained; production path uses timed entry points
 pub fn srt_to_plain_text(srt: &str) -> String {
-    let mut out = String::new();
+    srt_to_timed_transcript(srt, false)
+        .expect("lenient plain path never fails")
+        .text
+}
+
+/// Convert SRT into a timed transcript.
+///
+/// When `export_webvtt` is false, parsing is lenient (legacy): cues without
+/// usable timings still contribute plain text, and incomplete timing is skipped.
+/// When `export_webvtt` is true, every nonempty cue must have valid `end > start`
+/// timing or the call returns `Err` (caller may fall back to Whisper).
+///
+/// Timed cues store speaker separately via [`extract_voice_speaker`];
+/// `format_webvtt` re-wraps voice tags. The plain `text` field always strips
+/// angle/SSA tags.
+pub fn srt_to_timed_transcript(
+    srt: &str,
+    export_webvtt: bool,
+) -> Result<crate::timed_transcript::TimedTranscript, String> {
+    use crate::timed_transcript::{extract_voice_speaker, TimedSegment, TimedTranscript};
+
+    let mut plain_parts: Vec<String> = Vec::new();
+    let mut segments: Vec<TimedSegment> = Vec::new();
+
     for block in srt.split("\n\n").flat_map(|s| s.split("\r\n\r\n")) {
-        let mut buf: Vec<String> = Vec::new();
+        let mut timing: Option<(u64, u64)> = None;
+        let mut saw_timing_line = false;
+        let mut plain_buf: Vec<String> = Vec::new();
+        let mut timed_buf: Vec<String> = Vec::new();
         for raw in block.lines() {
             let line = raw.trim();
             if line.is_empty() {
@@ -264,22 +288,121 @@ pub fn srt_to_plain_text(srt: &str) -> String {
                 continue;
             }
             if is_timing_line(line) {
+                saw_timing_line = true;
+                timing = parse_srt_timing_line(line).filter(|(start, end)| *end > *start);
                 continue;
             }
-            let cleaned = clean_inline_tags(line);
-            let trimmed = cleaned.trim();
-            if !trimmed.is_empty() {
-                buf.push(trimmed.to_string());
+            let plain_cleaned = clean_inline_tags(line);
+            let plain_trimmed = plain_cleaned.trim();
+            if !plain_trimmed.is_empty() {
+                plain_buf.push(plain_trimmed.to_string());
+            }
+            let timed_cleaned = clean_ssa_keep_angle_tags(line);
+            let timed_trimmed = timed_cleaned.trim();
+            if !timed_trimmed.is_empty() {
+                timed_buf.push(timed_trimmed.to_string());
             }
         }
-        if !buf.is_empty() {
-            if !out.is_empty() {
-                out.push('\n');
+        if plain_buf.is_empty() && timed_buf.is_empty() {
+            continue;
+        }
+        let cue_plain = plain_buf.join(" ");
+        let cue_timed = if timed_buf.is_empty() {
+            cue_plain.clone()
+        } else {
+            timed_buf.join(" ")
+        };
+        if !cue_plain.is_empty() {
+            plain_parts.push(cue_plain);
+        } else if !cue_timed.is_empty() {
+            // Angle-only cue still counts as nonempty for export validation.
+            plain_parts.push(clean_inline_tags(&cue_timed).trim().to_string());
+        }
+
+        if export_webvtt {
+            if !saw_timing_line || timing.is_none() {
+                return Err(
+                    "Malformed subtitle timing: nonempty cue lacks valid end>start timestamps"
+                        .to_string(),
+                );
             }
-            out.push_str(&buf.join(" "));
+            let (start_ms, end_ms) = timing.expect("checked above");
+            let segment_text = if cue_timed.is_empty() {
+                plain_parts.last().cloned().unwrap_or_default()
+            } else {
+                cue_timed
+            };
+            if segment_text.trim().is_empty() {
+                return Err("Malformed subtitle cue: empty text after cleanup".to_string());
+            }
+            let (speaker, body) = extract_voice_speaker(&segment_text);
+            let body = body.trim().to_string();
+            if body.is_empty() {
+                return Err("Malformed subtitle cue: empty text after cleanup".to_string());
+            }
+            segments.push(TimedSegment {
+                start_ms,
+                end_ms,
+                text: body,
+                speaker,
+            });
+        } else if let Some((start_ms, end_ms)) = timing {
+            let segment_text = if cue_timed.is_empty() {
+                plain_parts.last().cloned().unwrap_or_default()
+            } else {
+                cue_timed
+            };
+            if !segment_text.trim().is_empty() {
+                let (speaker, body) = extract_voice_speaker(&segment_text);
+                let body = body.trim().to_string();
+                if !body.is_empty() {
+                    segments.push(TimedSegment {
+                        start_ms,
+                        end_ms,
+                        text: body,
+                        speaker,
+                    });
+                }
+            }
         }
     }
-    out
+
+    let text = plain_parts.join("\n");
+    if export_webvtt && !text.trim().is_empty() && segments.is_empty() {
+        return Err("Malformed subtitles: nonempty transcript has no valid timed cues".to_string());
+    }
+
+    Ok(TimedTranscript { text, segments })
+}
+
+fn parse_srt_timing_line(line: &str) -> Option<(u64, u64)> {
+    let (left, right) = line.split_once("-->")?;
+    let start_ms = parse_srt_clock(left.trim())?;
+    let end_side = right.trim().split_whitespace().next().unwrap_or("");
+    let end_ms = parse_srt_clock(end_side)?;
+    Some((start_ms, end_ms))
+}
+
+fn parse_srt_clock(value: &str) -> Option<u64> {
+    let normalized = value.replace(',', ".");
+    let parts: Vec<&str> = normalized.split(':').collect();
+    let (hours, minutes, seconds_part) = match parts.as_slice() {
+        [h, m, s] => (h.parse::<u64>().ok()?, m.parse::<u64>().ok()?, *s),
+        [m, s] => (0, m.parse::<u64>().ok()?, *s),
+        _ => return None,
+    };
+    let (secs, millis) = if let Some((s, ms)) = seconds_part.split_once('.') {
+        let millis = match ms.len() {
+            0 => 0,
+            1 => ms.parse::<u64>().ok()? * 100,
+            2 => ms.parse::<u64>().ok()? * 10,
+            _ => ms.get(..3)?.parse::<u64>().ok()?,
+        };
+        (s.parse::<u64>().ok()?, millis)
+    } else {
+        (seconds_part.parse::<u64>().ok()?, 0)
+    };
+    Some(hours * 3_600_000 + minutes * 60_000 + secs * 1_000 + millis)
 }
 
 fn is_timing_line(line: &str) -> bool {
@@ -291,6 +414,8 @@ fn is_timing_line(line: &str) -> bool {
 }
 
 /// Drop `<…>` HTML/SSA inline tags (`<i>`, `<b>`, `<font color=...>`) and `{\an8}` SSA blocks.
+/// Speaker-like prefixes such as `[SPEAKER]:` are preserved; angle-bracket tags are removed
+/// to match the historical plain-text behaviour.
 fn clean_inline_tags(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
     let mut in_angle = false;
@@ -302,6 +427,22 @@ fn clean_inline_tags(line: &str) -> String {
             '{' if !in_angle => in_brace = true,
             '}' if in_brace => in_brace = false,
             _ if !in_angle && !in_brace => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Strip SSA `{\an8}` blocks but keep angle-bracket markup for timed cue payloads
+/// (WebVTT escaping decides which tags survive).
+fn clean_ssa_keep_angle_tags(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut in_brace = false;
+    for c in line.chars() {
+        match c {
+            '{' => in_brace = true,
+            '}' if in_brace => in_brace = false,
+            _ if !in_brace => out.push(c),
             _ => {}
         }
     }
@@ -445,17 +586,61 @@ mod tests {
         assert!(is_pure_playlist_url(
             "https://www.youtube.com/watch?v=abc&list=PL123"
         ));
-        assert!(is_pure_playlist_url(
-            "https://youtu.be/abc?list=PL123"
-        ));
+        assert!(is_pure_playlist_url("https://youtu.be/abc?list=PL123"));
         assert!(!is_pure_playlist_url("https://www.youtube.com/watch?v=abc"));
         assert!(!is_pure_playlist_url("https://example.com/x"));
     }
 
     #[test]
     fn srt_to_plain_ignores_empty_cues() {
-        let srt = "1\n00:00:01,000 --> 00:00:04,000\n\n\n2\n00:00:05,000 --> 00:00:08,000\nReal text\n";
+        let srt =
+            "1\n00:00:01,000 --> 00:00:04,000\n\n\n2\n00:00:05,000 --> 00:00:08,000\nReal text\n";
         let plain = srt_to_plain_text(srt);
         assert_eq!(plain, "Real text");
+    }
+
+    #[test]
+    fn srt_to_timed_preserves_plain_and_ms_cues() {
+        let srt = "1\n00:00:01,000 --> 00:00:04,250\nHello world\n\n2\n00:00:05,000 --> 00:00:08,000\n[SPEAKER]: Second line\n";
+        let timed = srt_to_timed_transcript(srt, false).unwrap();
+        assert_eq!(timed.text, srt_to_plain_text(srt));
+        assert_eq!(timed.segments.len(), 2);
+        assert_eq!(timed.segments[0].start_ms, 1_000);
+        assert_eq!(timed.segments[0].end_ms, 4_250);
+        assert_eq!(timed.segments[0].text, "Hello world");
+        assert_eq!(timed.segments[1].text, "[SPEAKER]: Second line");
+        let vtt = crate::timed_transcript::format_webvtt(&timed.segments).unwrap();
+        assert!(vtt.contains("00:00:01.000 --> 00:00:04.250"));
+        assert!(vtt.contains("[SPEAKER]: Second line"));
+    }
+
+    #[test]
+    fn srt_to_timed_handles_dot_separator() {
+        let srt = "1\n00:00:00.500 --> 00:00:01.000\nDot times\n";
+        let timed = srt_to_timed_transcript(srt, false).unwrap();
+        assert_eq!(timed.segments[0].start_ms, 500);
+        assert_eq!(timed.segments[0].end_ms, 1_000);
+    }
+
+    #[test]
+    fn srt_export_strict_rejects_missing_timing_on_nonempty_cue() {
+        let srt = "1\nHello without timing\n\n2\n00:00:01,000 --> 00:00:02,000\nOk\n";
+        let err = srt_to_timed_transcript(srt, true).unwrap_err();
+        assert!(err.contains("Malformed"));
+        // Lenient path still succeeds with partial segments.
+        let lenient = srt_to_timed_transcript(srt, false).unwrap();
+        assert!(lenient.text.contains("Hello without timing"));
+        assert_eq!(lenient.segments.len(), 1);
+    }
+
+    #[test]
+    fn srt_timed_extracts_voice_speaker_plain_strips() {
+        let srt = "1\n00:00:01,000 --> 00:00:02,000\n<v Alice>Hello</v> world\n";
+        let timed = srt_to_timed_transcript(srt, true).unwrap();
+        assert_eq!(timed.text, "Hello world");
+        assert_eq!(timed.segments[0].speaker.as_deref(), Some("Alice"));
+        assert_eq!(timed.segments[0].text, "Hello world");
+        let vtt = crate::timed_transcript::format_webvtt(&timed.segments).unwrap();
+        assert!(vtt.contains("<v Alice>Hello world</v>"));
     }
 }

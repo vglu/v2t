@@ -425,6 +425,38 @@ export function SettingsPanel({
       <p className="hint">
         <Trans i18nKey="output.hint" t={t} components={{ strong: <strong /> }} />
       </p>
+      <label className="field checkbox">
+        <input
+          type="checkbox"
+          checked={settings.exportWebVtt}
+          aria-describedby="export-webvtt-hint"
+          onChange={(e) =>
+            onChange({ ...settings, exportWebVtt: e.target.checked })
+          }
+        />
+        <span>{t("output.export_webvtt_label")}</span>
+      </label>
+      <p className="hint" id="export-webvtt-hint">
+        {t("output.export_webvtt_hint")}
+      </p>
+      <label
+        className="field checkbox"
+        style={settings.exportWebVtt ? undefined : { opacity: 0.55 }}
+      >
+        <input
+          type="checkbox"
+          checked={settings.labelSpeakers}
+          disabled={!settings.exportWebVtt}
+          aria-describedby="label-speakers-hint"
+          onChange={(e) =>
+            onChange({ ...settings, labelSpeakers: e.target.checked })
+          }
+        />
+        <span>{t("output.label_speakers_label")}</span>
+      </label>
+      <p className="hint" id="label-speakers-hint">
+        {t("output.label_speakers_hint")}
+      </p>
 
       <p className="settings-section-title">{t("section.transcription")}</p>
       <div

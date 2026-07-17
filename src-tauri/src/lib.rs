@@ -1,12 +1,11 @@
 mod api_job_registry;
 mod api_key_store;
 mod api_server;
-mod doc_extract;
-mod gemini_key_store;
-mod vision;
 mod audio_save;
 mod cancel_registry;
 mod deps;
+mod doc_extract;
+mod gemini_key_store;
 mod gpu_detect;
 mod job;
 mod model_download;
@@ -19,28 +18,32 @@ mod session_log;
 mod settings;
 mod subs;
 mod temp_cleanup;
+pub mod timed_transcript;
 mod tool_download;
 #[cfg(any(windows, target_os = "macos"))]
 mod tool_manifest;
 mod transcribe;
+mod vision;
 mod webhook;
-mod whisper_catalog;
-mod whisper_local;
 #[cfg(target_os = "macos")]
 mod whisper_bottle_macos;
+mod whisper_catalog;
+mod whisper_local;
 mod yt_dlp_metadata;
 mod yt_dlp_progress;
 
 use api_server::ApiServerSupervisor;
 use cancel_registry::JobCancelRegistry;
-use session_log::SessionLog;
-use std::path::PathBuf;
-use tauri::Manager;
 use job::{BrowserTrackInfo, ProcessQueueItemOutcome, ProcessQueueItemResult};
 use progress::{SinkHandle, TauriSink};
 use serde::Serialize;
+use session_log::SessionLog;
 use settings::{AppSettings, WhisperAcceleration};
+use std::path::PathBuf;
+use tauri::Manager;
 use tokio_util::sync::CancellationToken;
+
+pub use timed_transcript::{TimedSegment, TimedTranscript};
 
 #[tauri::command]
 fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
@@ -146,25 +149,27 @@ fn browser_queue_job_finish(
     registry: tauri::State<'_, JobCancelRegistry>,
     job_id: String,
     tracks: Vec<BrowserTrackInfo>,
-    texts: Vec<String>,
+    results: Vec<TimedTranscript>,
     work_dir: String,
     delete_audio_after: bool,
     output_dir: String,
+    export_web_vtt: bool,
 ) -> Result<ProcessQueueItemResult, String> {
     let trimmed = output_dir.trim();
     if trimmed.is_empty() {
         return Err("Output folder is not set".to_string());
     }
     let out_dir = PathBuf::from(trimmed);
-    let res = job::finish_browser_queue_job(
+    let res = job::finish_browser_queue_job_timed(
         &app,
         &registry,
         &job_id,
         &tracks,
-        &texts,
+        &results,
         &work_dir,
         delete_audio_after,
         &out_dir,
+        export_web_vtt,
     );
     registry.finish_job(&job_id);
     res
@@ -211,8 +216,7 @@ async fn download_whisper_model(
 
 #[tauri::command]
 fn default_documents_dir(app: tauri::AppHandle) -> Result<String, String> {
-    tool_download::default_documents_dir(&app)
-        .map(|p| p.to_string_lossy().into_owned())
+    tool_download::default_documents_dir(&app).map(|p| p.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -239,9 +243,7 @@ fn detect_gpu() -> gpu_detect::GpuInfo {
 }
 
 #[tauri::command]
-async fn install_deno(
-    app: tauri::AppHandle,
-) -> Result<tool_download::InstalledDeno, String> {
+async fn install_deno(app: tauri::AppHandle) -> Result<tool_download::InstalledDeno, String> {
     let sink: SinkHandle = TauriSink::handle(app.clone());
     tool_download::install_deno_managed(&app, &sink).await
 }
@@ -272,10 +274,7 @@ struct ApiServerInfo {
 }
 
 #[tauri::command]
-async fn validate_gemini_model(
-    api_key: String,
-    model: String,
-) -> vision::ModelValidationResult {
+async fn validate_gemini_model(api_key: String, model: String) -> vision::ModelValidationResult {
     let http = reqwest::Client::new();
     vision::validate_model(&http, &api_key, &model).await
 }
@@ -351,8 +350,7 @@ pub fn run() {
             // Sweep orphaned v2t-work-* dirs older than 24 h. Off the main thread —
             // the scan touches the temp dir but does not block UI startup.
             std::thread::spawn(|| {
-                let report =
-                    temp_cleanup::run_cleanup(std::time::Duration::from_secs(24 * 3600));
+                let report = temp_cleanup::run_cleanup(std::time::Duration::from_secs(24 * 3600));
                 if report.removed > 0 || report.errors > 0 {
                     eprintln!(
                         "[v2t] temp cleanup: removed={} bytes_freed={} errors={}",

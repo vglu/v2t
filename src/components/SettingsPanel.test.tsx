@@ -86,4 +86,95 @@ describe("SettingsPanel", () => {
     const langInput = screen.getByTestId("subtitle-priority-langs") as HTMLInputElement;
     expect(langInput.value).toBe("uk, ru, en");
   });
+
+  it("reflects and enables WebVTT export", async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <SettingsPanel
+        settings={{ ...defaultAppSettings, exportWebVtt: true }}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onPersistSettings={vi.fn().mockResolvedValue(undefined)}
+        onLanguageChange={vi.fn()}
+        saving={false}
+      />,
+    );
+
+    const checkbox = screen.getByRole("checkbox", {
+      name: "Export timed transcript as WebVTT",
+    });
+    expect(checkbox).toBeChecked();
+
+    rerender(
+      <SettingsPanel
+        settings={{ ...defaultAppSettings, exportWebVtt: false }}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onPersistSettings={vi.fn().mockResolvedValue(undefined)}
+        onLanguageChange={vi.fn()}
+        saving={false}
+      />,
+    );
+    expect(checkbox).not.toBeChecked();
+
+    const { default: userEvent } = await import("@testing-library/user-event");
+    await userEvent.setup().click(checkbox);
+
+    expect(onChange).toHaveBeenCalledWith({
+      ...defaultAppSettings,
+      exportWebVtt: true,
+    });
+  });
+
+  it("disables speaker labels when WebVTT export is off", () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsPanel
+        settings={{
+          ...defaultAppSettings,
+          exportWebVtt: false,
+          labelSpeakers: true,
+        }}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onPersistSettings={vi.fn().mockResolvedValue(undefined)}
+        onLanguageChange={vi.fn()}
+        saving={false}
+      />,
+    );
+
+    const checkbox = screen.getByRole("checkbox", {
+      name: "Label speakers (Person 1 / Person 2)",
+    });
+    expect(checkbox).toBeChecked();
+    expect(checkbox).toBeDisabled();
+  });
+
+  it("toggles speaker labels when WebVTT export is on", async () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsPanel
+        settings={{ ...defaultAppSettings, exportWebVtt: true }}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onPersistSettings={vi.fn().mockResolvedValue(undefined)}
+        onLanguageChange={vi.fn()}
+        saving={false}
+      />,
+    );
+
+    const checkbox = screen.getByRole("checkbox", {
+      name: "Label speakers (Person 1 / Person 2)",
+    });
+    expect(checkbox).not.toBeDisabled();
+
+    const { default: userEvent } = await import("@testing-library/user-event");
+    await userEvent.setup().click(checkbox);
+
+    expect(onChange).toHaveBeenCalledWith({
+      ...defaultAppSettings,
+      exportWebVtt: true,
+      labelSpeakers: true,
+    });
+  });
 });

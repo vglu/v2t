@@ -40,8 +40,15 @@ vi.mock("../lib/invokeSafe", () => ({
   }),
 }));
 
-import { cancelQueueJob, processQueueItem } from "../lib/invokeSafe";
+import { transcribeBrowserTracks } from "../lib/browserWhisper";
+import {
+  browserQueueJobFinish,
+  cancelQueueJob,
+  processQueueItem,
+  releaseQueueJobSlot,
+} from "../lib/invokeSafe";
 import { defaultAppSettings } from "../types/settings";
+import type { TimedTranscript } from "../types/timedTranscript";
 
 const settingsFixture = {
   ...defaultAppSettings,
@@ -51,9 +58,13 @@ const settingsFixture = {
 
 describe("QueuePanel", () => {
   beforeEach(() => {
-    vi.mocked(processQueueItem).mockClear();
+    vi.clearAllMocks();
     vi.mocked(processQueueItem).mockResolvedValue({
       kind: "done",
+      transcriptPath: "/out/transcript.txt",
+      summary: "Saved: /out/transcript.txt",
+    });
+    vi.mocked(browserQueueJobFinish).mockResolvedValue({
       transcriptPath: "/out/transcript.txt",
       summary: "Saved: /out/transcript.txt",
     });
@@ -170,6 +181,244 @@ describe("QueuePanel", () => {
     });
     // After the queue finishes, the panel flips data-queue-running="false".
     // Language-independent.
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-panel")).toHaveAttribute(
+        "data-queue-running",
+        "false",
+      );
+    });
+  });
+
+  it("finishes with the prepared flag even if current settings differ", async () => {
+    const user = userEvent.setup();
+    vi.mocked(processQueueItem).mockResolvedValue({
+      kind: "browserPrepared",
+      tracks: [
+        {
+          wavPath: "C:\\work\\track.wav",
+          transcriptPath: "C:\\temp\\v2t-out\\track.txt",
+          skipTranscribe: false,
+        },
+      ],
+      workDir: "C:\\work",
+      deleteAudioAfter: true,
+      language: "en",
+      whisperModelId: "base",
+      exportWebVtt: true,
+    });
+    vi.mocked(transcribeBrowserTracks).mockResolvedValue([
+      {
+        text: "hello",
+        segments: [{ startMs: 0, endMs: 1000, text: "hello" }],
+      },
+    ]);
+
+    render(
+      <QueuePanel
+        settings={{ ...settingsFixture, exportWebVtt: false }}
+        readinessComplete={true}
+      />,
+    );
+    await user.type(
+      screen.getByTestId("url-input"),
+      "https://example.com/browser",
+    );
+    await user.click(screen.getByTestId("add-urls"));
+    await user.click(screen.getByTestId("start-queue"));
+
+    await waitFor(() => expect(browserQueueJobFinish).toHaveBeenCalledTimes(1));
+    expect(transcribeBrowserTracks).toHaveBeenCalledWith(
+      expect.objectContaining({ exportWebVtt: true }),
+    );
+    expect(browserQueueJobFinish).toHaveBeenCalledWith({
+      jobId: expect.any(String),
+      tracks: [
+        {
+          wavPath: "C:\\work\\track.wav",
+          transcriptPath: "C:\\temp\\v2t-out\\track.txt",
+          skipTranscribe: false,
+        },
+      ],
+      results: [
+        {
+          text: "hello",
+          segments: [{ startMs: 0, endMs: 1000, text: "hello" }],
+        },
+      ],
+      workDir: "C:\\work",
+      deleteAudioAfter: true,
+      outputDir: "C:\\temp\\v2t-out",
+      exportWebVtt: true,
+      shouldStop: expect.any(Function),
+    });
+  });
+
+  it("keeps browser finish text-only when the prepared export flag is false", async () => {
+    const user = userEvent.setup();
+    vi.mocked(processQueueItem).mockResolvedValue({
+      kind: "browserPrepared",
+      tracks: [
+        {
+          wavPath: "C:\\work\\track.wav",
+          transcriptPath: "C:\\temp\\v2t-out\\track.txt",
+          skipTranscribe: false,
+        },
+      ],
+      workDir: "C:\\work",
+      deleteAudioAfter: false,
+      language: null,
+      whisperModelId: "base",
+      exportWebVtt: false,
+    });
+    vi.mocked(transcribeBrowserTracks).mockResolvedValue([
+      { text: "legacy", segments: [] },
+    ]);
+
+    render(
+      <QueuePanel
+        settings={{ ...settingsFixture, exportWebVtt: false }}
+        readinessComplete={true}
+      />,
+    );
+    await user.type(
+      screen.getByTestId("url-input"),
+      "https://example.com/legacy-browser",
+    );
+    await user.click(screen.getByTestId("add-urls"));
+    await user.click(screen.getByTestId("start-queue"));
+
+    await waitFor(() => expect(browserQueueJobFinish).toHaveBeenCalledTimes(1));
+    expect(transcribeBrowserTracks).toHaveBeenCalledWith(
+      expect.objectContaining({ exportWebVtt: false }),
+    );
+    expect(browserQueueJobFinish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        results: [{ text: "legacy", segments: [] }],
+        exportWebVtt: false,
+      }),
+    );
+  });
+
+  it("stop after WASM resolve skips finish, releases slot once, UI cancelled", async () => {
+    const user = userEvent.setup();
+    let resolveWasm!: (value: TimedTranscript[]) => void;
+    const wasmDeferred = new Promise<TimedTranscript[]>((resolve) => {
+      resolveWasm = resolve;
+    });
+    vi.mocked(processQueueItem).mockResolvedValue({
+      kind: "browserPrepared",
+      tracks: [
+        {
+          wavPath: "C:\\work\\track.wav",
+          transcriptPath: "C:\\temp\\v2t-out\\track.txt",
+          skipTranscribe: false,
+        },
+      ],
+      workDir: "C:\\work",
+      deleteAudioAfter: true,
+      language: "en",
+      whisperModelId: "base",
+      exportWebVtt: true,
+    });
+    vi.mocked(transcribeBrowserTracks).mockReturnValue(wasmDeferred);
+
+    render(
+      <QueuePanel settings={settingsFixture} readinessComplete={true} />,
+    );
+    await user.type(
+      screen.getByTestId("url-input"),
+      "https://example.com/stop-before-finish",
+    );
+    await user.click(screen.getByTestId("add-urls"));
+    await user.click(screen.getByTestId("start-queue"));
+
+    await waitFor(() => expect(transcribeBrowserTracks).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByTestId("stop-queue"));
+    expect(cancelQueueJob).toHaveBeenCalled();
+
+    resolveWasm([
+      {
+        text: "hello",
+        segments: [{ startMs: 0, endMs: 1000, text: "hello" }],
+      },
+    ]);
+
+    await waitFor(() => {
+      const el = document.querySelector('[data-testid^="job-status-"]');
+      expect(el?.textContent).toBe("cancelled");
+    });
+    expect(browserQueueJobFinish).not.toHaveBeenCalled();
+    expect(releaseQueueJobSlot).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-panel")).toHaveAttribute(
+        "data-queue-running",
+        "false",
+      );
+    });
+  });
+
+  it("stop after outer finish gate and before invoke releases once, UI cancelled", async () => {
+    const user = userEvent.setup();
+    let resolveFinishImport!: () => void;
+    const finishImportGate = new Promise<void>((resolve) => {
+      resolveFinishImport = resolve;
+    });
+    let finishInvokeCount = 0;
+
+    vi.mocked(processQueueItem).mockResolvedValue({
+      kind: "browserPrepared",
+      tracks: [
+        {
+          wavPath: "C:\\work\\track.wav",
+          transcriptPath: "C:\\temp\\v2t-out\\track.txt",
+          skipTranscribe: false,
+        },
+      ],
+      workDir: "C:\\work",
+      deleteAudioAfter: true,
+      language: "en",
+      whisperModelId: "base",
+      exportWebVtt: true,
+    });
+    vi.mocked(transcribeBrowserTracks).mockResolvedValue([
+      {
+        text: "hello",
+        segments: [{ startMs: 0, endMs: 1000, text: "hello" }],
+      },
+    ]);
+    vi.mocked(browserQueueJobFinish).mockImplementation(async (args) => {
+      await finishImportGate;
+      if (args.shouldStop()) {
+        throw new Error("Job cancelled");
+      }
+      finishInvokeCount += 1;
+      return {
+        transcriptPath: "C:\\temp\\v2t-out\\track.txt",
+        summary: "Saved: C:\\temp\\v2t-out\\track.txt",
+      };
+    });
+
+    render(
+      <QueuePanel settings={settingsFixture} readinessComplete={true} />,
+    );
+    await user.type(
+      screen.getByTestId("url-input"),
+      "https://example.com/stop-finish-toctou",
+    );
+    await user.click(screen.getByTestId("add-urls"));
+    await user.click(screen.getByTestId("start-queue"));
+
+    await waitFor(() => expect(browserQueueJobFinish).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByTestId("stop-queue"));
+    expect(cancelQueueJob).toHaveBeenCalled();
+    resolveFinishImport();
+
+    await waitFor(() => {
+      const el = document.querySelector('[data-testid^="job-status-"]');
+      expect(el?.textContent).toBe("cancelled");
+    });
+    expect(finishInvokeCount).toBe(0);
+    expect(releaseQueueJobSlot).toHaveBeenCalledTimes(1);
     await waitFor(() => {
       expect(screen.getByTestId("queue-panel")).toHaveAttribute(
         "data-queue-running",

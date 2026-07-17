@@ -2,6 +2,26 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.8] - 2026-07-18
+
+### Added
+
+- **Timed WebVTT export.** Optional setting *Export timed transcript as WebVTT* writes a `.vtt` file next to each `.txt` (segment timestamps, millisecond precision). Plain text is still always saved.
+- **All transcription modes.** WebVTT works for Local Whisper (whisper.cpp), HTTP API (`verbose_json`), Browser/WASM (Transformers.js), and YouTube subtitle fast-path when timings exist.
+- **Speaker roles (experimental).** *Label speakers (Person 1 / Person 2)* via whisper.cpp tinydiarize (`small.en-tdrz`). Role labels only — not real names. Local Whisper + WebVTT required.
+- **REST API overrides.** `POST /v1/jobs` and batches accept `options.exportWebVtt` and `options.labelSpeakers` (camelCase). `labelSpeakers: true` also enables WebVTT for that job.
+- **Quality pipeline for local timed export:** Silero VAD (auto-downloaded with models), DTW token timestamps, word/token cue builder, chunk overlap + dedupe, fail-closed when timestamps are missing.
+
+### Fixed
+
+- Long sparse-speech cues and timestamps past media duration on local Whisper WebVTT export.
+- Crash-safe atomic publish of `.txt` + `.vtt` pairs; resume checks both files when WebVTT is enabled.
+
+### Notes
+
+- Speaker labeling uses the English tinydiarize model and is best for English meetings.
+- HTTP providers must return usable segment/word timestamps when WebVTT is on; otherwise the job fails with a clear message (no synthetic times).
+
 ## [2.0.7] - 2026-07-03
 
 ### Исправлено

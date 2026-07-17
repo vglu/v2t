@@ -71,6 +71,10 @@ export type AppSettings = {
   subtitlePriorityLangs: string[];
   /** When the subtitle fast-path runs, also save the raw `.srt` next to `.txt`. */
   keepSrt: boolean;
+  /** Also save a timed `.vtt` transcript next to the plain `.txt` output. */
+  exportWebVtt: boolean;
+  /** Label speakers as Person 1 / Person 2 via local tinydiarize (experimental). */
+  labelSpeakers: boolean;
   /** UI language. "auto" derives from navigator.language. */
   uiLanguage: UiLanguage;
   /** Local REST API server config (bind 127.0.0.1 only). */
@@ -117,6 +121,8 @@ export const defaultAppSettings: AppSettings = {
   useSubtitlesWhenAvailable: false,
   subtitlePriorityLangs: ["uk", "ru", "en"],
   keepSrt: false,
+  exportWebVtt: false,
+  labelSpeakers: false,
   uiLanguage: "auto",
   apiServer: { enabled: false, port: 8788, bearerToken: "" },
   visionMode: "disabled",
