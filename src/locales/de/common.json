@@ -4,6 +4,27 @@
     "queue": "Warteschlange",
     "settings": "Einstellungen"
   },
+  "preferences": {
+    "title": "Einstellungen",
+    "open": "Einstellungen",
+    "close": "Schließen",
+    "close_aria": "Einstellungen schließen",
+    "depth_aria": "Einstellungsbereiche",
+    "depth": {
+      "essentials": "Grundlagen",
+      "engine": "Engine",
+      "advanced": "Erweitert"
+    }
+  },
+  "context": {
+    "mode_local": "Local Whisper",
+    "mode_browser": "In-App-Whisper",
+    "mode_cloud": "Cloud-API",
+    "engine_title": "Transkriptionsmodus — Einstellungen öffnen",
+    "output_unset": "Ausgabeordner nicht gesetzt",
+    "ready": "Bereit",
+    "not_ready": "Einrichtung nötig"
+  },
   "header": {
     "lang_aria": "Sprach des Benutzens",
     "setup_guide_label": "Einrichtungshandbuch",

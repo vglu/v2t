@@ -16,6 +16,7 @@ import {
   type ApiServerInfo,
 } from "../lib/invokeSafe";
 import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
+import type { PrefsDepth, PrefsFocus } from "../types/preferences";
 import type {
   AppSettings,
   CookiesFromBrowser,
@@ -38,6 +39,11 @@ type Props = {
   /** Persist a UI-language change immediately (also drives i18next.changeLanguage). */
   onLanguageChange: (lang: UiLanguage) => void;
   saving: boolean;
+  /** Preferences depth when embedded in PreferencesSheet. Default: show all (legacy). */
+  depth?: PrefsDepth;
+  focus?: PrefsFocus;
+  /** Hide outer title when the sheet already provides one. */
+  embeddedInSheet?: boolean;
 };
 
 /** Full-name labels for the Settings panel switcher. The header switcher uses
@@ -62,8 +68,29 @@ export function SettingsPanel({
   onRefreshReadiness,
   onLanguageChange,
   saving,
+  depth,
+  focus = null,
+  embeddedInSheet = false,
 }: Props) {
   const { t } = useTranslation("settings");
+  const showEssentials = depth == null || depth === "essentials";
+  const showEngine = depth == null || depth === "engine";
+  const showAdvanced = depth == null || depth === "advanced";
+
+  useEffect(() => {
+    if (!focus) return;
+    const id = `prefs-focus-${focus}`;
+    const el = document.querySelector(`[data-prefs-focus="${focus}"], #${id}`);
+    if (el instanceof HTMLElement) {
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      el.classList.add("settings-focus-flash");
+      const timer = window.setTimeout(
+        () => el.classList.remove("settings-focus-flash"),
+        1600,
+      );
+      return () => window.clearTimeout(timer);
+    }
+  }, [focus, depth]);
   const [whisperModels, setWhisperModels] = useState<WhisperModelMeta[]>([]);
   const [defaultModelsPath, setDefaultModelsPath] = useState<string | null>(null);
   const [modelDlMsg, setModelDlMsg] = useState<string | null>(null);
@@ -379,121 +406,317 @@ export function SettingsPanel({
 
   return (
     <section
-      className="settings-panel settings-panel--embedded"
+      className={
+        embeddedInSheet
+          ? "settings-panel settings-panel--sheet"
+          : "settings-panel settings-panel--embedded"
+      }
       aria-label={t("panel_aria")}
     >
-      <h2>{t("title")}</h2>
+      {!embeddedInSheet ? <h2>{t("title")}</h2> : null}
 
-      <p className="settings-section-title">{t("section.language")}</p>
-      <label className="field">
-        <span>{t("language.field_label")}</span>
-        <select
-          aria-label={t("language.select_aria")}
-          data-testid="settings-language-switcher"
-          value={settings.uiLanguage}
-          onChange={(e) => onLanguageChange(e.target.value as UiLanguage)}
-        >
-          {FULL_LANG_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-        <p className="hint">
-          <Trans i18nKey="language.hint" t={t} components={{ strong: <strong />, code: <code /> }} />
-        </p>
-      </label>
+      {showAdvanced ? (
+        <>
+          <p className="settings-section-title">{t("section.language")}</p>
+          <label className="field">
+            <span>{t("language.field_label")}</span>
+            <select
+              aria-label={t("language.select_aria")}
+              data-testid="settings-language-switcher"
+              value={settings.uiLanguage}
+              onChange={(e) => onLanguageChange(e.target.value as UiLanguage)}
+            >
+              {FULL_LANG_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <p className="hint">
+              <Trans
+                i18nKey="language.hint"
+                t={t}
+                components={{ strong: <strong />, code: <code /> }}
+              />
+            </p>
+          </label>
+        </>
+      ) : null}
 
-      <p className="settings-section-title">{t("section.output")}</p>
-      <label className="field">
-        <span>{t("output.folder_label")}</span>
-        <div className="row-gap">
-          <input
-            type="text"
-            readOnly
-            value={settings.outputDir ?? ""}
-            placeholder={t("output.folder_placeholder")}
-          />
-          <button type="button" onClick={() => void pickOutputDir()}>
-            {t("output.browse")}
-          </button>
-          <button type="button" onClick={() => void useDocumentsAsOutput()}>
-            {t("output.use_documents")}
-          </button>
-        </div>
-      </label>
-      <p className="hint">
-        <Trans i18nKey="output.hint" t={t} components={{ strong: <strong /> }} />
-      </p>
-      <label className="field checkbox">
-        <input
-          type="checkbox"
-          checked={settings.exportWebVtt}
-          aria-describedby="export-webvtt-hint"
-          onChange={(e) =>
-            onChange({ ...settings, exportWebVtt: e.target.checked })
-          }
-        />
-        <span>{t("output.export_webvtt_label")}</span>
-      </label>
-      <p className="hint" id="export-webvtt-hint">
-        {t("output.export_webvtt_hint")}
-      </p>
-      <label
-        className="field checkbox"
-        style={settings.exportWebVtt ? undefined : { opacity: 0.55 }}
-      >
-        <input
-          type="checkbox"
-          checked={settings.labelSpeakers}
-          disabled={!settings.exportWebVtt}
-          aria-describedby="label-speakers-hint"
-          onChange={(e) =>
-            onChange({ ...settings, labelSpeakers: e.target.checked })
-          }
-        />
-        <span>{t("output.label_speakers_label")}</span>
-      </label>
-      <p className="hint" id="label-speakers-hint">
-        {t("output.label_speakers_hint")}
-      </p>
-
-      <p className="settings-section-title">{t("section.transcription")}</p>
-      <div
-        className="settings-highlight"
-        data-testid="transcription-mode-card"
-        role="group"
-        aria-label={t("transcription.transcription_aria")}
-      >
-        <label className="field mb-sm">
-          <span>{t("transcription.mode_label")}</span>
-          <select
-            aria-label={t("transcription.mode_aria")}
-            value={settings.transcriptionMode}
-            onChange={(e) =>
-              onChange({
-                ...settings,
-                transcriptionMode: e.target.value as TranscriptionMode,
-              })
-            }
-          >
-            <option value="httpApi">{t("transcription.mode_options.http_api")}</option>
-            <option value="localWhisper">{t("transcription.mode_options.local")}</option>
-            <option value="browserWhisper">{t("transcription.mode_options.browser")}</option>
-          </select>
-        </label>
-        <p className="hint settings-mode-summary">
-          {useLocal
-            ? t("transcription.mode_summary.local")
-            : useBrowser
-              ? t("transcription.mode_summary.browser")
-              : t("transcription.mode_summary.cloud")}
-        </p>
-        {useBrowser ? (
-          <p className="hint hint--warn" role="note">
-            {t("transcription.browser_warn")}
+      {showEssentials ? (
+        <>
+          <p className="settings-section-title">{t("section.output")}</p>
+          <label className="field" data-prefs-focus="output-dir" id="prefs-focus-output-dir">
+            <span>{t("output.folder_label")}</span>
+            <div className="row-gap">
+              <input
+                type="text"
+                readOnly
+                value={settings.outputDir ?? ""}
+                placeholder={t("output.folder_placeholder")}
+              />
+              <button type="button" onClick={() => void pickOutputDir()}>
+                {t("output.browse")}
+              </button>
+              <button type="button" onClick={() => void useDocumentsAsOutput()}>
+                {t("output.use_documents")}
+              </button>
+            </div>
+          </label>
+          <p className="hint">
+            <Trans i18nKey="output.hint" t={t} components={{ strong: <strong /> }} />
           </p>
-        ) : null}
+
+          <label className="field">
+            <span>{t("filename_template_label")}</span>
+            <input
+              type="text"
+              value={settings.filenameTemplate}
+              onChange={(e) =>
+                onChange({ ...settings, filenameTemplate: e.target.value })
+              }
+              placeholder={t("filename_template_placeholder")}
+            />
+          </label>
+
+          <p className="settings-section-title">{t("section.output_pack")}</p>
+          <p className="hint">{t("output_pack.intro")}</p>
+          <label className="field checkbox">
+            <input
+              type="checkbox"
+              checked={settings.exportWebVtt}
+              aria-describedby="export-webvtt-hint"
+              onChange={(e) =>
+                onChange({ ...settings, exportWebVtt: e.target.checked })
+              }
+            />
+            <span>{t("output.export_webvtt_label")}</span>
+          </label>
+          <p className="hint" id="export-webvtt-hint">
+            {t("output.export_webvtt_hint")}
+          </p>
+          <label className="field checkbox">
+            <input
+              type="checkbox"
+              checked={settings.keepDownloadedVideo}
+              onChange={(e) =>
+                onChange({ ...settings, keepDownloadedVideo: e.target.checked })
+              }
+            />
+            <span>{t("keep_video")}</span>
+          </label>
+          <label className="field checkbox">
+            <input
+              type="checkbox"
+              checked={settings.keepDownloadedAudio}
+              onChange={(e) =>
+                onChange({ ...settings, keepDownloadedAudio: e.target.checked })
+              }
+            />
+            <span>{t("keep_audio")}</span>
+          </label>
+          {settings.keepDownloadedAudio ? (
+            <label className="field">
+              <span>{t("audio_format.label")}</span>
+              <select
+                value={settings.downloadedAudioFormat}
+                onChange={(e) =>
+                  onChange({
+                    ...settings,
+                    downloadedAudioFormat: e.target
+                      .value as AppSettings["downloadedAudioFormat"],
+                  })
+                }
+              >
+                <option value="original">{t("audio_format.original")}</option>
+                <option value="m4a">{t("audio_format.m4a")}</option>
+                <option value="mp3">{t("audio_format.mp3")}</option>
+              </select>
+            </label>
+          ) : null}
+          <label className="field checkbox">
+            <input
+              type="checkbox"
+              checked={settings.deleteAudioAfter}
+              onChange={(e) =>
+                onChange({ ...settings, deleteAudioAfter: e.target.checked })
+              }
+            />
+            <span>{t("delete_audio_after")}</span>
+          </label>
+
+          <p className="settings-section-title">{t("section.transcription")}</p>
+          <div
+            className="settings-highlight"
+            data-testid="transcription-mode-card"
+            role="group"
+            aria-label={t("transcription.transcription_aria")}
+          >
+            <label className="field mb-sm">
+              <span>{t("transcription.mode_label")}</span>
+              <select
+                aria-label={t("transcription.mode_aria")}
+                value={settings.transcriptionMode}
+                onChange={(e) =>
+                  onChange({
+                    ...settings,
+                    transcriptionMode: e.target.value as TranscriptionMode,
+                  })
+                }
+              >
+                <option value="httpApi">
+                  {t("transcription.mode_options.http_api")}
+                </option>
+                <option value="localWhisper">
+                  {t("transcription.mode_options.local")}
+                </option>
+                <option value="browserWhisper">
+                  {t("transcription.mode_options.browser")}
+                </option>
+              </select>
+            </label>
+            <p className="hint settings-mode-summary">
+              {useLocal
+                ? t("transcription.mode_summary.local")
+                : useBrowser
+                  ? t("transcription.mode_summary.browser")
+                  : t("transcription.mode_summary.cloud")}
+            </p>
+            {useBrowser ? (
+              <p className="hint hint--warn" role="note">
+                {t("transcription.browser_warn")}
+              </p>
+            ) : null}
+            <p className="hint">{t("transcription.engine_depth_hint")}</p>
+          </div>
+
+          <label className="field">
+            <span>{t("language_iso.label")}</span>
+            <input
+              type="text"
+              value={settings.language ?? ""}
+              onChange={(e) =>
+                onChange({
+                  ...settings,
+                  language: e.target.value.trim() || null,
+                })
+              }
+              placeholder={t("language_iso.placeholder")}
+              aria-describedby="language-examples-hint"
+            />
+            <div
+              className="field-lang-examples"
+              role="group"
+              aria-label={t("language_iso.examples_label")}
+            >
+              <span className="field-lang-examples-label">
+                {t("language_iso.examples_label")}
+              </span>
+              <button
+                type="button"
+                className="lang-code-chip"
+                onClick={() => onChange({ ...settings, language: "ru" })}
+              >
+                {t("language_iso.ru_chip")}{" "}
+                <span className="lang-code-chip-desc">{t("language_iso.ru_desc")}</span>
+              </button>
+              <button
+                type="button"
+                className="lang-code-chip"
+                onClick={() => onChange({ ...settings, language: "uk" })}
+              >
+                {t("language_iso.uk_chip")}{" "}
+                <span className="lang-code-chip-desc">{t("language_iso.uk_desc")}</span>
+              </button>
+              <button
+                type="button"
+                className="lang-code-chip"
+                onClick={() => onChange({ ...settings, language: "en" })}
+              >
+                {t("language_iso.en_chip")}{" "}
+                <span className="lang-code-chip-desc">{t("language_iso.en_desc")}</span>
+              </button>
+            </div>
+            <p className="hint" id="language-examples-hint">
+              <Trans i18nKey="language_iso.hint" t={t} components={{ code: <code /> }} />
+            </p>
+          </label>
+
+          <p className="settings-section-title">{t("section.subtitles_fast_path")}</p>
+          <p className="hint">
+            <Trans i18nKey="subtitles.intro" t={t} components={{ strong: <strong /> }} />
+          </p>
+          <label className="field checkbox">
+            <input
+              type="checkbox"
+              data-testid="use-subtitles-toggle"
+              checked={settings.useSubtitlesWhenAvailable}
+              onChange={(e) =>
+                onChange({
+                  ...settings,
+                  useSubtitlesWhenAvailable: e.target.checked,
+                })
+              }
+            />
+            <span>{t("subtitles.toggle")}</span>
+          </label>
+          {settings.useSubtitlesWhenAvailable ? (
+            <>
+              <label className="field">
+                <span>{t("subtitles.priority_label")}</span>
+                <input
+                  type="text"
+                  data-testid="subtitle-priority-langs"
+                  value={settings.subtitlePriorityLangs.join(", ")}
+                  onChange={(e) =>
+                    onChange({
+                      ...settings,
+                      subtitlePriorityLangs: e.target.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter((s) => s.length > 0),
+                    })
+                  }
+                  placeholder={t("subtitles.priority_placeholder")}
+                />
+                <p className="hint">
+                  <Trans
+                    i18nKey="subtitles.priority_hint"
+                    t={t}
+                    components={{ code: <code /> }}
+                  />
+                </p>
+              </label>
+              <label className="field checkbox">
+                <input
+                  type="checkbox"
+                  checked={settings.keepSrt}
+                  onChange={(e) =>
+                    onChange({ ...settings, keepSrt: e.target.checked })
+                  }
+                />
+                <span>{t("subtitles.keep_srt")}</span>
+              </label>
+            </>
+          ) : null}
+        </>
+      ) : null}
+
+      {showEngine ? (
+        <div
+          className="settings-highlight"
+          data-testid="transcription-engine-card"
+          role="group"
+          aria-label={t("transcription.engine_aria")}
+        >
+          <p className="settings-section-title">{t("section.engine")}</p>
+          <p className="hint settings-mode-summary">
+            {useLocal
+              ? t("transcription.mode_summary.local")
+              : useBrowser
+                ? t("transcription.mode_summary.browser")
+                : t("transcription.mode_summary.cloud")}
+          </p>
 
         {useLocal ? (
           <div className="local-whisper-block" data-testid="local-whisper-block">
@@ -693,7 +916,11 @@ export function SettingsPanel({
               </div>
             ) : null}
 
-            <div className="settings-step-card">
+            <div
+              className="settings-step-card"
+              data-prefs-focus="whisper-model"
+              id="prefs-focus-whisper-model"
+            >
               <p className="settings-step-title">{t("local_whisper.step2_title")}</p>
               <p className="hint settings-step-body">{t("local_whisper.step2_hint")}</p>
               <label className="field">
@@ -788,6 +1015,7 @@ export function SettingsPanel({
           </div>
         ) : (
           <>
+            <div data-prefs-focus="api-credentials" id="prefs-focus-api-credentials">
             <label className="field">
               <span>{t("cloud.api_url_label")}</span>
               <input
@@ -815,6 +1043,7 @@ export function SettingsPanel({
                 onChange={(e) => onChange({ ...settings, apiKey: e.target.value })}
               />
             </label>
+            </div>
             <details className="help-details">
               <summary>{t("cloud.where_key_summary")}</summary>
               <div className="help-details-body">
@@ -850,8 +1079,11 @@ export function SettingsPanel({
             </p>
           </>
         )}
-      </div>
+        </div>
+      ) : null}
 
+      {showAdvanced ? (
+        <>
       {/* Vision / OCR section */}
       <p className="settings-section-title" aria-label={t("vision.section")}>
         {t("vision.section")}
@@ -929,6 +1161,8 @@ export function SettingsPanel({
       )}
 
       <p className="settings-section-title">{t("section.media_tools")}</p>
+      <div data-prefs-focus="ffmpeg" id="prefs-focus-ffmpeg" />
+      <div data-prefs-focus="yt-dlp" id="prefs-focus-yt-dlp" />
       {showManagedToolDownloads ? (
         <>
           {isWin ? (
@@ -1150,71 +1384,30 @@ export function SettingsPanel({
           </p>        </div>
       </details>
 
+      <p className="settings-section-title">{t("section.speakers")}</p>
+      <label
+        className="field checkbox"
+        style={settings.exportWebVtt ? undefined : { opacity: 0.55 }}
+      >
+        <input
+          type="checkbox"
+          checked={settings.labelSpeakers}
+          disabled={!settings.exportWebVtt}
+          aria-describedby="label-speakers-hint"
+          onChange={(e) =>
+            onChange({ ...settings, labelSpeakers: e.target.checked })
+          }
+        />
+        <span>{t("output.label_speakers_label")}</span>
+      </label>
+      <p className="hint" id="label-speakers-hint">
+        {t("output.label_speakers_hint")}
+      </p>
+      {!settings.exportWebVtt ? (
+        <p className="hint">{t("output.label_speakers_needs_vtt")}</p>
+      ) : null}
+
       <p className="settings-section-title">{t("section.other")}</p>
-      <label className="field">
-        <span>{t("filename_template_label")}</span>
-        <input
-          type="text"
-          value={settings.filenameTemplate}
-          onChange={(e) =>
-            onChange({ ...settings, filenameTemplate: e.target.value })
-          }
-          placeholder={t("filename_template_placeholder")}
-        />
-      </label>
-
-      <label className="field checkbox">
-        <input
-          type="checkbox"
-          checked={settings.deleteAudioAfter}
-          onChange={(e) =>
-            onChange({ ...settings, deleteAudioAfter: e.target.checked })
-          }
-        />
-        <span>{t("delete_audio_after")}</span>
-      </label>
-
-      <label className="field checkbox">
-        <input
-          type="checkbox"
-          checked={settings.keepDownloadedVideo}
-          onChange={(e) =>
-            onChange({ ...settings, keepDownloadedVideo: e.target.checked })
-          }
-        />
-        <span>{t("keep_video")}</span>
-      </label>
-
-      <label className="field checkbox">
-        <input
-          type="checkbox"
-          checked={settings.keepDownloadedAudio}
-          onChange={(e) =>
-            onChange({ ...settings, keepDownloadedAudio: e.target.checked })
-          }
-        />
-        <span>{t("keep_audio")}</span>
-      </label>
-
-      {settings.keepDownloadedAudio && (
-        <label className="field">
-          <span>{t("audio_format.label")}</span>
-          <select
-            value={settings.downloadedAudioFormat}
-            onChange={(e) =>
-              onChange({
-                ...settings,
-                downloadedAudioFormat: e.target.value as AppSettings["downloadedAudioFormat"],
-              })
-            }
-          >
-            <option value="original">{t("audio_format.original")}</option>
-            <option value="m4a">{t("audio_format.m4a")}</option>
-            <option value="mp3">{t("audio_format.mp3")}</option>
-          </select>
-        </label>
-      )}
-
       <label className="field checkbox">
         <input
           type="checkbox"
@@ -1226,107 +1419,9 @@ export function SettingsPanel({
         <span>{t("recursive_scan")}</span>
       </label>
 
-      <label className="field">
-        <span>{t("language_iso.label")}</span>
-        <input
-          type="text"
-          value={settings.language ?? ""}
-          onChange={(e) =>
-            onChange({
-              ...settings,
-              language: e.target.value.trim() || null,
-            })
-          }
-          placeholder={t("language_iso.placeholder")}
-          aria-describedby="language-examples-hint"
-        />
-        <div
-          className="field-lang-examples"
-          role="group"
-          aria-label={t("language_iso.examples_label")}
-        >
-          <span className="field-lang-examples-label">{t("language_iso.examples_label")}</span>
-          <button
-            type="button"
-            className="lang-code-chip"
-            onClick={() => onChange({ ...settings, language: "ru" })}
-          >
-            {t("language_iso.ru_chip")}{" "}
-            <span className="lang-code-chip-desc">{t("language_iso.ru_desc")}</span>
-          </button>
-          <button
-            type="button"
-            className="lang-code-chip"
-            onClick={() => onChange({ ...settings, language: "uk" })}
-          >
-            {t("language_iso.uk_chip")}{" "}
-            <span className="lang-code-chip-desc">{t("language_iso.uk_desc")}</span>
-          </button>
-          <button
-            type="button"
-            className="lang-code-chip"
-            onClick={() => onChange({ ...settings, language: "en" })}
-          >
-            {t("language_iso.en_chip")}{" "}
-            <span className="lang-code-chip-desc">{t("language_iso.en_desc")}</span>
-          </button>
-        </div>
-        <p className="hint" id="language-examples-hint">
-          <Trans i18nKey="language_iso.hint" t={t} components={{ code: <code /> }} />
-        </p>
-      </label>
-
-      <p className="settings-section-title">{t("section.subtitles_fast_path")}</p>
-      <p className="hint">
-        <Trans i18nKey="subtitles.intro" t={t} components={{ strong: <strong /> }} />
-      </p>
-      <label className="field checkbox">
-        <input
-          type="checkbox"
-          data-testid="use-subtitles-toggle"
-          checked={settings.useSubtitlesWhenAvailable}
-          onChange={(e) =>
-            onChange({ ...settings, useSubtitlesWhenAvailable: e.target.checked })
-          }
-        />
-        <span>{t("subtitles.toggle")}</span>
-      </label>
-      {settings.useSubtitlesWhenAvailable ? (
-        <>
-          <label className="field">
-            <span>{t("subtitles.priority_label")}</span>
-            <input
-              type="text"
-              data-testid="subtitle-priority-langs"
-              value={settings.subtitlePriorityLangs.join(", ")}
-              onChange={(e) =>
-                onChange({
-                  ...settings,
-                  subtitlePriorityLangs: e.target.value
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter((s) => s.length > 0),
-                })
-              }
-              placeholder={t("subtitles.priority_placeholder")}
-            />
-            <p className="hint">
-              <Trans i18nKey="subtitles.priority_hint" t={t} components={{ code: <code /> }} />
-            </p>
-          </label>
-          <label className="field checkbox">
-            <input
-              type="checkbox"
-              checked={settings.keepSrt}
-              onChange={(e) => onChange({ ...settings, keepSrt: e.target.checked })}
-            />
-            <span>{t("subtitles.keep_srt")}</span>
-          </label>
-        </>
-      ) : null}
-
       {/* REST API server. Developer-facing (tokens/ports/Swagger) — kept in
           English deliberately; localizing it adds little for the audience. */}
+      <div data-prefs-focus="api-server" id="prefs-focus-api-server">
       <p className="settings-section-title">REST API</p>
       <p className="hint">
         Local HTTP server on 127.0.0.1 for submitting jobs from another service.
@@ -1448,6 +1543,9 @@ export function SettingsPanel({
           {apiMsg ? <p className="hint">{apiMsg}</p> : null}
           {apiErr ? <p className="hint hint--warn">{apiErr}</p> : null}
         </div>
+      ) : null}
+      </div>
+        </>
       ) : null}
 
       <button type="button" className="primary" disabled={saving} onClick={onSave}>

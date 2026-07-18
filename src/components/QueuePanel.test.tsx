@@ -87,6 +87,7 @@ describe("QueuePanel", () => {
     expect(screen.getByTestId("queue-empty-hint")).not.toHaveClass(
       "queue-empty-hint-warn",
     );
+    expect(screen.getByTestId("queue-empty-triad").children).toHaveLength(3);
   });
 
   it("shows setup warning when readiness is incomplete", () => {

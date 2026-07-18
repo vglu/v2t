@@ -4,6 +4,27 @@
     "queue": "Очередь",
     "settings": "Налаштування"
   },
+  "preferences": {
+    "title": "Налаштування",
+    "open": "Налаштування",
+    "close": "Закрити",
+    "close_aria": "Закрити налаштування",
+    "depth_aria": "Розділи налаштувань",
+    "depth": {
+      "essentials": "Основне",
+      "engine": "Рушій",
+      "advanced": "Додатково"
+    }
+  },
+  "context": {
+    "mode_local": "Local Whisper",
+    "mode_browser": "Whisper у застосунку",
+    "mode_cloud": "Cloud API",
+    "engine_title": "Режим транскрипції — відкрити налаштування",
+    "output_unset": "Теку виводу не задано",
+    "ready": "Готово",
+    "not_ready": "Потрібне налаштування"
+  },
   "header": {
     "lang_aria": "Мова користувача",
     "setup_guide_label": "Встановлювач гідності",

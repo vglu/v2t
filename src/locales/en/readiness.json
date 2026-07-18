@@ -11,8 +11,8 @@
     "cloud": "Mode: <strong>Cloud API</strong> — whisper-cli and ggml model are not required."
   },
   "tools_unknown": "Tools: unknown (run inside the desktop app to detect ffmpeg / yt-dlp)",
-  "tool_hint": "Tip: in <strong>Settings</strong> — on Windows or macOS use <strong>Download ffmpeg & yt-dlp for me</strong>, or install manually.",
-  "open_settings_btn": "Open Settings",
+  "tool_hint": "Tip: in <strong>Preferences → Advanced</strong> — on Windows or macOS use <strong>Download ffmpeg & yt-dlp for me</strong>, or install manually.",
+  "open_settings_btn": "Fix in Preferences",
   "row": {
     "ffmpeg": {
       "label": "ffmpeg",

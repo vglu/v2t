@@ -2,9 +2,10 @@ import i18next from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { OnboardingWizard } from "./components/OnboardingWizard";
+import { PreferencesSheet } from "./components/PreferencesSheet";
 import { QueuePanel } from "./components/QueuePanel";
 import { ReadinessPanel } from "./components/ReadinessPanel";
-import { SettingsPanel } from "./components/SettingsPanel";
+import { WorkbenchContext } from "./components/WorkbenchContext";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "./i18n";
 import {
   checkDependencies,
@@ -16,6 +17,7 @@ import {
   validateGeminiModel,
   type ApiServerInfo,
 } from "./lib/invokeSafe";
+import type { PrefsDepth, PrefsFocus, PrefsTarget } from "./types/preferences";
 import {
   defaultAppSettings,
   type AppSettings,
@@ -57,7 +59,9 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(defaultAppSettings);
   const [deps, setDeps] = useState<DependencyReport | null>(null);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
-  const [activeTab, setActiveTab] = useState<"queue" | "settings">("queue");
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [prefsDepth, setPrefsDepth] = useState<PrefsDepth>("essentials");
+  const [prefsFocus, setPrefsFocus] = useState<PrefsFocus>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -211,9 +215,16 @@ export default function App() {
     setWizardOpen(false);
   }
 
-  const openSettingsTab = useCallback(() => {
-    setActiveTab("settings");
+  const openPreferences = useCallback((target?: PrefsTarget) => {
+    setPrefsDepth(target?.depth ?? "essentials");
+    setPrefsFocus(target?.focus ?? null);
+    setPrefsOpen(true);
     setWizardOpen(false);
+  }, []);
+
+  const closePreferences = useCallback(() => {
+    setPrefsOpen(false);
+    setPrefsFocus(null);
   }, []);
 
   return (
@@ -262,6 +273,14 @@ export default function App() {
           <button
             type="button"
             className="ghost"
+            data-testid="open-preferences-header"
+            onClick={() => openPreferences()}
+          >
+            {t("preferences.open")}
+          </button>
+          <button
+            type="button"
+            className="ghost"
             onClick={() => setWizardOpen(true)}
             title={t("header.setup_guide_title")}
             aria-label={t("header.setup_guide_aria")}
@@ -271,32 +290,17 @@ export default function App() {
         </div>
       </header>
 
-      <div className="app-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          className={activeTab === "queue" ? "app-tab app-tab--active" : "app-tab"}
-          aria-selected={activeTab === "queue"}
-          id="tab-queue"
-          data-testid="tab-queue"
-          onClick={() => setActiveTab("queue")}
-        >
-          {t("tab.queue")}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          className={
-            activeTab === "settings" ? "app-tab app-tab--active" : "app-tab"
-          }
-          aria-selected={activeTab === "settings"}
-          id="tab-settings"
-          data-testid="tab-settings"
-          onClick={() => setActiveTab("settings")}
-        >
-          {t("tab.settings")}
-        </button>
-      </div>
+      <WorkbenchContext
+        settings={{
+          transcriptionMode: settings.transcriptionMode,
+          outputDir: settings.outputDir,
+        }}
+        readinessComplete={readinessComplete}
+        onOpenPreferences={() => openPreferences({ depth: "essentials" })}
+        onChangeOutput={() =>
+          openPreferences({ depth: "essentials", focus: "output-dir" })
+        }
+      />
 
       <ReadinessPanel
         report={deps}
@@ -307,7 +311,7 @@ export default function App() {
           transcriptionMode: settings.transcriptionMode,
           whisperCliPath: settings.whisperCliPath,
         }}
-        onOpenSettings={openSettingsTab}
+        onOpenPreferences={openPreferences}
       />
 
       {toast ? (
@@ -316,34 +320,29 @@ export default function App() {
         </div>
       ) : null}
 
-      {/* Both panels stay mounted so QueuePanel's local state (jobs, log,
-          subtask progress) and Tauri event listeners survive a tab switch.
-          Backend work runs in Rust and would continue regardless, but the
-          UI used to lose visibility of it on every navigation. */}
-      <main
-        className="main-workspace"
-        role="tabpanel"
-        aria-labelledby="tab-queue"
-        hidden={activeTab !== "queue"}
-      >
+      {/* QueuePanel stays mounted under the Preferences sheet so jobs, log,
+          and Tauri listeners survive opening Preferences. */}
+      <main className="main-workspace">
         <QueuePanel settings={settings} readinessComplete={readinessComplete} />
       </main>
 
-      <div
-        role="tabpanel"
-        aria-labelledby="tab-settings"
-        hidden={activeTab !== "settings"}
-      >
-        <SettingsPanel
-          settings={settings}
-          onChange={setSettings}
-          onSave={() => void handleSave()}
-          onPersistSettings={(s) => persistSettings(s)}
-          onRefreshReadiness={() => void refreshDeps(settingsRef.current)}
-          onLanguageChange={(lang) => void handleLanguageChange(lang)}
-          saving={saving}
-        />
-      </div>
+      <PreferencesSheet
+        open={prefsOpen}
+        depth={prefsDepth}
+        focus={prefsFocus}
+        onDepthChange={(d) => {
+          setPrefsDepth(d);
+          setPrefsFocus(null);
+        }}
+        onClose={closePreferences}
+        settings={settings}
+        onChange={setSettings}
+        onSave={() => void handleSave()}
+        onPersistSettings={(s) => persistSettings(s)}
+        onRefreshReadiness={() => void refreshDeps(settingsRef.current)}
+        onLanguageChange={(lang) => void handleLanguageChange(lang)}
+        saving={saving}
+      />
 
       <OnboardingWizard
         open={wizardOpen}
@@ -352,7 +351,7 @@ export default function App() {
         patchSettings={(partial) => setSettings((s) => ({ ...s, ...partial }))}
         persistSettings={(next) => persistSettings(next)}
         refreshReadiness={() => void refreshDeps(settingsRef.current)}
-        onOpenSettings={openSettingsTab}
+        onOpenSettings={() => openPreferences()}
         onFinish={() => void finishOnboarding()}
         onClose={() => setWizardOpen(false)}
       />

@@ -4,10 +4,16 @@
   "section": {
     "language": "Language",
     "output": "Output",
-    "transcription": "Transcription & models",
+    "output_pack": "Also save…",
+    "transcription": "Transcription mode",
+    "engine": "Engine setup",
+    "speakers": "Speaker labels",
     "media_tools": "Media tools (ffmpeg, yt-dlp)",
     "subtitles_fast_path": "Subtitles fast-path",
     "other": "Other"
+  },
+  "output_pack": {
+    "intro": "Plain .txt is always written. Optionally keep timed or media siblings next to it."
   },
   "language": {
     "field_label": "UI language",
@@ -23,7 +29,8 @@
     "export_webvtt_label": "Export timed transcript as WebVTT",
     "export_webvtt_hint": "Creates an additional .vtt file with segment timestamps next to each .txt transcript. The plain-text file is still created. Speaker labels from source subtitles are preserved when present (this is not ASR speaker diarization).",
     "label_speakers_label": "Label speakers (Person 1 / Person 2)",
-    "label_speakers_hint": "Labels speakers as Person 1 / Person 2 using local tinydiarize (experimental, best for English). Requires ggml-small.en-tdrz model. Not real names."
+    "label_speakers_hint": "Labels speakers as Person 1 / Person 2 using local tinydiarize (experimental, best for English). Requires ggml-small.en-tdrz model. Not real names.",
+    "label_speakers_needs_vtt": "Enable WebVTT under Essentials → Also save… first."
   },
   "transcription": {
     "mode_label": "Transcription mode",
@@ -39,7 +46,9 @@
       "cloud": "Uses your provider's API key. whisper-cli and local models are not used."
     },
     "browser_warn": "Experimental: needs internet for the first model download; long audio may be slow or run out of memory. If this fails, switch to Cloud API or Local Whisper.",
-    "transcription_aria": "Transcription settings"
+    "transcription_aria": "Transcription settings",
+    "engine_aria": "Engine settings for the active transcription mode",
+    "engine_depth_hint": "Model paths, API credentials, and downloads live under the Engine tab."
   },
   "local_whisper": {
     "step1_title": "1 · whisper-cli (engine)",

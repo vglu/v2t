@@ -7,6 +7,7 @@ test("home shows app heading and queue workspace", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Queue" })).toBeVisible();
   await expect(page.getByTestId("drop-zone")).toBeVisible();
+  await expect(page.getByTestId("workbench-context")).toBeVisible();
   await expect(page.getByTestId("stop-queue")).toBeDisabled();
 });
 
@@ -24,18 +25,24 @@ test("queue: add URL and start (browser shows error without Tauri)", async ({
   );
 });
 
-test("settings tab opens panel", async ({ page }) => {
+test("preferences sheet opens panel", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("tab", { name: "Settings" }).click();
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.getByTestId("open-preferences").click();
+  await expect(page.getByTestId("preferences-sheet")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Preferences" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Save settings" }),
   ).toBeVisible();
 });
 
-test("settings panel shows API key storage hint", async ({ page }) => {
+test("preferences engine depth shows API key storage hint for cloud", async ({
+  page,
+}) => {
   await page.goto("/");
-  await page.getByRole("tab", { name: "Settings" }).click();
+  await page.getByTestId("open-preferences").click();
+  await page.getByTestId("prefs-depth-engine").click();
   await expect(
     page.getByText(/API key is saved in the OS credential store/i),
   ).toBeVisible();
