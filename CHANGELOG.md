@@ -2,6 +2,14 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.12] - 2026-07-18
+
+### Fixed
+
+- **yt-dlp Chrome/Edge cookies on Windows:** if cookie DB copy/decrypt fails, retry the download **without** browser cookies (public videos often work). Clearer error text points to Firefox or Disabled in Preferences.
+- **Auto cookies on Windows** now prefer **Firefox** (not Edge). Chrome/Edge app-bound encryption remains unreliable for yt-dlp.
+- **In-app Whisper (WASM):** `large-v3` / `large-v3-turbo` are no longer offered for browser mode (clamp to **medium**). OrtRun crashes get an actionable message — use local whisper-cli for large-v3 quality.
+
 ## [2.0.11] - 2026-07-18
 
 ### Changed

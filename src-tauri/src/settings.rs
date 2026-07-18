@@ -151,8 +151,10 @@ impl CookiesFromBrowser {
     pub fn yt_dlp_arg(&self) -> Option<&'static str> {
         match self {
             CookiesFromBrowser::Auto => {
+                // Firefox: plain SQLite cookies. Chrome/Edge on Windows often fail
+                // (locked DB + app-bound encryption since Chrome 127).
                 if cfg!(target_os = "windows") {
-                    Some("edge")
+                    Some("firefox")
                 } else if cfg!(target_os = "macos") {
                     Some("chrome")
                 } else {

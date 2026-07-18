@@ -105,7 +105,8 @@
   },
   "browser_whisper": {
     "model_size_title": "Размер модели (браузер)",
-    "model_size_hint": "Размер модели Whisper",
+    "model_size_hint": "Те же подписи, что у локального каталога; в приложении это Transformers.js. <strong>large-v3</strong> только для whisper-cli — in-app максимум medium.",
+    "large_model_clamped": "large-v3 / turbo слишком тяжёлые для WASM. Здесь используется medium; для large-v3 переключитесь на «На этом компьютере».",
     "model_label": "Модель",
     "model_aria": "Размер модели Whisper в приложении",
     "model_option": "{{id}} — ~{{sizeMib}} МиБ (браузер, приблизительно)"
@@ -143,7 +144,7 @@
     "cookies_label": "Источник cookies для yt-dlp (YouTube / TikTok возрастной контроль)",
     "cookies_aria": "Сайт для чтения куки из браузера",
     "cookies_options": {
-      "auto": "Автоматически (Edge на Windows, Chrome на macOS, Firefox на Linux)",
+      "auto": "Автоматически (Firefox на Windows/Linux, Chrome на macOS)",
       "chrome": "Chrome",
       "brave": "Brave",
       "edge": "Microsoft Edge",

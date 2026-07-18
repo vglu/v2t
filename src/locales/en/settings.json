@@ -105,7 +105,8 @@
   },
   "browser_whisper": {
     "model_size_title": "Model size (browser)",
-    "model_size_hint": "Same labels as the local catalog; the app maps them to Transformers.js checkpoints. No ggml <code>.bin</code> download here — weights load on first transcription (needs network once per model).",
+    "model_size_hint": "Same labels as the local catalog; the app maps them to Transformers.js checkpoints. No ggml <code>.bin</code> download here — weights load on first transcription (needs network once per model). <strong>large-v3</strong> is only for local whisper-cli — in-app stops at medium.",
+    "large_model_clamped": "large-v3 / turbo are too heavy for in-app WASM. Using medium here; switch to “On this computer” for large-v3 quality.",
     "model_label": "Model",
     "model_aria": "In-app Whisper model size",
     "model_option": "{{id}} — ~{{sizeMib}} MiB (browser, approximate)"
@@ -143,7 +144,7 @@
     "cookies_label": "Cookies source for yt-dlp (YouTube / TikTok age-gate)",
     "cookies_aria": "Browser to read cookies from",
     "cookies_options": {
-      "auto": "Auto (Edge on Windows, Chrome on macOS, Firefox on Linux)",
+      "auto": "Auto (Firefox on Windows/Linux, Chrome on macOS)",
       "chrome": "Chrome",
       "brave": "Brave",
       "edge": "Edge",

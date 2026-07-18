@@ -16,17 +16,33 @@ const CATALOG_TO_XENOVA: Record<string, string> = {
   "large-v3-turbo": "Xenova/whisper-large-v3-turbo",
 };
 
+/** Too heavy for Tauri WebView2 / onnxruntime-web (OrtRun / memory failures). */
+const BROWSER_UNSAFE_MODELS = new Set(["large-v3", "large-v3-turbo"]);
+
+export function isBrowserWhisperModelSafe(catalogId: string | undefined | null): boolean {
+  const k = (catalogId ?? "").trim().toLowerCase();
+  if (!k) return true;
+  return !BROWSER_UNSAFE_MODELS.has(k);
+}
+
+/** Prefer medium when settings still point at a local-only large model. */
+export function clampBrowserWhisperModel(catalogId: string | undefined | null): string {
+  const k = (catalogId ?? "base").trim().toLowerCase();
+  if (BROWSER_UNSAFE_MODELS.has(k)) return "medium";
+  return CATALOG_TO_XENOVA[k] ? k : "base";
+}
+
+function mapCatalogToXenova(catalogId: string | undefined | null): string {
+  const k = clampBrowserWhisperModel(catalogId);
+  return CATALOG_TO_XENOVA[k] ?? "Xenova/whisper-tiny";
+}
+
 /** Soft caps for optional word-piece → cue grouping (factual times only). */
 const WORD_PIECE_MAX_CHARS = 50;
 const WORD_PIECE_MAX_DURATION_S = 10;
 const WORD_PIECE_GAP_BREAK_S = 0.5;
 /** Median trimmed length at or below this → treat chunks as word pieces. */
 const WORD_PIECE_MEDIAN_CHAR_THRESHOLD = 12;
-
-function mapCatalogToXenova(catalogId: string | undefined | null): string {
-  const k = (catalogId ?? "base").trim().toLowerCase();
-  return CATALOG_TO_XENOVA[k] ?? "Xenova/whisper-tiny";
-}
 
 function extractAsrText(result: unknown): string {
   if (result == null) return "";
@@ -295,7 +311,14 @@ export async function transcribeBrowserTracks(args: {
   const { pipeline, env } = mod;
   configureTransformersForTauriWebview(env);
 
-  const modelId = mapCatalogToXenova(args.whisperModelId);
+  const requested = (args.whisperModelId ?? "").trim();
+  const catalogId = clampBrowserWhisperModel(requested);
+  if (requested && catalogId !== requested.toLowerCase()) {
+    args.onProgress?.(
+      `In-app Whisper cannot run "${requested}" in the webview; using ${catalogId} instead…`,
+    );
+  }
+  const modelId = mapCatalogToXenova(catalogId);
   args.onProgress?.(`Loading in-app model ${modelId}…`);
 
   let transcriber: Awaited<ReturnType<typeof pipeline>>;
@@ -303,7 +326,7 @@ export async function transcribeBrowserTracks(args: {
     transcriber = await pipeline("automatic-speech-recognition", modelId);
   } catch (e) {
     const inner = e instanceof Error ? e.message : String(e);
-    throw new Error(`Не удалось открыть модель ${modelId}: ${inner}`);
+    throw new Error(`Failed to open in-app model ${modelId}: ${inner}`);
   }
   if (args.shouldStop()) {
     throw new Error("Job cancelled");
@@ -340,8 +363,16 @@ export async function transcribeBrowserTracks(args: {
       results.push(extractAsrTranscript(raw, args.exportWebVtt));
     } catch (e) {
       const inner = e instanceof Error ? e.message : String(e);
+      if (/OrtRun|ERROR_CODE\s*=\s*1/i.test(inner)) {
+        throw new Error(
+          `In-app Whisper crashed (ONNX OrtRun) on track ${i + 1}. ` +
+            `The webview cannot run this model/audio reliably. ` +
+            `Switch transcription to "On this computer" (whisper-cli + large-v3) ` +
+            `or pick a smaller in-app model (medium or below).`,
+        );
+      }
       throw new Error(
-        `Транскрипция трека ${i + 1} не удалась (${t.wavPath}): ${inner}`,
+        `Track ${i + 1} transcription failed (${t.wavPath}): ${inner}`,
       );
     }
   }

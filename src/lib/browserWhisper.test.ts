@@ -1,8 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  clampBrowserWhisperModel,
   extractAsrTranscript,
+  isBrowserWhisperModelSafe,
   transcribeBrowserTracks,
 } from "./browserWhisper";
+
+describe("browser Whisper model safety", () => {
+  it("rejects large-v3 for in-app and clamps to medium", () => {
+    expect(isBrowserWhisperModelSafe("large-v3")).toBe(false);
+    expect(isBrowserWhisperModelSafe("large-v3-turbo")).toBe(false);
+    expect(isBrowserWhisperModelSafe("medium")).toBe(true);
+    expect(clampBrowserWhisperModel("large-v3")).toBe("medium");
+    expect(clampBrowserWhisperModel("small")).toBe("small");
+  });
+});
 
 const transcriber = vi.fn();
 const pipeline = vi.fn().mockResolvedValue(transcriber);

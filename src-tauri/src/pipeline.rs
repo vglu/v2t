@@ -63,6 +63,26 @@ fn push_yt_dlp_cookies(args: &mut Vec<String>, browser: Option<&str>) {
     args.push(b.to_string());
 }
 
+/// Chromium cookie DB lock / app-bound encryption on Windows (yt-dlp #7271 / #10927).
+pub(crate) fn yt_dlp_cookie_db_failure(stderr: &[u8]) -> bool {
+    let s = String::from_utf8_lossy(stderr).to_ascii_lowercase();
+    s.contains("could not copy") && s.contains("cookie")
+        || s.contains("cookie database") && (s.contains("permission denied") || s.contains("failed to decrypt"))
+        || s.contains("failed to decrypt with dpapi")
+}
+
+fn format_yt_dlp_fail(exit: i32, stderr: &[u8]) -> String {
+    let tail = tail_stderr(stderr);
+    if yt_dlp_cookie_db_failure(stderr) {
+        return format!(
+            "yt-dlp failed (exit {exit}): {tail}\n\n\
+Chrome/Edge/Brave cookies often fail on Windows (locked DB or app-bound encryption). \
+In Preferences → Tools set cookies to Firefox (log into YouTube there) or Disabled, then retry."
+        );
+    }
+    format!("yt-dlp failed (exit {exit}): {tail}")
+}
+
 /// yt-dlp format when `-x` postprocessing fails: best audio stream, else best single file.
 const YT_DLP_RETRY_BEST_AUDIO_FORMAT: &str = "ba/b";
 /// Last resort for DASH sources: merge best video + best audio.
@@ -719,11 +739,11 @@ pub async fn download_best_video_mp4(
         "--merge-output-format".into(),
         "mp4".into(),
         "-o".into(),
-        dest,
+        dest.clone(),
         url.trim().to_string(),
     ]);
 
-    let out = run_yt_dlp_streaming(
+    let mut out = run_yt_dlp_streaming(
         yt_dlp,
         &args,
         YT_DLP_HEARTBEAT,
@@ -732,11 +752,46 @@ pub async fn download_best_video_mp4(
         "yt-dlp-video",
     )
     .await?;
+    if !out.status.success()
+        && cookies_from_browser.is_some()
+        && yt_dlp_cookie_db_failure(&out.stderr)
+    {
+        if let Some((sink, jid)) = maybe_log.as_ref() {
+            emit_pipeline_text(
+                sink,
+                jid,
+                "yt-dlp-video",
+                "Browser cookies failed. Retrying video download without cookies…",
+            );
+        }
+        let mut retry_args: Vec<String> = Vec::new();
+        push_yt_dlp_js_runtimes(&mut retry_args, yt_dlp_js_runtimes);
+        retry_args.extend([
+            "--newline".into(),
+            "--encoding".into(),
+            "utf-8".into(),
+            "-f".into(),
+            "bv*+ba/b".into(),
+            "--merge-output-format".into(),
+            "mp4".into(),
+            "-o".into(),
+            dest,
+            url.trim().to_string(),
+        ]);
+        out = run_yt_dlp_streaming(
+            yt_dlp,
+            &retry_args,
+            YT_DLP_HEARTBEAT,
+            cancel,
+            maybe_log,
+            "yt-dlp-video",
+        )
+        .await?;
+    }
     if !out.status.success() {
-        return Err(format!(
-            "yt-dlp video download failed (exit {}): {}",
+        return Err(format_yt_dlp_fail(
             out.status.code().unwrap_or(-1),
-            tail_stderr(&out.stderr)
+            &out.stderr,
         ));
     }
     if let Some((sink, jid)) = maybe_log.as_ref() {
@@ -789,7 +844,7 @@ pub async fn prepare_media_audio(
             .replace('\\', "/");
 
         let js = yt_dlp_js_runtimes.as_deref();
-        let cookies = cookies_from_browser.as_deref();
+        let mut cookies = cookies_from_browser.as_deref();
         let tiktok = is_tiktok_url(&source);
         let args = if tiktok {
             build_yt_dlp_download_args(
@@ -831,6 +886,60 @@ pub async fn prepare_media_audio(
                 return Err(e);
             }
         };
+
+        // Chromium cookie extraction often fails on Windows; many public videos work without cookies.
+        if !out.status.success() && cookies.is_some() && yt_dlp_cookie_db_failure(&out.stderr) {
+            if let Some((sink, jid)) = maybe_log.as_ref() {
+                emit_pipeline_text(
+                    sink,
+                    jid,
+                    "yt-dlp",
+                    "Browser cookies failed (Chrome/Edge lock or encryption). Retrying without cookies…",
+                );
+            }
+            clear_work_dir_media_files(&work_dir)?;
+            cookies = None;
+            let retry_args = if tiktok {
+                build_yt_dlp_download_args(
+                    &source,
+                    &template,
+                    js,
+                    None,
+                    false,
+                    audio_format_for_yt_dlp,
+                    Some(YT_DLP_TIKTOK_H264_FORMAT),
+                    None,
+                )
+            } else {
+                build_yt_dlp_download_args(
+                    &source,
+                    &template,
+                    js,
+                    None,
+                    true,
+                    audio_format_for_yt_dlp,
+                    None,
+                    None,
+                )
+            };
+            out = match run_yt_dlp_streaming(
+                &yt_dlp,
+                &retry_args,
+                YT_DLP_HEARTBEAT,
+                cancel,
+                maybe_log,
+                "yt-dlp",
+            )
+            .await
+            {
+                Ok(o) => o,
+                Err(e) => {
+                    let _ = fs::remove_dir_all(&work_dir);
+                    return Err(e);
+                }
+            };
+        }
+
         let mut source_media_files_are_audio = !tiktok;
         if !tiktok && !out.status.success() && yt_dlp_extract_audio_probe_failed(&out.stderr) {
             if let Some((sink, jid)) = maybe_log.as_ref() {
@@ -872,10 +981,9 @@ pub async fn prepare_media_audio(
         }
         if !out.status.success() {
             let _ = fs::remove_dir_all(&work_dir);
-            return Err(format!(
-                "yt-dlp failed (exit {}): {}",
+            return Err(format_yt_dlp_fail(
                 out.status.code().unwrap_or(-1),
-                tail_stderr(&out.stderr)
+                &out.stderr,
             ));
         }
         if let Some((sink, jid)) = maybe_log.as_ref() {
@@ -1137,6 +1245,16 @@ mod tests {
         assert!(args.iter().any(|a| a == "-i"));
         assert!(args.iter().any(|a| a == "-vn"));
         assert!(args.iter().any(|a| a == "0:a:0"));
+    }
+
+    #[test]
+    fn yt_dlp_cookie_db_failure_is_detected() {
+        let chrome = b"ERROR: Could not copy Chrome cookie database. See  https://github.com/yt-dlp/yt-dlp/issues/7271  for more info";
+        assert!(yt_dlp_cookie_db_failure(chrome));
+        assert!(yt_dlp_cookie_db_failure(
+            b"ERROR: Failed to decrypt with DPAPI"
+        ));
+        assert!(!yt_dlp_cookie_db_failure(b"ERROR: Unsupported URL"));
     }
 
     #[test]

@@ -16,6 +16,10 @@ import {
   type ApiServerInfo,
 } from "../lib/invokeSafe";
 import { SPEECH_LANGUAGE_OPTIONS } from "../lib/speechLanguages";
+import {
+  clampBrowserWhisperModel,
+  isBrowserWhisperModelSafe,
+} from "../lib/browserWhisper";
 import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
 import type { PrefsDepth, PrefsFocus } from "../types/preferences";
 import type {
@@ -613,9 +617,19 @@ export function SettingsPanel({
                       name="transcription-mode"
                       value={value}
                       checked={settings.transcriptionMode === value}
-                      onChange={() =>
-                        onChange({ ...settings, transcriptionMode: value })
-                      }
+                      onChange={() => {
+                        if (value === "browserWhisper") {
+                          onChange({
+                            ...settings,
+                            transcriptionMode: value,
+                            whisperModel: clampBrowserWhisperModel(
+                              settings.whisperModel,
+                            ),
+                          });
+                          return;
+                        }
+                        onChange({ ...settings, transcriptionMode: value });
+                      }}
                     />
                     <span>
                       <strong>{title}</strong>
@@ -1015,16 +1029,23 @@ export function SettingsPanel({
                   components={{ code: <code /> }}
                 />
               </p>
+              {!isBrowserWhisperModelSafe(settings.whisperModel) ? (
+                <p className="hint help-details-warning" role="status">
+                  {t("browser_whisper.large_model_clamped")}
+                </p>
+              ) : null}
               <label className="field">
                 <span>{t("browser_whisper.model_label")}</span>
                 <select
                   aria-label={t("browser_whisper.model_aria")}
-                  value={settings.whisperModel}
+                  value={clampBrowserWhisperModel(settings.whisperModel)}
                   onChange={(e) =>
                     onChange({ ...settings, whisperModel: e.target.value })
                   }
                 >
-                  {whisperModels.map((m) => (
+                  {whisperModels
+                    .filter((m) => isBrowserWhisperModelSafe(m.id))
+                    .map((m) => (
                     <option key={m.id} value={m.id}>
                       {friendlyModelLabel(m)}
                     </option>

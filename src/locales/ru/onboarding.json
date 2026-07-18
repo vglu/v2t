@@ -74,7 +74,7 @@
     "cookies_label": "Cookies браузера для YouTube / TikTok",
     "cookies_aria": "Сайт для чтения куки из браузера",
     "cookies_options": {
-      "auto": "Автоматически",
+      "auto": "Автоматически (Firefox на Windows/Linux, Chrome на macOS)",
       "chrome": "Chrome",
       "brave": "Brave",
       "edge": "Microsoft Edge",
