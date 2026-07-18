@@ -3,6 +3,7 @@
   "modal_aria": "Onboarding wizard",
   "step_title": {
     "welcome": "Welcome",
+    "intent": "How will you use v2t?",
     "output": "Output folder",
     "tools": "ffmpeg & yt-dlp",
     "transcription": "Transcription",
@@ -11,6 +12,14 @@
     "browser": "In-app Whisper",
     "later": "Finish in Settings",
     "run": "Run jobs"
+  },
+  "intent": {
+    "intro": "Pick a starting profile. You can change it later in Preferences.",
+    "group_aria": "Usage profile",
+    "simple": "<strong>Simple</strong> — TikTok / YouTube links to plain text. Uses captions when available; light setup.",
+    "quality": "<strong>Quality</strong> — meetings and timed WebVTT. Stronger model (local large-v3 or cloud whisper-1).",
+    "power": "<strong>Power</strong> — Quality plus keep media, folder scan, SRT, and full advanced tools.",
+    "tip": "API keys and your output folder are never overwritten when you switch profiles."
   },
   "btn": {
     "back": "Back",

@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  applyPreset,
+  isSimpleSurface,
+  NAMED_PROFILES,
+  reconcileProfileId,
+  type ProfileId,
+} from "../lib/profiles";
 import type { PrefsDepth, PrefsFocus } from "../types/preferences";
 import type { AppSettings, UiLanguage } from "../types/settings";
 import { SettingsPanel } from "./SettingsPanel";
@@ -39,6 +46,11 @@ export function PreferencesSheet({
 }: Props) {
   const { t } = useTranslation("common");
   const [confirmClose, setConfirmClose] = useState(false);
+  const [pendingProfile, setPendingProfile] = useState<
+    Exclude<ProfileId, "custom"> | null
+  >(null);
+
+  const simple = isSimpleSurface(settings.profileId);
 
   const requestClose = () => {
     if (dirty) {
@@ -51,6 +63,7 @@ export function PreferencesSheet({
   useEffect(() => {
     if (!open) return;
     setConfirmClose(false);
+    setPendingProfile(null);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -62,6 +75,38 @@ export function PreferencesSheet({
   }, [dirty, open, onClose]);
 
   if (!open) return null;
+
+  const depthTabs = (
+    [
+      [
+        "essentials",
+        t("preferences.depth.essentials"),
+        t("preferences.depth_hint.essentials"),
+      ],
+      [
+        "engine",
+        t("preferences.depth.engine"),
+        t("preferences.depth_hint.engine"),
+      ],
+      [
+        "advanced",
+        simple
+          ? t("preferences.depth.tools")
+          : t("preferences.depth.advanced"),
+        simple
+          ? t("preferences.depth_hint.tools")
+          : t("preferences.depth_hint.advanced"),
+      ],
+    ] as const
+  );
+
+  const activeProfile: ProfileId =
+    settings.profileId === "simple" ||
+    settings.profileId === "quality" ||
+    settings.profileId === "power" ||
+    settings.profileId === "custom"
+      ? settings.profileId
+      : "custom";
 
   return (
     <div
@@ -97,30 +142,53 @@ export function PreferencesSheet({
           </button>
         </div>
 
+        <div
+          className="preferences-profile-bar"
+          role="group"
+          aria-label={t("preferences.profile_aria")}
+          data-testid="preferences-profile-bar"
+        >
+          <div className="preferences-profile-bar-copy">
+            <strong>{t("preferences.profile_label")}</strong>
+            <span>{t("preferences.profile_hint")}</span>
+          </div>
+          <div className="preferences-profile-seg">
+            {NAMED_PROFILES.map((id) => (
+              <button
+                key={id}
+                type="button"
+                className={
+                  activeProfile === id
+                    ? "preferences-profile-chip preferences-profile-chip--active"
+                    : "preferences-profile-chip"
+                }
+                data-testid={`prefs-profile-${id}`}
+                aria-pressed={activeProfile === id}
+                onClick={() => {
+                  if (activeProfile === id) return;
+                  setPendingProfile(id);
+                }}
+              >
+                {t(`preferences.profile.${id}`)}
+              </button>
+            ))}
+            {activeProfile === "custom" ? (
+              <span
+                className="preferences-profile-chip preferences-profile-chip--custom"
+                data-testid="prefs-profile-custom"
+              >
+                {t("preferences.profile.custom")}
+              </span>
+            ) : null}
+          </div>
+        </div>
+
         <div className="preferences-layout">
           <nav
             className="preferences-depth-nav"
             aria-label={t("preferences.depth_aria")}
           >
-            {(
-              [
-                [
-                  "essentials",
-                  t("preferences.depth.essentials"),
-                  t("preferences.depth_hint.essentials"),
-                ],
-                [
-                  "engine",
-                  t("preferences.depth.engine"),
-                  t("preferences.depth_hint.engine"),
-                ],
-                [
-                  "advanced",
-                  t("preferences.depth.advanced"),
-                  t("preferences.depth_hint.advanced"),
-                ],
-              ] as const
-            ).map(([id, label, hint]) => (
+            {depthTabs.map(([id, label, hint]) => (
               <button
                 key={id}
                 type="button"
@@ -142,7 +210,7 @@ export function PreferencesSheet({
           <div className="preferences-modal-body">
             <SettingsPanel
               settings={settings}
-              onChange={onChange}
+              onChange={(next) => onChange(reconcileProfileId(next))}
               onSave={onSave}
               onPersistSettings={onPersistSettings}
               onRefreshReadiness={onRefreshReadiness}
@@ -151,6 +219,7 @@ export function PreferencesSheet({
               depth={depth}
               focus={focus}
               embeddedInSheet
+              simpleSurface={simple}
             />
           </div>
         </div>
@@ -185,6 +254,35 @@ export function PreferencesSheet({
             </button>
           </div>
         </footer>
+
+        {pendingProfile ? (
+          <div className="preferences-close-confirm" role="alertdialog">
+            <div>
+              <strong>
+                {t("preferences.profile_apply_title", {
+                  profile: t(`preferences.profile.${pendingProfile}`),
+                })}
+              </strong>
+              <p>{t("preferences.profile_apply_body")}</p>
+            </div>
+            <div className="preferences-save-actions">
+              <button type="button" onClick={() => setPendingProfile(null)}>
+                {t("preferences.profile_apply_cancel")}
+              </button>
+              <button
+                type="button"
+                className="primary"
+                data-testid="prefs-profile-apply-confirm"
+                onClick={() => {
+                  onChange(applyPreset(settings, pendingProfile));
+                  setPendingProfile(null);
+                }}
+              >
+                {t("preferences.profile_apply_confirm")}
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {confirmClose ? (
           <div className="preferences-close-confirm" role="alertdialog">

@@ -45,6 +45,8 @@ type Props = {
   focus?: PrefsFocus;
   /** Hide outer title when the sheet already provides one. */
   embeddedInSheet?: boolean;
+  /** Simple profile: hide Vision / speakers / REST / recursive (tools stay). */
+  simpleSurface?: boolean;
 };
 
 /** Full-name labels for the Settings panel switcher. The header switcher uses
@@ -84,11 +86,13 @@ export function SettingsPanel({
   depth,
   focus = null,
   embeddedInSheet = false,
+  simpleSurface = false,
 }: Props) {
   const { t } = useTranslation("settings");
   const showEssentials = depth == null || depth === "essentials";
   const showEngine = depth == null || depth === "engine";
   const showAdvanced = depth == null || depth === "advanced";
+  const showPowerAdvanced = showAdvanced && !simpleSurface;
 
   useEffect(() => {
     if (!focus) return;
@@ -1109,6 +1113,8 @@ export function SettingsPanel({
 
       {showAdvanced ? (
         <>
+      {showPowerAdvanced ? (
+        <>
       {/* Vision / OCR section */}
       <p className="settings-section-title" aria-label={t("vision.section")}>
         {t("vision.section")}
@@ -1184,6 +1190,8 @@ export function SettingsPanel({
           )}
         </>
       )}
+        </>
+      ) : null}
 
       <p className="settings-section-title">{t("section.media_tools")}</p>
       <div data-prefs-focus="ffmpeg" id="prefs-focus-ffmpeg" />
@@ -1409,6 +1417,8 @@ export function SettingsPanel({
           </p>        </div>
       </details>
 
+      {showPowerAdvanced ? (
+        <>
       <p className="settings-section-title">{t("section.speakers")}</p>
       <label
         className="field checkbox"
@@ -1570,6 +1580,8 @@ export function SettingsPanel({
         </div>
       ) : null}
       </div>
+        </>
+      ) : null}
         </>
       ) : null}
 

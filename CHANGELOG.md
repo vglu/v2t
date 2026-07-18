@@ -2,6 +2,19 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.10] - 2026-07-18
+
+### Added
+
+- **Usage profiles (Simple / Quality / Power).** Intent presets for TikTok/YouTube vs meeting-grade WebVTT vs power-user tooling. Chosen in onboarding; switchable in Preferences (shows **Custom** when you diverge). API keys, output folder, and tool paths are preserved on switch.
+- Simple profile keeps a Tools tab (ffmpeg / yt-dlp / cookies) but hides Vision, speakers, REST API, and recursive scan.
+
+### Notes
+
+- **Quality** ≈ high-quality WebVTT defaults from v2.0.9 recommendations (`exportWebVtt`, `large-v3` / `whisper-1`, keep audio).
+- **Power** adds keep video, SRT, recursive folder scan, and full advanced surface.
+- Existing installs without `profileId` load as **Custom** (no silent rewrite).
+
 ## [2.0.9] - 2026-07-18
 
 ### Added
@@ -330,6 +343,7 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.10]: https://github.com/vglu/v2t/releases/tag/v2.0.10
 [2.0.9]: https://github.com/vglu/v2t/releases/tag/v2.0.9
 [2.0.8]: https://github.com/vglu/v2t/releases/tag/v2.0.8
 [2.0.7]: https://github.com/vglu/v2t/releases/tag/v2.0.7

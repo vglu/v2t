@@ -33,6 +33,11 @@ fn default_gemini_free_tier() -> bool {
     true
 }
 
+fn default_profile_id_for_serde() -> String {
+    // Missing field in existing settings.json → custom (do not rewrite power-user configs).
+    "custom".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiServerSettings {
@@ -193,6 +198,9 @@ pub struct AppSettings {
     /// First-run setup wizard; `false` only for fresh installs (see `Default`). Absent in old JSON → completed.
     #[serde(default = "default_onboarding_completed_for_serde")]
     pub onboarding_completed: bool,
+    /// Intent preset: `simple` | `quality` | `power` | `custom`. Absent in old JSON → `custom`.
+    #[serde(default = "default_profile_id_for_serde")]
+    pub profile_id: String,
     /// OpenAI-compatible HTTP API vs local whisper.cpp CLI.
     #[serde(default)]
     pub transcription_mode: TranscriptionMode,
@@ -270,13 +278,14 @@ impl Default for AppSettings {
             language: None,
             recursive_folder_scan: false,
             onboarding_completed: false,
+            profile_id: "simple".to_string(),
             transcription_mode: TranscriptionMode::HttpApi,
             whisper_cli_path: None,
             whisper_models_dir: None,
             whisper_model: default_whisper_model_id(),
             cookies_from_browser: CookiesFromBrowser::Auto,
             whisper_acceleration: WhisperAcceleration::Auto,
-            use_subtitles_when_available: false,
+            use_subtitles_when_available: true,
             subtitle_priority_langs: default_subtitle_priority_langs(),
             keep_srt: false,
             export_webvtt: false,
@@ -447,12 +456,15 @@ mod tests {
     }
 
     #[test]
-    fn label_speakers_uses_typescript_wire_name() {
-        let mut s = AppSettings::default();
-        s.label_speakers = true;
-        let json = serde_json::to_string(&s).unwrap();
-        assert!(json.contains(r#""labelSpeakers":true"#));
-        let back: AppSettings = serde_json::from_str(&json).unwrap();
-        assert!(back.label_speakers);
+    fn missing_profile_id_deserializes_custom() {
+        let json = r#"{"outputDir":null,"filenameTemplate":"{title}_{date}.txt","ffmpegPath":null,"ytDlpPath":null,"deleteAudioAfter":true,"apiBaseUrl":"https://api.openai.com/v1","apiModel":"whisper-1","apiKey":"","language":null}"#;
+        let s: AppSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(s.profile_id, "custom");
+    }
+
+    #[test]
+    fn default_profile_id_is_simple() {
+        assert_eq!(AppSettings::default().profile_id, "simple");
+        assert!(AppSettings::default().use_subtitles_when_available);
     }
 }

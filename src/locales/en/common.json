@@ -15,13 +15,28 @@
     "depth": {
       "essentials": "General",
       "engine": "Transcription",
-      "advanced": "Tools & advanced"
+      "advanced": "Tools & advanced",
+      "tools": "Tools"
     },
     "depth_hint": {
       "essentials": "Where results go and what to keep",
       "engine": "Online, on this computer, or in the app",
-      "advanced": "Downloads, automation, and troubleshooting"
+      "advanced": "Downloads, automation, and troubleshooting",
+      "tools": "ffmpeg, yt-dlp, and browser cookies"
     },
+    "profile_aria": "Usage profile",
+    "profile_label": "Profile",
+    "profile_hint": "Presets for quality and complexity. Keys and folders stay when you switch.",
+    "profile": {
+      "simple": "Simple",
+      "quality": "Quality",
+      "power": "Power",
+      "custom": "Custom"
+    },
+    "profile_apply_title": "Switch to {{profile}}?",
+    "profile_apply_body": "This updates export, model, and quality defaults. API keys, output folder, and tool paths are kept.",
+    "profile_apply_cancel": "Cancel",
+    "profile_apply_confirm": "Apply profile",
     "saved": "All changes saved",
     "unsaved": "You have unsaved changes",
     "save": "Save changes",
