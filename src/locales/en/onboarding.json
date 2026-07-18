@@ -16,23 +16,34 @@
   "intent": {
     "intro": "Pick a starting profile. You can change it later in Preferences.",
     "group_aria": "Usage profile",
-    "simple": "<strong>Simple</strong> — TikTok / YouTube links to plain text. Uses captions when available; light setup.",
-    "quality": "<strong>Quality</strong> — meetings and timed WebVTT. Stronger model (local large-v3 or cloud whisper-1).",
-    "power": "<strong>Power</strong> — Quality plus keep media, folder scan, SRT, and full advanced tools.",
+    "label": {
+      "simple": "Simple",
+      "quality": "Quality",
+      "power": "Power"
+    },
+    "blurb": {
+      "simple": "TikTok / YouTube links to plain text. Uses captions when available; lightest setup — in-app Whisper by default.",
+      "quality": "Meetings and timed WebVTT. Stronger model (local large-v3 or cloud whisper-1).",
+      "power": "Quality plus keep media, folder scan, SRT, cookies/Deno tools, and full advanced options."
+    },
     "tip": "API keys and your output folder are never overwritten when you switch profiles."
   },
   "btn": {
     "back": "Back",
     "next": "Next",
-    "skip": "Skip setup",
+    "skip": "Finish later",
     "done": "Done",
     "saving": "Saving…",
-    "open_settings": "Open Settings",
+    "open_settings": "Open Preferences",
     "close_aria": "Close"
   },
   "checklist_tip": "The checklist on the main screen updates as you go.",
   "welcome": {
-    "intro": "<strong>Video to Text</strong> turns video, audio, and links into text files. A short setup walks you through tools, transcription, and the queue."
+    "intro": "<strong>Video to Text</strong> turns video, audio, and links into text files. A short setup matches your profile — then you can start the queue."
+  },
+  "done": {
+    "simple_tip": "Simple keeps advanced options hidden in Preferences. Switch profile anytime if you need WebVTT or stronger models.",
+    "power_tip": "REST, speakers, and other advanced controls live in Preferences → Tools & advanced."
   },
   "output": {
     "intro": "Choose where <strong>.txt</strong> transcripts are saved. <strong>Documents</strong> is the default and matches the checklist when selected.",
@@ -50,8 +61,8 @@
     "btn_install": "Install ffmpeg & yt-dlp for me",
     "btn_installing": "Downloading…",
     "install_success": "<strong>All set.</strong> ffmpeg and yt-dlp are installed; paths were saved. The checklist above should show them as found.",
-    "tip_manual": "Or install manually and set paths later in <strong>Settings</strong>.",
-    "linux_hint": "On Linux install <code>ffmpeg</code> and <code>yt-dlp</code> with your package manager, then set paths in <strong>Settings</strong>.",
+    "tip_manual": "Or install manually and set paths later in <strong>Preferences</strong>.",
+    "linux_hint": "On Linux install <code>ffmpeg</code> and <code>yt-dlp</code> with your package manager, then set paths in <strong>Preferences</strong>.",
     "js_runtimes_label": "yt-dlp JS runtimes (optional)",
     "js_runtimes_aria": "yt-dlp JavaScript runtimes for EJS",
     "js_runtimes_placeholder": "e.g. deno — see yt-dlp wiki (EJS)",
@@ -132,5 +143,9 @@
   "run_step": {
     "intro": "Add files, folders, or paste links into the queue, then press <strong>Start queue</strong>.",
     "tip": "If something fails, check the log at the bottom and the checklist above."
+  },
+  "done": {
+    "simple_tip": "Simple stays lightweight: captions are used when available and everything lands in plain .txt files.",
+    "power_tip": "Power keeps downloaded media, SRT files, and scans folders recursively — check Settings → Tools & advanced if you want to change any of that."
   }
 }

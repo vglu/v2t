@@ -304,6 +304,7 @@ export default function App() {
           <button
             type="button"
             className="ghost"
+            data-testid="open-setup-guide"
             onClick={() => setWizardOpen(true)}
             title={t("header.setup_guide_title")}
             aria-label={t("header.setup_guide_aria")}

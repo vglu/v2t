@@ -2,6 +2,19 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.11] - 2026-07-18
+
+### Changed
+
+- **Setup guide (onboarding) redesign.** Light theme aligned with Preferences; profile chips (Simple / Quality / Power) instead of dark radios.
+- **Profile-gated setup paths.** Simple = short path (5 steps, in-app Whisper by default, no Deno/cookies). Quality / Power = full tools + transcription + engine (7 steps). Power keeps Deno / cookies advanced tools.
+- Documents folder is auto-filled on the Output step when empty; Escape closes the wizard (does not mark setup complete); “Finish later” completes onboarding.
+
+### Fixed
+
+- **Preferences layout:** profile bar no longer overlaps General / Transcription / Tools tabs (grid row collision at 800×600).
+- Preferences content area gets usable height again — scrolling the settings pane actually moves content (profile card no longer ate the viewport via `flex-basis` height).
+
 ## [2.0.10] - 2026-07-18
 
 ### Added

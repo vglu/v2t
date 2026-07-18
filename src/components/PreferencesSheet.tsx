@@ -123,63 +123,65 @@ export function PreferencesSheet({
         aria-modal="true"
         aria-labelledby="preferences-title"
       >
-        <div className="preferences-modal-head">
-          <div>
-            <span className="preferences-eyebrow">
-              {t("preferences.eyebrow")}
-            </span>
-            <h2 id="preferences-title">{t("preferences.title")}</h2>
-            <p>{t("preferences.subtitle")}</p>
-          </div>
-          <button
-            type="button"
-            className="ghost preferences-close"
-            data-testid="preferences-close"
-            aria-label={t("preferences.close_aria")}
-            onClick={requestClose}
-          >
-            {t("preferences.close")}
-          </button>
-        </div>
-
-        <div
-          className="preferences-profile-bar"
-          role="group"
-          aria-label={t("preferences.profile_aria")}
-          data-testid="preferences-profile-bar"
-        >
-          <div className="preferences-profile-bar-copy">
-            <strong>{t("preferences.profile_label")}</strong>
-            <span>{t("preferences.profile_hint")}</span>
-          </div>
-          <div className="preferences-profile-seg">
-            {NAMED_PROFILES.map((id) => (
-              <button
-                key={id}
-                type="button"
-                className={
-                  activeProfile === id
-                    ? "preferences-profile-chip preferences-profile-chip--active"
-                    : "preferences-profile-chip"
-                }
-                data-testid={`prefs-profile-${id}`}
-                aria-pressed={activeProfile === id}
-                onClick={() => {
-                  if (activeProfile === id) return;
-                  setPendingProfile(id);
-                }}
-              >
-                {t(`preferences.profile.${id}`)}
-              </button>
-            ))}
-            {activeProfile === "custom" ? (
-              <span
-                className="preferences-profile-chip preferences-profile-chip--custom"
-                data-testid="prefs-profile-custom"
-              >
-                {t("preferences.profile.custom")}
+        <div className="preferences-modal-top">
+          <div className="preferences-modal-head">
+            <div>
+              <span className="preferences-eyebrow">
+                {t("preferences.eyebrow")}
               </span>
-            ) : null}
+              <h2 id="preferences-title">{t("preferences.title")}</h2>
+              <p>{t("preferences.subtitle")}</p>
+            </div>
+            <button
+              type="button"
+              className="ghost preferences-close"
+              data-testid="preferences-close"
+              aria-label={t("preferences.close_aria")}
+              onClick={requestClose}
+            >
+              {t("preferences.close")}
+            </button>
+          </div>
+
+          <div
+            className="preferences-profile-bar"
+            role="group"
+            aria-label={t("preferences.profile_aria")}
+            data-testid="preferences-profile-bar"
+          >
+            <div className="preferences-profile-bar-copy">
+              <strong>{t("preferences.profile_label")}</strong>
+              <span>{t("preferences.profile_hint")}</span>
+            </div>
+            <div className="preferences-profile-seg">
+              {NAMED_PROFILES.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={
+                    activeProfile === id
+                      ? "preferences-profile-chip preferences-profile-chip--active"
+                      : "preferences-profile-chip"
+                  }
+                  data-testid={`prefs-profile-${id}`}
+                  aria-pressed={activeProfile === id}
+                  onClick={() => {
+                    if (activeProfile === id) return;
+                    setPendingProfile(id);
+                  }}
+                >
+                  {t(`preferences.profile.${id}`)}
+                </button>
+              ))}
+              {activeProfile === "custom" ? (
+                <span
+                  className="preferences-profile-chip preferences-profile-chip--custom"
+                  data-testid="prefs-profile-custom"
+                >
+                  {t("preferences.profile.custom")}
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
 

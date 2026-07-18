@@ -11,14 +11,16 @@ import {
   installDeno,
   listWhisperModels,
 } from "../lib/invokeSafe";
+import {
+  defaultModeForProfile,
+  stepsForProfile,
+  titleKeyForStep,
+  type IntentChoice,
+  type ModeChoice,
+} from "../lib/onboardingSteps";
 import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
 import type { AppSettings, CookiesFromBrowser, GpuInfo, TranscriptionMode, WhisperModelMeta } from "../types/settings";
-import { applyPreset, type ProfileId } from "../lib/profiles";
-
-const TOTAL_STEPS = 7;
-
-type ModeChoice = "cloud" | "local" | "browser" | "later";
-type IntentChoice = Exclude<ProfileId, "custom">;
+import { applyPreset } from "../lib/profiles";
 
 type Props = {
   open: boolean;
@@ -34,27 +36,20 @@ type Props = {
   onClose: () => void;
 };
 
-function stepTitleKey(step: number, modeChoice: ModeChoice): string {
-  switch (step) {
-    case 0:
-      return "step_title.welcome";
-    case 1:
-      return "step_title.intent";
-    case 2:
-      return "step_title.output";
-    case 3:
-      return "step_title.tools";
-    case 4:
-      return "step_title.transcription";
-    case 5:
-      if (modeChoice === "cloud") return "step_title.cloud";
-      if (modeChoice === "local") return "step_title.local";
-      if (modeChoice === "browser") return "step_title.browser";
-      return "step_title.later";
-    case 6:
-      return "step_title.run";
-    default:
-      return "";
+const PROFILE_CHIPS = [
+  ["simple", "intent.label.simple"],
+  ["quality", "intent.label.quality"],
+  ["power", "intent.label.power"],
+] as const;
+
+function blurbKeyForIntent(id: IntentChoice) {
+  switch (id) {
+    case "simple":
+      return "intent.blurb.simple" as const;
+    case "quality":
+      return "intent.blurb.quality" as const;
+    case "power":
+      return "intent.blurb.power" as const;
   }
 }
 
@@ -99,7 +94,7 @@ export function OnboardingWizard({
   onClose,
 }: Props) {
   const { t } = useTranslation("onboarding");
-  const [step, setStep] = useState(0);
+  const [stepIndex, setStepIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [modeChoice, setModeChoice] = useState<ModeChoice>("cloud");
   const [intentChoice, setIntentChoice] = useState<IntentChoice>(() => {
@@ -161,7 +156,9 @@ export function OnboardingWizard({
 
   useEffect(() => {
     if (wizardOpen && !prevOpen.current) {
-      setStep(0);
+      setStepIndex(0);
+      const id = settings.profileId;
+      setIntentChoice(id === "quality" || id === "power" || id === "simple" ? id : "simple");
       setModeChoice(
         settings.transcriptionMode === "localWhisper"
           ? "local"
@@ -185,7 +182,19 @@ export function OnboardingWizard({
       setDenoInstallSuccess(false);
     }
     prevOpen.current = wizardOpen;
-  }, [wizardOpen, settings.transcriptionMode]);
+  }, [wizardOpen, settings.transcriptionMode, settings.profileId]);
+
+  useEffect(() => {
+    if (!wizardOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [wizardOpen, onClose]);
 
   useEffect(() => {
     if (!wizardOpen) return;
@@ -265,9 +274,30 @@ export function OnboardingWizard({
     };
   }, []);
 
+  useEffect(() => {
+    if (!wizardOpen) return;
+    const path = stepsForProfile(intentChoice);
+    const id = path[Math.min(stepIndex, path.length - 1)];
+    if (id !== "output") return;
+    if (settings.outputDir?.trim()) return;
+    let cancelled = false;
+    void defaultDocumentsDir().then((doc) => {
+      if (cancelled || !doc?.trim()) return;
+      patchSettings({ outputDir: doc });
+      setOutputError(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Only when entering the output step — avoid loops on every settings tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [wizardOpen, stepIndex, intentChoice]);
+
   if (!wizardOpen) return null;
 
-  const last = step >= TOTAL_STEPS - 1;
+  const steps = stepsForProfile(intentChoice);
+  const currentStep = steps[Math.min(stepIndex, steps.length - 1)];
+  const last = stepIndex === steps.length - 1;
 
   async function handleFinish() {
     setBusy(true);
@@ -412,115 +442,101 @@ export function OnboardingWizard({
   }
 
   async function goNext() {
-    if (step === 1) {
-      const next = applyPreset(settings, intentChoice);
-      setBusy(true);
-      try {
-        await persistSettings(next);
-      } finally {
-        setBusy(false);
-      }
-      setStep(2);
-      return;
-    }
-
-    if (step === 2) {
-      if (!settings.outputDir?.trim()) {
-        setOutputError(t("output.error_pick_folder"));
+    switch (currentStep) {
+      case "profile": {
+        const withPreset = applyPreset(settings, intentChoice);
+        const mode = defaultModeForProfile(intentChoice);
+        const tm: TranscriptionMode = mode === "browser" ? "browserWhisper" : "localWhisper";
+        setModeChoice(mode);
+        setBusy(true);
+        try {
+          await persistSettings({ ...withPreset, transcriptionMode: tm });
+        } finally {
+          setBusy(false);
+        }
+        setStepIndex((i) => i + 1);
         return;
       }
-      setOutputError(null);
-      setBusy(true);
-      try {
-        await persistSettings(settings);
-      } finally {
-        setBusy(false);
-      }
-      setStep(3);
-      return;
-    }
-
-    if (step === 4) {
-      const tm: TranscriptionMode =
-        modeChoice === "local"
-          ? "localWhisper"
-          : modeChoice === "browser"
-            ? "browserWhisper"
-            : modeChoice === "cloud"
-              ? "httpApi"
-              : settings.transcriptionMode;
-      const next =
-        modeChoice === "later" ? { ...settings } : { ...settings, transcriptionMode: tm };
-      setBusy(true);
-      try {
-        await persistSettings(next);
-      } finally {
-        setBusy(false);
-      }
-      setStep(5);
-      return;
-    }
-
-    if (step === 5 && modeChoice === "cloud") {
-      if (!settings.apiKey?.trim()) {
-        setCloudError(t("cloud_step.error_no_key"));
+      case "output": {
+        if (!settings.outputDir?.trim()) {
+          setOutputError(t("output.error_pick_folder"));
+          return;
+        }
+        setOutputError(null);
+        setBusy(true);
+        try {
+          await persistSettings(settings);
+        } finally {
+          setBusy(false);
+        }
+        setStepIndex((i) => i + 1);
         return;
       }
-      setCloudError(null);
-      setBusy(true);
-      try {
-        await persistSettings({ ...settings, transcriptionMode: "httpApi" });
-      } finally {
-        setBusy(false);
+      case "mode": {
+        const tm: TranscriptionMode =
+          modeChoice === "local"
+            ? "localWhisper"
+            : modeChoice === "browser"
+              ? "browserWhisper"
+              : modeChoice === "cloud"
+                ? "httpApi"
+                : settings.transcriptionMode;
+        const next = modeChoice === "later" ? { ...settings } : { ...settings, transcriptionMode: tm };
+        setBusy(true);
+        try {
+          await persistSettings(next);
+        } finally {
+          setBusy(false);
+        }
+        setStepIndex((i) => i + 1);
+        return;
       }
-      setStep(6);
-      return;
-    }
-
-    if (step === 5 && modeChoice === "local") {
-      setBusy(true);
-      try {
-        await persistSettings({ ...settings, transcriptionMode: "localWhisper" });
-      } finally {
-        setBusy(false);
+      case "engine": {
+        if (modeChoice === "cloud" && !settings.apiKey?.trim()) {
+          setCloudError(t("cloud_step.error_no_key"));
+          return;
+        }
+        setCloudError(null);
+        const tm: TranscriptionMode | null =
+          modeChoice === "cloud"
+            ? "httpApi"
+            : modeChoice === "local"
+              ? "localWhisper"
+              : modeChoice === "browser"
+                ? "browserWhisper"
+                : null;
+        setBusy(true);
+        try {
+          await persistSettings(tm ? { ...settings, transcriptionMode: tm } : settings);
+        } finally {
+          setBusy(false);
+        }
+        setStepIndex((i) => i + 1);
+        return;
       }
-      setStep(6);
-      return;
+      case "welcome":
+      case "tools":
+        setStepIndex((i) => i + 1);
+        return;
+      case "done":
+        return;
     }
-
-    if (step === 5 && modeChoice === "browser") {
-      setBusy(true);
-      try {
-        await persistSettings({ ...settings, transcriptionMode: "browserWhisper" });
-      } finally {
-        setBusy(false);
-      }
-      setStep(6);
-      return;
-    }
-
-    if (step === 5 && modeChoice === "later") {
-      setStep(6);
-      return;
-    }
-
-    setStep((s) => s + 1);
   }
 
   function goBack() {
     setCloudError(null);
     setOutputError(null);
-    setStep((s) => Math.max(0, s - 1));
+    setStepIndex((i) => Math.max(0, i - 1));
   }
 
-  const titleKey = stepTitleKey(step, modeChoice);
+  const titleKey = titleKeyForStep(currentStep, modeChoice);
   // `t` types are inferred from the typed CustomTypeOptions augmentation; the
   // dynamic key needs a cast to satisfy the literal-union signature.
-  const title = titleKey ? (t as (k: string) => string)(titleKey) : "";
+  const title = (t as (k: string) => string)(titleKey);
 
   const body = (() => {
-    switch (step) {
-      case 0:
+    switch (currentStep) {
+      case "welcome":
         return (
           <>
             <p>
@@ -529,40 +545,40 @@ export function OnboardingWizard({
             <p className="onboarding-tip">{t("checklist_tip")}</p>
           </>
         );
-      case 1:
+      case "profile":
         return (
           <>
             <p>{t("intent.intro")}</p>
             <div
-              className="onboarding-radio-group"
-              role="radiogroup"
+              className="onboarding-profile-chip-group"
+              role="group"
               aria-label={t("intent.group_aria")}
               data-testid="onboarding-intent"
             >
-              {(
-                [
-                  ["simple", "intent.simple"],
-                  ["quality", "intent.quality"],
-                  ["power", "intent.power"],
-                ] as const
-              ).map(([id, key]) => (
-                <label className="onboarding-radio" key={id}>
-                  <input
-                    type="radio"
-                    name="wiz-intent"
-                    checked={intentChoice === id}
-                    onChange={() => setIntentChoice(id)}
-                  />
-                  <span>
-                    <Trans i18nKey={key} t={t} components={{ strong: <strong /> }} />
-                  </span>
-                </label>
+              {PROFILE_CHIPS.map(([id, labelKey]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={
+                    intentChoice === id
+                      ? "onboarding-profile-chip onboarding-profile-chip--active"
+                      : "onboarding-profile-chip"
+                  }
+                  data-testid={`onboarding-profile-${id}`}
+                  aria-pressed={intentChoice === id}
+                  onClick={() => setIntentChoice(id)}
+                >
+                  {t(labelKey)}
+                </button>
               ))}
             </div>
+            <p className="onboarding-profile-blurb">
+              <Trans i18nKey={blurbKeyForIntent(intentChoice)} t={t} components={{ strong: <strong /> }} />
+            </p>
             <p className="onboarding-tip">{t("intent.tip")}</p>
           </>
         );
-      case 2:
+      case "output":
         return (
           <>
             <p>
@@ -597,7 +613,7 @@ export function OnboardingWizard({
             )}
           </>
         );
-      case 3:
+      case "tools":
         return (
           <>
             <p>
@@ -640,102 +656,106 @@ export function OnboardingWizard({
                 />
               </p>
             )}
-            <div className="onboarding-block">
-              <label className="field onboarding-field">
-                <span>{t("tools.js_runtimes_label")}</span>
-                <input
-                  type="text"
-                  value={settings.ytDlpJsRuntimes ?? ""}
-                  onChange={(e) => patchSettings({ ytDlpJsRuntimes: e.target.value.trim() || null })}
-                  placeholder={t("tools.js_runtimes_placeholder")}
-                  aria-label={t("tools.js_runtimes_aria")}
-                />
-                <div
-                  className="field-lang-examples"
-                  role="group"
-                  aria-label={t("tools.js_runtimes_aria")}
-                >
-                  <span className="field-lang-examples-label">{t("tools.common_label")}</span>
-                  <button
-                    type="button"
-                    className="lang-code-chip"
-                    onClick={() => patchSettings({ ytDlpJsRuntimes: "deno" })}
-                  >
-                    deno
-                  </button>
-                  <button
-                    type="button"
-                    className="lang-code-chip"
-                    onClick={() => patchSettings({ ytDlpJsRuntimes: "nodejs" })}
-                  >
-                    nodejs
-                  </button>
-                  <button
-                    type="button"
-                    className="lang-code-chip"
-                    onClick={() => patchSettings({ ytDlpJsRuntimes: "node" })}
-                  >
-                    node
-                  </button>
-                </div>
-              </label>
-              <p className="onboarding-tip">
-                <Trans i18nKey="tools.js_runtimes_tip" t={t} components={{ code: <code /> }} />
-              </p>
-              {showManagedToolDownloads ? (
-                <>
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={denoDlBusy || busy}
-                    onClick={() => void onInstallDeno()}
-                  >
-                    {denoDlBusy ? t("tools.btn_install_deno_busy") : t("tools.btn_install_deno")}
-                  </button>
-                  {denoDlProgress && denoDlProgress.total != null && denoDlProgress.total > 0 ? (
-                    <div className="download-progress-wrap onboarding-progress">
-                      <progress value={denoDlProgress.received} max={denoDlProgress.total} />
+            {intentChoice === "power" ? (
+              <div data-testid="onboarding-tools-advanced">
+                <div className="onboarding-block">
+                  <label className="field onboarding-field">
+                    <span>{t("tools.js_runtimes_label")}</span>
+                    <input
+                      type="text"
+                      value={settings.ytDlpJsRuntimes ?? ""}
+                      onChange={(e) => patchSettings({ ytDlpJsRuntimes: e.target.value.trim() || null })}
+                      placeholder={t("tools.js_runtimes_placeholder")}
+                      aria-label={t("tools.js_runtimes_aria")}
+                    />
+                    <div
+                      className="field-lang-examples"
+                      role="group"
+                      aria-label={t("tools.js_runtimes_aria")}
+                    >
+                      <span className="field-lang-examples-label">{t("tools.common_label")}</span>
+                      <button
+                        type="button"
+                        className="lang-code-chip"
+                        onClick={() => patchSettings({ ytDlpJsRuntimes: "deno" })}
+                      >
+                        deno
+                      </button>
+                      <button
+                        type="button"
+                        className="lang-code-chip"
+                        onClick={() => patchSettings({ ytDlpJsRuntimes: "nodejs" })}
+                      >
+                        nodejs
+                      </button>
+                      <button
+                        type="button"
+                        className="lang-code-chip"
+                        onClick={() => patchSettings({ ytDlpJsRuntimes: "node" })}
+                      >
+                        node
+                      </button>
                     </div>
+                  </label>
+                  <p className="onboarding-tip">
+                    <Trans i18nKey="tools.js_runtimes_tip" t={t} components={{ code: <code /> }} />
+                  </p>
+                  {showManagedToolDownloads ? (
+                    <>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={denoDlBusy || busy}
+                        onClick={() => void onInstallDeno()}
+                      >
+                        {denoDlBusy ? t("tools.btn_install_deno_busy") : t("tools.btn_install_deno")}
+                      </button>
+                      {denoDlProgress && denoDlProgress.total != null && denoDlProgress.total > 0 ? (
+                        <div className="download-progress-wrap onboarding-progress">
+                          <progress value={denoDlProgress.received} max={denoDlProgress.total} />
+                        </div>
+                      ) : null}
+                      {denoDlMsg && denoDlBusy ? (
+                        <p className="hint onboarding-hint">{denoDlMsg}</p>
+                      ) : null}
+                      {denoInstallSuccess ? (
+                        <WizardSuccessBanner>
+                          <Trans
+                            i18nKey="tools.deno_success"
+                            t={t}
+                            components={{ strong: <strong />, code: <code /> }}
+                          />
+                        </WizardSuccessBanner>
+                      ) : null}
+                      {denoDlError ? <WizardErrorBanner>{denoDlError}</WizardErrorBanner> : null}
+                    </>
                   ) : null}
-                  {denoDlMsg && denoDlBusy ? (
-                    <p className="hint onboarding-hint">{denoDlMsg}</p>
-                  ) : null}
-                  {denoInstallSuccess ? (
-                    <WizardSuccessBanner>
-                      <Trans
-                        i18nKey="tools.deno_success"
-                        t={t}
-                        components={{ strong: <strong />, code: <code /> }}
-                      />
-                    </WizardSuccessBanner>
-                  ) : null}
-                  {denoDlError ? <WizardErrorBanner>{denoDlError}</WizardErrorBanner> : null}
-                </>
-              ) : null}
-            </div>
-            <div className="onboarding-block">
-              <label className="field onboarding-field">
-                <span>{t("tools.cookies_label")}</span>
-                <select
-                  aria-label={t("tools.cookies_aria")}
-                  value={settings.cookiesFromBrowser}
-                  onChange={(e) => patchSettings({ cookiesFromBrowser: e.target.value as CookiesFromBrowser })}
-                >
-                  <option value="auto">{t("tools.cookies_options.auto")}</option>
-                  <option value="chrome">{t("tools.cookies_options.chrome")}</option>
-                  <option value="brave">{t("tools.cookies_options.brave")}</option>
-                  <option value="edge">{t("tools.cookies_options.edge")}</option>
-                  <option value="firefox">{t("tools.cookies_options.firefox")}</option>
-                  <option value="none">{t("tools.cookies_options.none")}</option>
-                </select>
-              </label>
-              <p className="onboarding-tip">
-                <Trans i18nKey="tools.cookies_tip" t={t} components={{ strong: <strong /> }} />
-              </p>
-            </div>
+                </div>
+                <div className="onboarding-block">
+                  <label className="field onboarding-field">
+                    <span>{t("tools.cookies_label")}</span>
+                    <select
+                      aria-label={t("tools.cookies_aria")}
+                      value={settings.cookiesFromBrowser}
+                      onChange={(e) => patchSettings({ cookiesFromBrowser: e.target.value as CookiesFromBrowser })}
+                    >
+                      <option value="auto">{t("tools.cookies_options.auto")}</option>
+                      <option value="chrome">{t("tools.cookies_options.chrome")}</option>
+                      <option value="brave">{t("tools.cookies_options.brave")}</option>
+                      <option value="edge">{t("tools.cookies_options.edge")}</option>
+                      <option value="firefox">{t("tools.cookies_options.firefox")}</option>
+                      <option value="none">{t("tools.cookies_options.none")}</option>
+                    </select>
+                  </label>
+                  <p className="onboarding-tip">
+                    <Trans i18nKey="tools.cookies_tip" t={t} components={{ strong: <strong /> }} />
+                  </p>
+                </div>
+              </div>
+            ) : null}
           </>
         );
-      case 4:
+      case "mode":
         return (
           <>
             <p>{t("mode.intro")}</p>
@@ -799,7 +819,7 @@ export function OnboardingWizard({
             </div>
           </>
         );
-      case 5:
+      case "engine":
         if (modeChoice === "browser") {
           return (
             <>
@@ -1106,13 +1126,19 @@ export function OnboardingWizard({
             </button>
           </>
         );
-      case 6:
+      case "done":
         return (
           <>
             <p>
               <Trans i18nKey="run_step.intro" t={t} components={{ strong: <strong /> }} />
             </p>
             <p className="onboarding-tip">{t("run_step.tip")}</p>
+            {intentChoice === "simple" ? (
+              <p className="onboarding-tip">{t("done.simple_tip")}</p>
+            ) : null}
+            {intentChoice === "power" ? (
+              <p className="onboarding-tip">{t("done.power_tip")}</p>
+            ) : null}
           </>
         );
       default:
@@ -1122,8 +1148,8 @@ export function OnboardingWizard({
 
   const nextDisabled =
     busy ||
-    (step === 2 && toolDlBusy) ||
-    (step === 4 && modeChoice === "local" && (modelDlBusy || whisperCliBusy));
+    (currentStep === "tools" && toolDlBusy) ||
+    (currentStep === "engine" && modeChoice === "local" && (modelDlBusy || whisperCliBusy));
 
   return (
     <div className="onboarding-backdrop" role="presentation">
@@ -1135,14 +1161,14 @@ export function OnboardingWizard({
         data-testid="onboarding-wizard"
       >
         <p className="onboarding-step-label">
-          {t("step_label", { current: step + 1, total: TOTAL_STEPS })}
+          {t("step_label", { current: stepIndex + 1, total: steps.length })}
         </p>
         <h2 id="onboarding-title" className="onboarding-modal-title">
           {title}
         </h2>
         <div className="onboarding-body">{body}</div>
         <div className="onboarding-actions">
-          {step > 0 ? (
+          {stepIndex > 0 ? (
             <button
               type="button"
               disabled={busy || toolDlBusy || modelDlBusy || whisperCliBusy}
@@ -1157,7 +1183,7 @@ export function OnboardingWizard({
             <button type="button" className="ghost" disabled={busy} onClick={() => void handleFinish()}>
               {t("btn.skip")}
             </button>
-            {step === 5 ? (
+            {currentStep === "engine" ? (
               <button type="button" disabled={busy} onClick={onOpenSettings}>
                 {t("btn.open_settings")}
               </button>
