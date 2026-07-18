@@ -5,7 +5,6 @@ import { OnboardingWizard } from "./components/OnboardingWizard";
 import { PreferencesSheet } from "./components/PreferencesSheet";
 import { QueuePanel } from "./components/QueuePanel";
 import { ReadinessPanel } from "./components/ReadinessPanel";
-import { WorkbenchContext } from "./components/WorkbenchContext";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "./i18n";
 import {
   checkDependencies,
@@ -57,6 +56,7 @@ const HEADER_LANG_OPTIONS: ReadonlyArray<{ value: UiLanguage; label: string }> =
 export default function App() {
   const { t } = useTranslation("common");
   const [settings, setSettings] = useState<AppSettings>(defaultAppSettings);
+  const [prefsDraft, setPrefsDraft] = useState<AppSettings>(defaultAppSettings);
   const [deps, setDeps] = useState<DependencyReport | null>(null);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -70,6 +70,10 @@ export default function App() {
   const [apiInfo, setApiInfo] = useState<ApiServerInfo | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const prefsDirty = useMemo(
+    () => JSON.stringify(prefsDraft) !== JSON.stringify(settings),
+    [prefsDraft, settings],
+  );
 
   const refreshDeps = useCallback(async (s: AppSettings) => {
     const r = await checkDependencies({
@@ -100,6 +104,7 @@ export default function App() {
         next.outputDir = docDir;
       }
       setSettings(next);
+      setPrefsDraft(next);
       await refreshDeps(next);
       setSettingsHydrated(true);
     })();
@@ -183,13 +188,18 @@ export default function App() {
     [],
   );
 
-  async function handleSave() {
+  async function handleSave(): Promise<boolean> {
     setSaving(true);
     setToast(null);
-    const ok = await saveSettings(settings);
+    const ok = await saveSettings(prefsDraft);
     setSaving(false);
     setToast(ok ? t("toast.saved") : t("toast.save_failed"));
-    if (ok) await refreshDeps(settings);
+    if (ok) {
+      settingsRef.current = prefsDraft;
+      setSettings(prefsDraft);
+      await refreshDeps(prefsDraft);
+    }
+    return ok;
   }
 
   async function persistSettings(next: AppSettings) {
@@ -216,6 +226,7 @@ export default function App() {
   }
 
   const openPreferences = useCallback((target?: PrefsTarget) => {
+    setPrefsDraft(settingsRef.current);
     setPrefsDepth(target?.depth ?? "essentials");
     setPrefsFocus(target?.focus ?? null);
     setPrefsOpen(true);
@@ -230,8 +241,12 @@ export default function App() {
   return (
     <div className="app-root">
       <header className="app-header">
-        <h1>Video to Text</h1>
-        <p className="tagline">{t("tagline")}</p>
+        <div className="app-brand">
+          <span className="brand-wave" aria-hidden>
+            <i /><i /><i /><i /><i />
+          </span>
+          <h1>Video to Text</h1>
+        </div>
         <div className="app-header-actions">
           {appVersion ? (
             <span className="app-version-badge" data-testid="app-version-badge">
@@ -290,18 +305,6 @@ export default function App() {
         </div>
       </header>
 
-      <WorkbenchContext
-        settings={{
-          transcriptionMode: settings.transcriptionMode,
-          outputDir: settings.outputDir,
-        }}
-        readinessComplete={readinessComplete}
-        onOpenPreferences={() => openPreferences({ depth: "essentials" })}
-        onChangeOutput={() =>
-          openPreferences({ depth: "essentials", focus: "output-dir" })
-        }
-      />
-
       <ReadinessPanel
         report={deps}
         documentsPath={documentsPath}
@@ -323,7 +326,13 @@ export default function App() {
       {/* QueuePanel stays mounted under the Preferences sheet so jobs, log,
           and Tauri listeners survive opening Preferences. */}
       <main className="main-workspace">
-        <QueuePanel settings={settings} readinessComplete={readinessComplete} />
+        <QueuePanel
+          settings={settings}
+          readinessComplete={readinessComplete}
+          onOpenOutputSettings={() =>
+            openPreferences({ depth: "essentials", focus: "output-dir" })
+          }
+        />
       </main>
 
       <PreferencesSheet
@@ -335,12 +344,19 @@ export default function App() {
           setPrefsFocus(null);
         }}
         onClose={closePreferences}
-        settings={settings}
-        onChange={setSettings}
-        onSave={() => void handleSave()}
-        onPersistSettings={(s) => persistSettings(s)}
-        onRefreshReadiness={() => void refreshDeps(settingsRef.current)}
-        onLanguageChange={(lang) => void handleLanguageChange(lang)}
+        onDiscard={() => setPrefsDraft(settings)}
+        dirty={prefsDirty}
+        settings={prefsDraft}
+        onChange={setPrefsDraft}
+        onSave={handleSave}
+        onPersistSettings={async (s) => {
+          setPrefsDraft(s);
+          await persistSettings(s);
+        }}
+        onRefreshReadiness={() => void refreshDeps(prefsDraft)}
+        onLanguageChange={(lang) =>
+          setPrefsDraft((current) => ({ ...current, uiLanguage: lang }))
+        }
         saving={saving}
       />
 

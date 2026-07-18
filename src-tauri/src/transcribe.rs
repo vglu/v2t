@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use crate::pipeline::{self, JOB_CANCELLED_MSG};
 use crate::timed_transcript::{
     build_cues_from_words, chunk_checkpoint_set_key, merge_overlapping_chunk_transcripts,
+    plain_text_from_segments,
     read_timed_checkpoint, require_timed_segments_for_export, secs_to_ms, sha256_file_hex,
     validate_segments_against_media_duration, write_timed_checkpoint, TimedSegment,
     TimedTranscript, TimedWord, CHUNK_OVERLAP_SECS, SEGMENT_END_DURATION_TOLERANCE_MS,
@@ -108,14 +109,10 @@ pub fn parse_verbose_transcription_json(
             ));
         };
 
-    let text = if text_from_root.is_empty() {
-        segments
-            .iter()
-            .map(|segment| segment.text.as_str())
-            .collect::<Vec<_>>()
-            .join(" ")
-    } else {
+    let text = if segments.is_empty() {
         text_from_root
+    } else {
+        plain_text_from_segments(&segments)
     };
 
     if !text.trim().is_empty() && segments.is_empty() {

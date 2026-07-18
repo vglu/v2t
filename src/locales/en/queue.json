@@ -1,6 +1,75 @@
 {
   "title": "Queue",
   "panel_aria": "Queue",
+  "workspace": {
+    "title": "Transcribe media",
+    "subtitle": "Add links, files, or folders."
+  },
+  "steps": {
+    "source": {
+      "title": "Choose what to transcribe",
+      "hint": "Paste links or choose files from this computer.",
+      "links": "Links",
+      "files": "Files & folders"
+    },
+    "result": {
+      "title": "Check the result",
+      "hint": "Files will be saved here when each item is done.",
+      "folder": "Save to",
+      "not_set": "Choose a folder",
+      "creates": "Creates",
+      "change": "Change"
+    },
+    "start": {
+      "title": "Start the batch",
+      "empty": "Add at least one item above.",
+      "count": "{{count}} ready"
+    },
+    "queue": {
+      "eyebrow": "Batch",
+      "title": "Current batch",
+      "count": "{{count}} item(s)",
+      "empty": "No items yet"
+    }
+  },
+  "profile": {
+    "title": "Defaults",
+    "applies_to_batch": "Used for every item in this batch",
+    "save_to": "Save to",
+    "processing": "Speech recognition",
+    "files": "Files",
+    "output": "Output",
+    "change": "Change…",
+    "mode": {
+      "online": "Online service",
+      "computer": "On this computer",
+      "app": "Inside the app"
+    }
+  },
+  "language": {
+    "label": "Language for new items",
+    "applies_to_batch": "Applies to newly added items",
+    "item_aria": "Video language for {{title}}",
+    "options": {
+      "auto": "Detect automatically",
+      "en": "English",
+      "ru": "Russian",
+      "uk": "Ukrainian",
+      "de": "German",
+      "es": "Spanish",
+      "fr": "French",
+      "pt": "Portuguese",
+      "pl": "Polish",
+      "it": "Italian",
+      "nl": "Dutch",
+      "tr": "Turkish",
+      "ar": "Arabic",
+      "zh": "Chinese",
+      "ja": "Japanese",
+      "ko": "Korean",
+      "hi": "Hindi"
+    }
+  },
   "empty_hint": {
     "ready_when_you_are": "<strong>Ready when you are.</strong> Drop files or folders here, paste video links, or use the buttons below — then press <strong>Start queue</strong>.",
     "ready_lead": "<strong>Ready when you are.</strong> Add sources any way you like:",
@@ -10,13 +79,16 @@
     "ready_then": "Then press <strong>Start queue</strong>.",
     "finish_setup_first": "<strong>Finish setup first.</strong> Follow the checklist above (green dots). Open <strong>Preferences</strong> if anything is missing, or use <strong>Setup guide</strong> for a short tour."
   },
-  "drop_zone": "Drop files or folders here (native drop uses system paths).",
+  "drop_zone_title": "Drop files or a folder here",
+  "drop_zone": "Drop files here, or choose them below.",
   "btn": {
-    "add_files": "Add files…",
-    "add_folder": "Add folder…",
-    "add_urls": "Add URLs",
-    "start": "Start queue",
-    "stop": "Stop queue",
+    "add_files": "Choose files",
+    "add_folder": "Choose folder",
+    "add_urls": "Add items",
+    "add_item": "Add item",
+    "add_items": "Add {{count}} items",
+    "start": "Start batch",
+    "stop": "Stop batch",
     "clear_done": "Clear done",
     "clear_all": "Clear all"
   },
@@ -27,6 +99,7 @@
   "table": {
     "label_header": "Label",
     "kind_header": "Kind",
+    "language_header": "Language",
     "status_header": "Status",
     "actions_header": "Actions",
     "no_jobs": "No jobs yet",

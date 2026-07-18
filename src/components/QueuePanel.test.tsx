@@ -70,35 +70,58 @@ describe("QueuePanel", () => {
     });
   });
 
-  it("stop queue is disabled while idle", () => {
+  it("hides stop while idle", () => {
     render(
       <QueuePanel settings={settingsFixture} readinessComplete={true} />,
     );
-    expect(screen.getByTestId("stop-queue")).toBeDisabled();
+    expect(screen.queryByTestId("stop-queue")).not.toBeInTheDocument();
   });
 
-  it("shows friendly empty-queue hint when readiness is complete", () => {
+  it("shows source, shared batch profile, and queue when ready", () => {
     render(
       <QueuePanel settings={settingsFixture} readinessComplete={true} />,
     );
-    // Class variant is the language-independent signal (text content varies
-    // per locale once M3d catalogs ship).
-    expect(screen.getByTestId("queue-empty-hint")).toHaveClass("queue-empty-hint-ok");
-    expect(screen.getByTestId("queue-empty-hint")).not.toHaveClass(
-      "queue-empty-hint-warn",
-    );
-    expect(screen.getByTestId("queue-empty-triad").children).toHaveLength(3);
+    expect(screen.getByRole("heading", { name: "Transcribe media" })).toBeVisible();
+    expect(screen.getByTestId("batch-profile-bar")).toHaveTextContent("Defaults");
+    expect(screen.getByRole("heading", { name: /Current batch/ })).toBeVisible();
   });
 
-  it("shows setup warning when readiness is incomplete", () => {
+  it("keeps start disabled when setup is incomplete", () => {
     render(
       <QueuePanel settings={settingsFixture} readinessComplete={false} />,
     );
-    expect(screen.getByTestId("queue-empty-hint")).toHaveClass(
-      "queue-empty-hint-warn",
+    expect(screen.getByTestId("start-queue")).toBeDisabled();
+  });
+
+  it("uses the default language and allows a per-item override", async () => {
+    const user = userEvent.setup();
+    render(
+      <QueuePanel
+        settings={{ ...settingsFixture, language: "de" }}
+        readinessComplete={true}
+      />,
     );
-    expect(screen.getByTestId("queue-empty-hint")).not.toHaveClass(
-      "queue-empty-hint-ok",
+
+    expect(screen.getByTestId("batch-language-select")).toHaveValue("de");
+    await user.type(
+      screen.getByTestId("url-input"),
+      "https://example.com/video",
+    );
+    await user.click(screen.getByTestId("add-urls"));
+
+    const itemLanguage = document.querySelector(
+      ".queue-language-select",
+    ) as HTMLSelectElement;
+    expect(itemLanguage).toHaveValue("de");
+    await user.selectOptions(itemLanguage, "uk");
+    await user.click(screen.getByTestId("start-queue"));
+
+    await waitFor(() =>
+      expect(processQueueItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          settings: expect.objectContaining({ language: "uk" }),
+        }),
+      ),
     );
   });
 

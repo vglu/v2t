@@ -1,6 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 import {
   browserQueueJobFinish,
   cancelQueueJob,
@@ -18,6 +18,7 @@ import {
   parseInputLines,
   shortLabel,
 } from "../lib/queueUtils";
+import { SPEECH_LANGUAGE_OPTIONS } from "../lib/speechLanguages";
 import type {
   JobProgressSnapshot,
   QueueJob,
@@ -32,9 +33,19 @@ type Props = {
   settings: AppSettings;
   /** Derived in App from deps + output folder + API key */
   readinessComplete: boolean;
+  onOpenOutputSettings?: () => void;
 };
 
 const MAX_LOG = 200;
+
+function shortOutputFolder(path: string | null | undefined, fallback: string): string {
+  const trimmed = path?.trim();
+  if (!trimmed) return fallback;
+  const parts = trimmed.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts.length === 0) return fallback;
+  if (parts.length === 1) return parts[0];
+  return parts.slice(-2).join("\\");
+}
 
 /** Match a log line emitted from the queue-job-progress listener that carries
  * a yt-dlp `[download] N% …` bucket. Used by the "Show download percentages"
@@ -86,10 +97,18 @@ function IconOpenFile({ className }: { className?: string }) {
   );
 }
 
-export function QueuePanel({ settings, readinessComplete }: Props) {
+export function QueuePanel({
+  settings,
+  readinessComplete,
+  onOpenOutputSettings,
+}: Props) {
   const { t } = useTranslation("queue");
   const { recursiveFolderScan } = settings;
   const [urlDraft, setUrlDraft] = useState("");
+  const [sourceMode, setSourceMode] = useState<"links" | "files">("links");
+  const [batchLanguage, setBatchLanguage] = useState<string | null>(
+    settings.language,
+  );
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [jobProgress, setJobProgress] = useState<
@@ -136,12 +155,39 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
     void sessionLogAppendUi(line);
   }, []);
 
-  const addJobs = useCallback((incoming: Omit<QueueJob, "id" | "status">[]) => {
-    if (incoming.length === 0) return;
-    setJobs((prev) => [
-      ...prev,
-      ...incoming.map((j) => ({ ...j, id: newJobId(), status: "pending" as const })),
-    ]);
+  useEffect(() => {
+    setBatchLanguage(settings.language);
+  }, [settings.language]);
+
+  const addJobs = useCallback(
+    (incoming: Omit<QueueJob, "id" | "status" | "language">[]) => {
+      if (incoming.length === 0) return;
+      setJobs((prev) => [
+        ...prev,
+        ...incoming.map((j) => ({
+          ...j,
+          id: newJobId(),
+          language: batchLanguage,
+          status: "pending" as const,
+        })),
+      ]);
+    },
+    [batchLanguage],
+  );
+
+  const changeBatchLanguage = useCallback((next: string | null) => {
+    // Only affects newly added items. Already queued rows keep their own language.
+    setBatchLanguage(next);
+  }, []);
+
+  const changeJobLanguage = useCallback((jobId: string, next: string | null) => {
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.id === jobId && job.status !== "running" && job.status !== "done"
+          ? { ...job, language: next }
+          : job,
+      ),
+    );
   }, []);
 
   const onPathsDropped = useCallback(
@@ -428,7 +474,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
             source: job.source,
             sourceKind: job.kind === "url" ? "url" : "file",
             displayLabel: job.displayLabel,
-            settings,
+            settings: { ...settings, language: job.language },
           });
 
           let result: { transcriptPath: string; summary: string };
@@ -617,12 +663,60 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
     [addJobs, appendLog, t],
   );
 
-  const queueEmpty = jobs.length === 0;
-
   const visibleLogLines = useMemo(() => {
     if (showDownloadPercents) return logLines;
     return logLines.filter((l) => !YT_DLP_PERCENT_LINE_RE.test(l));
   }, [logLines, showDownloadPercents]);
+
+  const pendingUrlCount = useMemo(
+    () =>
+      urlDraft
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean).length,
+    [urlDraft],
+  );
+
+  const addUrlsLabel =
+    pendingUrlCount <= 0
+      ? t("btn.add_urls")
+      : pendingUrlCount === 1
+        ? t("btn.add_item")
+        : t("btn.add_items", { count: pendingUrlCount });
+
+  const outputFormatChips = [
+    { id: "txt", label: "TXT", kind: "txt" as const },
+    settings.exportWebVtt
+      ? { id: "vtt", label: "VTT", kind: "vtt" as const }
+      : null,
+    settings.keepSrt ? { id: "srt", label: "SRT", kind: "srt" as const } : null,
+  ].filter(
+    (chip): chip is { id: string; label: string; kind: "txt" | "vtt" | "srt" } =>
+      chip !== null,
+  );
+
+  const outputFolderLabel = shortOutputFolder(
+    settings.outputDir,
+    t("steps.result.not_set"),
+  );
+
+  const languageSelect = (
+    <label className="quick-language">
+      <span>{t("language.label")}</span>
+      <select
+        data-testid="batch-language-select"
+        aria-label={t("language.label")}
+        value={batchLanguage ?? ""}
+        onChange={(event) => changeBatchLanguage(event.target.value || null)}
+      >
+        {SPEECH_LANGUAGE_OPTIONS.map(({ value, key, defaultLabel }) => (
+          <option key={value || "auto"} value={value}>
+            {t(`language.options.${key}`, { defaultValue: defaultLabel })}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 
   return (
     <section
@@ -631,77 +725,123 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
       data-testid="queue-panel"
       data-queue-running={queueRunning ? "true" : "false"}
     >
-      <h2>{t("title")}</h2>
+      <header className="queue-intro">
+        <h2>{t("workspace.title")}</h2>
+        <p>{t("workspace.subtitle")}</p>
+      </header>
 
-      {queueEmpty ? (
-        <div
-          className={`queue-empty-hint ${readinessComplete ? "queue-empty-hint-ok" : "queue-empty-hint-warn"}`}
-          data-testid="queue-empty-hint"
-        >
-          {readinessComplete ? (
-            <>
-              <p className="queue-empty-lead">
-                <Trans
-                  i18nKey="empty_hint.ready_lead"
-                  t={t}
-                  components={{ strong: <strong /> }}
-                />
-              </p>
-              <ul className="queue-empty-triad" data-testid="queue-empty-triad">
-                <li>{t("empty_hint.triad_drop")}</li>
-                <li>{t("empty_hint.triad_paste")}</li>
-                <li>{t("empty_hint.triad_folder")}</li>
-              </ul>
-              <p className="queue-empty-then">
-                <Trans
-                  i18nKey="empty_hint.ready_then"
-                  t={t}
-                  components={{ strong: <strong /> }}
-                />
-              </p>
-            </>
-          ) : (
-            <Trans
-              i18nKey="empty_hint.finish_setup_first"
-              t={t}
-              components={{ strong: <strong /> }}
+      <section className="source-composer">
+        <div className="source-mode-switch" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sourceMode === "links"}
+            className={sourceMode === "links" ? "source-mode--active" : ""}
+            onClick={() => setSourceMode("links")}
+          >
+            {t("steps.source.links")}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sourceMode === "files"}
+            className={sourceMode === "files" ? "source-mode--active" : ""}
+            onClick={() => setSourceMode("files")}
+          >
+            {t("steps.source.files")}
+          </button>
+        </div>
+
+        <div hidden={sourceMode !== "links"} className="source-panel">
+          <label className="field url-field">
+            <span className="sr-only">{t("url_field.label")}</span>
+            <textarea
+              data-testid="url-input"
+              value={urlDraft}
+              onChange={(e) => setUrlDraft(e.target.value)}
+              rows={3}
+              placeholder={t("url_field.placeholder")}
             />
+          </label>
+        </div>
+
+        <div
+          hidden={sourceMode !== "files"}
+          className="drop-zone source-panel"
+          data-testid="drop-zone"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <p>{t("drop_zone")}</p>
+        </div>
+
+        <div className="source-composer-actions">
+          {languageSelect}
+          {sourceMode === "links" ? (
+            <button
+              type="button"
+              className="primary motion-button motion-button--add"
+              data-testid="add-urls"
+              onClick={addUrlsFromDraft}
+            >
+              {addUrlsLabel}
+            </button>
+          ) : (
+            <div className="queue-toolbar">
+              <button
+                type="button"
+                className="motion-button"
+                onClick={() => void addFilesViaDialog()}
+              >
+                {t("btn.add_files")}
+              </button>
+              <button
+                type="button"
+                className="motion-button"
+                onClick={() => void addFolder()}
+              >
+                {t("btn.add_folder")}
+              </button>
+            </div>
           )}
         </div>
-      ) : null}
+      </section>
 
-      <div
-        className="drop-zone"
-        data-testid="drop-zone"
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-      >
-        <p>{t("drop_zone")}</p>
-        <div className="queue-toolbar">
-          <button type="button" onClick={() => void addFilesViaDialog()}>
-            {t("btn.add_files")}
-          </button>
-          <button type="button" onClick={() => void addFolder()}>
-            {t("btn.add_folder")}
-          </button>
+      <div className="batch-profile-bar" data-testid="batch-profile-bar">
+        <strong className="batch-profile-label">{t("profile.title")}</strong>
+        <div className="batch-profile-facts">
+          <div className="batch-profile-fact">
+            <span>{t("profile.save_to")}</span>
+            <strong title={settings.outputDir ?? undefined}>
+              {outputFolderLabel}
+            </strong>
+          </div>
+          <div className="batch-profile-fact batch-profile-fact--formats">
+            <span>{t("profile.output")}</span>
+            <div className="format-plaques" aria-label={t("profile.output")}>
+              {outputFormatChips.map((chip) => (
+                <span
+                  key={chip.id}
+                  className={`format-plaque format-plaque--${chip.kind}`}
+                >
+                  {chip.label}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
+        {onOpenOutputSettings ? (
+          <button
+            type="button"
+            className="profile-change-button"
+            onClick={onOpenOutputSettings}
+          >
+            {t("profile.change")}
+          </button>
+        ) : null}
       </div>
-
-      <label className="field url-field">
-        <span>{t("url_field.label")}</span>
-        <textarea
-          data-testid="url-input"
-          value={urlDraft}
-          onChange={(e) => setUrlDraft(e.target.value)}
-          rows={4}
-          placeholder={t("url_field.placeholder")}
-        />
-      </label>
-      <button type="button" data-testid="add-urls" onClick={addUrlsFromDraft}>
-        {t("btn.add_urls")}
-      </button>
 
       {ocrEstimate !== null && ocrEstimate.imageCount > 0 && (
         <div className="ocr-cost-badge">
@@ -714,50 +854,65 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
         </div>
       )}
 
-      <div className="queue-run-row">
+      <section className="batch-workspace">
+      <div className="batch-workspace-head">
+        <div>
+          <h3>
+            {t("steps.queue.title")}
+            {jobs.length > 0 ? (
+              <span className="batch-count"> · {jobs.length}</span>
+            ) : null}
+          </h3>
+          <p>
+            {jobs.length === 0
+              ? t("steps.start.empty")
+              : t("steps.start.count", { count: jobs.length })}
+          </p>
+        </div>
+        <div className="queue-run-row">
         <button
           type="button"
-          className="primary"
+          className="primary motion-button motion-button--start"
           data-testid="start-queue"
+          disabled={!readinessComplete || queueRunning || jobs.length === 0}
           onClick={() => void startQueue()}
         >
           {t("btn.start")}
         </button>
-        <button
-          type="button"
-          data-testid="stop-queue"
-          disabled={!queueRunning}
-          onClick={stopQueue}
-        >
-          {t("btn.stop")}
-        </button>
-        <button type="button" onClick={clearDone}>
-          {t("btn.clear_done")}
-        </button>
-        <button type="button" onClick={clearAll}>
-          {t("btn.clear_all")}
-        </button>
+        {queueRunning ? (
+          <button type="button" data-testid="stop-queue" onClick={stopQueue}>
+            {t("btn.stop")}
+          </button>
+        ) : null}
+        {jobs.some((job) =>
+          ["done", "error", "cancelled"].includes(job.status),
+        ) ? (
+          <button type="button" className="quiet-action" onClick={clearDone}>
+            {t("btn.clear_done")}
+          </button>
+        ) : null}
+        {jobs.length > 0 ? (
+          <button type="button" className="quiet-action" onClick={clearAll}>
+            {t("btn.clear_all")}
+          </button>
+        ) : null}
+      </div>
       </div>
 
+      {jobs.length > 0 ? (
       <div className="queue-table-wrap">
         <table className="queue-table">
           <thead>
             <tr>
               <th>{t("table.label_header")}</th>
               <th>{t("table.kind_header")}</th>
+              <th>{t("table.language_header", { defaultValue: "Language" })}</th>
               <th>{t("table.status_header")}</th>
               <th className="queue-table-actions-head" aria-label={t("table.actions_header")} />
             </tr>
           </thead>
           <tbody>
-            {jobs.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="muted">
-                  {t("table.no_jobs")}
-                </td>
-              </tr>
-            ) : (
-              jobs.map((j) => {
+            {jobs.map((j) => {
                 const outPath = j.transcriptPath;
                 const canOpenResult = j.status === "done" && Boolean(outPath?.trim());
                 const progress =
@@ -771,15 +926,21 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
                     outPath={outPath}
                     onReveal={revealTranscriptInFolder}
                     onOpen={openTranscriptFile}
+                    onLanguageChange={changeJobLanguage}
                     onOpenSubtaskLink={openSubtaskLink}
                     onRetrySubtask={retrySubtask}
                   />
                 );
-              })
-            )}
+              })}
           </tbody>
         </table>
       </div>
+      ) : (
+        <div className="batch-empty-state">
+          <span>{t("steps.queue.empty")}</span>
+        </div>
+      )}
+      </section>
 
       <div className="log-panel">
         <div className="log-header">
@@ -792,6 +953,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           >
             {logVisible ? t("log.hide") : t("log.show")}
           </button>
+          {logVisible || logLines.length > 0 ? (
           <div className="log-header-actions">
             <label className="log-filter">
               <input
@@ -808,6 +970,7 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
               {t("log.copy")}
             </button>
           </div>
+          ) : null}
         </div>
         <pre
           className={logVisible ? "log-body" : "log-body sr-only"}
@@ -828,6 +991,7 @@ type FragmentRowProps = {
   outPath: string | null | undefined;
   onReveal: (p: string) => void;
   onOpen: (p: string) => void;
+  onLanguageChange: (jobId: string, language: string | null) => void;
   onOpenSubtaskLink: (url: string) => void;
   onRetrySubtask: (subtask: SubtaskState) => void;
 };
@@ -839,6 +1003,7 @@ function FragmentRow({
   outPath,
   onReveal,
   onOpen,
+  onLanguageChange,
   onOpenSubtaskLink,
   onRetrySubtask,
 }: FragmentRowProps) {
@@ -861,6 +1026,28 @@ function FragmentRow({
       <tr data-testid="queue-row">
         <td title={job.source}>{headerLabel}</td>
         <td>{job.kind}</td>
+        <td>
+          <select
+            className="queue-language-select"
+            aria-label={tQueue("language.item_aria", {
+              title: headerLabel,
+              defaultValue: `Video language for ${headerLabel}`,
+            })}
+            value={job.language ?? ""}
+            disabled={job.status === "running" || job.status === "done"}
+            onChange={(event) =>
+              onLanguageChange(job.id, event.target.value || null)
+            }
+          >
+            {SPEECH_LANGUAGE_OPTIONS.map(({ value, key, defaultLabel }) => (
+              <option key={value || "auto"} value={value}>
+                {tQueue(`language.options.${key}`, {
+                  defaultValue: defaultLabel,
+                })}
+              </option>
+            ))}
+          </select>
+        </td>
         <td>
           <div className="queue-status-cell">
             {job.status === "done" ? (
@@ -898,14 +1085,14 @@ function FragmentRow({
       </tr>
       {showProgress && progress ? (
         <tr className="queue-progress-row" data-testid="queue-progress-row">
-          <td colSpan={4}>
+          <td colSpan={5}>
             <JobProgressBar progress={progress} />
           </td>
         </tr>
       ) : null}
       {showSubtasks && subtasks ? (
         <tr className="queue-progress-row" data-testid="queue-subtasks-row">
-          <td colSpan={4}>
+          <td colSpan={5}>
             <SubtaskList
               subtasks={subtasks}
               activeIndex={progress?.subtaskIndex}

@@ -31,7 +31,7 @@ pub struct TimedWord {
 /// Overlap between consecutive media chunks when exporting WebVTT (seconds).
 pub const CHUNK_OVERLAP_SECS: f64 = 2.5;
 
-const CUE_MAX_CHARS: usize = 50;
+const CUE_MAX_CHARS: usize = 64;
 const CUE_MAX_DURATION_MS: u64 = 10_000;
 const CUE_GAP_BREAK_MS: u64 = 500;
 const OVERLAP_NEAR_DUP_START_MS: u64 = 800;
@@ -52,6 +52,30 @@ impl TimedTranscript {
             segments: Vec::new(),
         }
     }
+
+    /// Build a transcript whose plain `text` matches the timed segments.
+    pub fn from_segments(segments: Vec<TimedSegment>) -> Self {
+        let text = plain_text_from_segments(&segments);
+        Self { text, segments }
+    }
+}
+
+/// Join cue texts into one plain transcript (voice tags stripped).
+///
+/// This is the single source of truth for `.txt` whenever timed segments exist:
+/// `.vtt` cues and `.txt` must describe the same words in the same order.
+pub fn plain_text_from_segments(segments: &[TimedSegment]) -> String {
+    segments
+        .iter()
+        .map(|segment| {
+            let (_, body) = extract_voice_speaker(&segment.text);
+            body.split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Reject unusable source segments. Ordering is deliberately not checked here:
@@ -220,27 +244,43 @@ pub fn build_cues_from_words(words: &[TimedWord]) -> Result<Vec<TimedSegment>, S
     let mut cue_start = 0usize;
     let mut index = 0usize;
     while index < usable.len() {
-        let ends_sentence = word_ends_sentence(&usable[index].text);
         let is_last = index + 1 >= usable.len();
-        let break_after = if is_last {
-            true
-        } else {
-            let next = index + 1;
-            let gap = usable[next].start_ms.saturating_sub(usable[index].end_ms);
-            let chars_with_next = cue_char_len(&usable[cue_start..=next]);
-            let duration_with_next = usable[next]
-                .end_ms
-                .saturating_sub(usable[cue_start].start_ms);
-            ends_sentence
-                || gap >= CUE_GAP_BREAK_MS
-                || chars_with_next > CUE_MAX_CHARS
-                || duration_with_next > CUE_MAX_DURATION_MS
-        };
+        if is_last {
+            segments.push(cue_from_words(&usable[cue_start..=index]));
+            break;
+        }
 
-        if break_after {
+        let next = index + 1;
+        let gap = usable[next].start_ms.saturating_sub(usable[index].end_ms);
+        let chars_with_next = cue_char_len(&usable[cue_start..=next]);
+        let duration_with_next = usable[next]
+            .end_ms
+            .saturating_sub(usable[cue_start].start_ms);
+
+        let hard_break = word_ends_sentence(&usable[index].text)
+            || gap >= CUE_GAP_BREAK_MS
+            || usable[index].speaker != usable[next].speaker;
+
+        if hard_break {
             segments.push(cue_from_words(&usable[cue_start..=index]));
             cue_start = index + 1;
+            index += 1;
+            continue;
         }
+
+        let over_budget =
+            chars_with_next > CUE_MAX_CHARS || duration_with_next > CUE_MAX_DURATION_MS;
+        if over_budget {
+            // Cannot include `next`. End the cue on the last strong word so we do
+            // not leave orphans like "a" / "to" / "of" at the cue boundary.
+            let rel_end = best_soft_break_end(&usable[cue_start..=index]);
+            let abs_end = cue_start + rel_end;
+            segments.push(cue_from_words(&usable[cue_start..=abs_end]));
+            cue_start = abs_end + 1;
+            index = cue_start;
+            continue;
+        }
+
         index += 1;
     }
 
@@ -252,6 +292,68 @@ fn word_ends_sentence(text: &str) -> bool {
     text.chars()
         .last()
         .is_some_and(|ch| matches!(ch, '.' | '?' | '!' | '。'))
+}
+
+/// Prefer ending a soft-wrapped cue on a content word; leave trailing weak
+/// function words for the next cue. Always returns an index into `words`.
+fn best_soft_break_end(words: &[TimedWord]) -> usize {
+    debug_assert!(!words.is_empty());
+    if words.len() == 1 {
+        return 0;
+    }
+    for i in (0..words.len()).rev() {
+        if !is_weak_cue_tail(&words[i].text) {
+            return i;
+        }
+    }
+    0
+}
+
+fn is_weak_cue_tail(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    if word_ends_sentence(trimmed) {
+        return false;
+    }
+    let core = trimmed.trim_matches(|ch: char| {
+        matches!(ch, ',' | ';' | ':' | '"' | '\'' | '`' | '(' | ')' | '[' | ']')
+    });
+    if core.is_empty() {
+        return true;
+    }
+    let lower = core.to_ascii_lowercase();
+    matches!(
+        lower.as_str(),
+        "a" | "an"
+            | "the"
+            | "to"
+            | "of"
+            | "in"
+            | "on"
+            | "at"
+            | "or"
+            | "and"
+            | "for"
+            | "but"
+            | "if"
+            | "as"
+            | "by"
+            | "is"
+            | "it"
+            | "we"
+            | "me"
+            | "be"
+            | "so"
+            | "do"
+            | "my"
+            | "no"
+            | "uh"
+            | "um"
+            | "oh"
+            | "i"
+    ) || (core.chars().count() <= 2 && core.chars().all(|ch| ch.is_alphabetic()))
 }
 
 fn cue_char_len(words: &[TimedWord]) -> usize {
@@ -411,10 +513,8 @@ pub fn merge_overlapping_chunk_transcripts(
 ) -> Result<TimedTranscript, String> {
     chunks.sort_by_key(|(offset_ms, _)| *offset_ms);
 
-    let mut texts = Vec::with_capacity(chunks.len());
     let mut segments = Vec::new();
     for (offset_ms, transcript) in chunks {
-        texts.push(transcript.text);
         let mut offset = offset_segments(&transcript.segments, offset_ms)?;
         if overlap_ms > 0 && !segments.is_empty() {
             let cutoff = offset_ms.saturating_add(overlap_ms / 2);
@@ -432,10 +532,7 @@ pub fn merge_overlapping_chunk_transcripts(
     segments.sort_by_key(|segment| (segment.start_ms, segment.end_ms));
     validate_segments(&segments)?;
 
-    Ok(TimedTranscript {
-        text: texts.join("\n\n"),
-        segments,
-    })
+    Ok(TimedTranscript::from_segments(segments))
 }
 
 fn near_duplicate_segment(a: &TimedSegment, b: &TimedSegment, start_tol_ms: u64) -> bool {
@@ -809,8 +906,13 @@ pub fn write_transcript_pair(
     transcript: &TimedTranscript,
     export_webvtt: bool,
 ) -> Result<Option<PathBuf>, String> {
-    let text = transcript.text.as_str();
     let segments = transcript.segments.as_slice();
+    // When timed cues exist, TXT must match VTT word-for-word (same source).
+    let text = if segments.is_empty() {
+        transcript.text.clone()
+    } else {
+        plain_text_from_segments(segments)
+    };
 
     let vtt_contents = if export_webvtt {
         if !text.trim().is_empty() && segments.is_empty() {
@@ -837,7 +939,7 @@ pub fn write_transcript_pair(
     let Some(vtt_contents) = vtt_contents else {
         let temp_txt = unique_temp_path(output_txt, "txt");
         let write_plain = (|| -> Result<(), String> {
-            std::fs::write(&temp_txt, text).map_err(|error| {
+            std::fs::write(&temp_txt, &text).map_err(|error| {
                 format!(
                     "Failed to write temp transcript {}: {error}",
                     temp_txt.display()
@@ -864,7 +966,7 @@ pub fn write_transcript_pair(
                 temp_vtt.display()
             )
         })?;
-        std::fs::write(&temp_txt, text).map_err(|error| {
+        std::fs::write(&temp_txt, &text).map_err(|error| {
             format!(
                 "Failed to write temp transcript {}: {error}",
                 temp_txt.display()
@@ -1066,7 +1168,11 @@ mod tests {
         ];
 
         let merged = merge_chunk_transcripts(chunks).unwrap();
-        assert_eq!(merged.text, "earlier\n\nlater");
+        assert_eq!(
+            merged.text,
+            "chunk one chunk two same start, earlier end same start, later end"
+        );
+        assert_eq!(merged.text, plain_text_from_segments(&merged.segments));
         assert_eq!(
             merged.segments,
             vec![
@@ -1485,8 +1591,8 @@ mod tests {
             // gap >= 500 ms
             word(1_200, 1_400, "Next"),
             word(1_450, 1_600, "cue"),
-            // char budget: long word alone, then another that would exceed 50
-            word(2_200, 2_400, &"x".repeat(48)),
+            // char budget: long word alone, then another that would exceed 64
+            word(2_200, 2_400, &"x".repeat(60)),
             word(2_450, 2_600, &"y".repeat(10)),
             // duration budget across a long span (gap separates from prior cue)
             word(3_500, 3_600, "start"),
@@ -1498,10 +1604,48 @@ mod tests {
         assert_eq!(cues[0].end_ms, 500);
         assert_eq!(cues[1].text, "Next cue");
         assert_eq!(cues[1].start_ms, 1_200);
-        assert_eq!(cues[2].text, "x".repeat(48));
+        assert_eq!(cues[2].text, "x".repeat(60));
         assert_eq!(cues[3].text, "y".repeat(10));
         assert_eq!(cues[4].text, "start");
         assert_eq!(cues[5].text, "too-long");
+    }
+
+    #[test]
+    fn build_cues_avoids_orphan_function_words_at_soft_breaks() {
+        // Budget overflows when adding "bit" after "...even a" (64-char limit).
+        // Soft break must end on "even", not leave orphan "a".
+        let mut words = Vec::new();
+        let mut t = 0u64;
+        for token in [
+            "Please",
+            "carefully",
+            "review",
+            "everything",
+            "in",
+            "this",
+            "form",
+            "before",
+            "we",
+            "even",
+            "a",
+            "bit",
+            "more",
+        ] {
+            words.push(word(t, t + 100, token));
+            t += 120;
+        }
+        let cues = build_cues_from_words(&words).unwrap();
+        assert!(cues.len() >= 2, "expected soft wrap, got {cues:?}");
+        assert!(
+            cues[0].text.ends_with("even"),
+            "expected strong tail, got {:?}",
+            cues[0].text
+        );
+        assert!(
+            cues[1].text.starts_with("a bit"),
+            "weak word should move to next cue, got {:?}",
+            cues[1].text
+        );
     }
 
     #[test]
@@ -1520,16 +1664,57 @@ mod tests {
     }
 
     #[test]
-    fn build_cues_mixed_speakers_clear_speaker_field() {
+    fn build_cues_breaks_on_speaker_change() {
         let mut a = word(0, 100, "Hi");
         a.speaker = Some("Alice".into());
         let mut b = word(120, 200, "Bob");
         b.speaker = Some("Bob".into());
         let cues = build_cues_from_words(&[a, b]).unwrap();
-        assert_eq!(cues.len(), 1);
-        assert_eq!(cues[0].speaker, None);
-        assert_eq!(cues[0].text, "Hi Bob");
-        assert!(!cues[0].text.contains("<v "));
+        assert_eq!(cues.len(), 2);
+        assert_eq!(cues[0].speaker.as_deref(), Some("Alice"));
+        assert_eq!(cues[0].text, "Hi");
+        assert_eq!(cues[1].speaker.as_deref(), Some("Bob"));
+        assert_eq!(cues[1].text, "Bob");
+    }
+
+    #[test]
+    fn publishes_txt_from_segments_even_when_transcript_text_diverges() {
+        let dir = std::env::temp_dir().join(format!(
+            "v2t-ssot-txt-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let txt = dir.join("pair.txt");
+        let transcript = TimedTranscript {
+            text: "means that this needs to be defined by the outside placeholder".into(),
+            segments: vec![
+                segment(0, 1_000, "control"),
+                segment(1_100, 2_000, "outside placeholder"),
+            ],
+        };
+        write_transcript_pair(&txt, &transcript, true).unwrap();
+        let body = fs::read_to_string(&txt).unwrap();
+        assert_eq!(body, "control outside placeholder");
+        assert!(!body.contains("means that"));
+        let vtt = fs::read_to_string(txt.with_extension("vtt")).unwrap();
+        assert!(vtt.contains("control"));
+        assert!(vtt.contains("outside placeholder"));
+        assert!(!vtt.contains("means that"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn plain_text_from_segments_strips_voice_tags() {
+        let text = plain_text_from_segments(&[TimedSegment {
+            start_ms: 0,
+            end_ms: 500,
+            text: "<v Alice>Hello there</v>".into(),
+            speaker: Some("Alice".into()),
+        }]);
+        assert_eq!(text, "Hello there");
     }
 
     #[test]
@@ -1610,6 +1795,9 @@ mod tests {
                 .count(),
             1
         );
+        assert_eq!(merged.text, plain_text_from_segments(&merged.segments));
+        assert!(!merged.text.contains("too early"));
+        assert!(!merged.text.contains("a\n\nb"));
     }
 
     #[test]

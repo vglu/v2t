@@ -12,6 +12,7 @@ const CATALOG_TO_XENOVA: Record<string, string> = {
   base: "Xenova/whisper-base",
   small: "Xenova/whisper-small",
   medium: "Xenova/whisper-medium",
+  "large-v3": "Xenova/whisper-large-v3",
   "large-v3-turbo": "Xenova/whisper-large-v3-turbo",
 };
 

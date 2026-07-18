@@ -179,55 +179,48 @@ export function ReadinessPanel({
   );
 
   const modeLabel = useLocal
-    ? t("row.whisper_cli.label")
+    ? t("ready.mode.local", { defaultValue: "On this computer" })
     : useBrowser
-      ? t("row.wasm_whisper.label")
-      : t("row.api_key.label");
+      ? t("ready.mode.app", { defaultValue: "Inside the app" })
+      : t("ready.mode.online", { defaultValue: "Online service" });
 
   // All green → collapse to a single satisfied line. The 5-row checklist is
   // onboarding reassurance; once everything's set it shouldn't eat half the
   // window on every launch. Click to re-expand the details.
   if (allOk) {
     return (
-      <details className="readiness readiness-all-ok readiness-compact" data-testid="readiness-panel">
-        <summary className="readiness-summary">
-          <span className="readiness-dot readiness-dot-ok" aria-hidden />
-          <span className="readiness-summary-text">{t("sub.all_ok")}</span>
-          <span className="readiness-summary-mode">{modeLabel}</span>
-        </summary>
-        <div className="readiness-compact-body">{rowsList}</div>
+      <div
+        className="readiness readiness-all-ok readiness-compact"
+        data-testid="readiness-panel"
+        role="status"
+      >
+        <span className="readiness-dot readiness-dot-ok" aria-hidden />
+        <strong className="readiness-summary-text">
+          {t("ready.title", { defaultValue: "Ready" })}
+        </strong>
+        <span className="readiness-summary-detail">
+          {t("ready.detail", {
+            mode: modeLabel,
+            defaultValue: `New batches use: ${modeLabel}`,
+          })}
+        </span>
         {statusSpans}
-      </details>
+      </div>
     );
   }
 
   return (
     <section
-      className="readiness readiness-needs-work"
+      className="readiness setup-notice"
       aria-label={t("panel_aria")}
       data-testid="readiness-panel"
     >
-      <div className="readiness-head">
-        <h2 className="readiness-title">{t("title")}</h2>
-        <p className="readiness-sub">{t("sub.needs_work")}</p>
-        {useLocal ? (
-          <p className="readiness-mode-hint">
-            <Trans i18nKey="mode_hint.local" t={t} components={{ strong: <strong /> }} />
-          </p>
-        ) : useBrowser ? (
-          <p className="readiness-mode-hint">
-            <Trans i18nKey="mode_hint.browser" t={t} components={{ strong: <strong /> }} />
-          </p>
-        ) : (
-          <p className="readiness-mode-hint">
-            <Trans i18nKey="mode_hint.cloud" t={t} components={{ strong: <strong /> }} />
-          </p>
-        )}
-        {toolsUnknown ? (
-          <p className="readiness-tools-unknown" data-testid="deps-unknown">
-            {t("tools_unknown")}
-          </p>
-        ) : null}
+      <div className="setup-notice-main">
+        <span className="setup-notice-mark" aria-hidden>!</span>
+        <div>
+          <h2>{t("simple.title")}</h2>
+          <p>{t("simple.body")}</p>
+        </div>
         <button
           type="button"
           className="readiness-settings-btn"
@@ -236,13 +229,21 @@ export function ReadinessPanel({
         >
           {t("open_settings_btn")}
         </button>
+      </div>
+      <details className="setup-notice-details">
+        <summary>{t("simple.details")}</summary>
+        {toolsUnknown ? (
+          <p className="readiness-tools-unknown" data-testid="deps-unknown">
+            {t("tools_unknown")}
+          </p>
+        ) : null}
+        {rowsList}
         {!toolsUnknown && (!ffmpegOk || !ytDlpOk) ? (
           <p className="readiness-tool-hint" data-testid="readiness-tool-hint">
             <Trans i18nKey="tool_hint" t={t} components={{ strong: <strong /> }} />
           </p>
         ) : null}
-      </div>
-      {rowsList}
+      </details>
       {statusSpans}
     </section>
   );

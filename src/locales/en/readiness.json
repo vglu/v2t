@@ -1,6 +1,20 @@
 {
   "title": "Before you start",
   "panel_aria": "Setup checklist",
+  "ready": {
+    "title": "Ready",
+    "detail": "New batches use: {{mode}}",
+    "mode": {
+      "local": "On this computer",
+      "app": "Inside the app",
+      "online": "Online service"
+    }
+  },
+  "simple": {
+    "title": "One setup step needs attention",
+    "body": "Fix it once, then come back and start your batch.",
+    "details": "Show technical details"
+  },
   "sub": {
     "all_ok": "All set — add files or URLs below and press Start queue.",
     "needs_work": "Complete the checklist (we detect tools and files automatically)."

@@ -6,15 +6,31 @@
   },
   "preferences": {
     "title": "Preferences",
+    "eyebrow": "Video to Text",
+    "subtitle": "Choose how the app works. Nothing changes until you save.",
     "open": "Preferences",
     "close": "Close",
     "close_aria": "Close preferences",
     "depth_aria": "Preference sections",
     "depth": {
-      "essentials": "Essentials",
-      "engine": "Engine",
-      "advanced": "Advanced"
-    }
+      "essentials": "General",
+      "engine": "Transcription",
+      "advanced": "Tools & advanced"
+    },
+    "depth_hint": {
+      "essentials": "Where results go and what to keep",
+      "engine": "Online, on this computer, or in the app",
+      "advanced": "Downloads, automation, and troubleshooting"
+    },
+    "saved": "All changes saved",
+    "unsaved": "You have unsaved changes",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "discard": "Discard changes",
+    "close_confirm_title": "Save your changes?",
+    "close_confirm_body": "Your changes have not been saved yet.",
+    "keep_editing": "Keep editing",
+    "discard_close": "Discard and close"
   },
   "context": {
     "mode_local": "Local Whisper",

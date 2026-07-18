@@ -2,6 +2,45 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.9] - 2026-07-18
+
+### Added
+
+- **Local Whisper model `large-v3`** in the catalog (~2.9 GiB ggml). Selectable in Preferences alongside `medium` and `large-v3-turbo` (browser/WASM maps to `Xenova/whisper-large-v3`).
+- **Workbench UX polish:** clearer batch-first flow, Preferences sheet with dirty/save/discard, compact readiness when healthy, format badges (TXT / VTT / SRT), batch + per-item language overrides.
+
+### Changed
+
+- **Single source of truth for `.txt` and `.vtt`.** Plain text is built from the same timed segments as WebVTT (no divergent chunk-merge paths).
+- **Smarter WebVTT cue wrapping:** longer cue budget, avoid orphan weak tails (`a` / `to` / `of`…), break on speaker change when labels are enabled.
+- **Speaker-aware cues:** with *Label speakers*, word rebuild prefers Person labels from tokens (or interpolated spans) instead of segment-only fallback.
+
+### Notes — transcription quality (benchmark)
+
+Side-by-side check on a ~22.6 min English meeting (same media), compared to Microsoft Teams captions and YouTube auto-captions. Overlap = Jaccard on unique word tokens (case-insensitive); higher is closer to the reference.
+
+| Engine | vs Teams | vs YouTube | Notes |
+|--------|----------|------------|-------|
+| OpenAI `whisper-1` (HTTP) | **0.90** | **0.90** | ~50 s cloud; ~$0.14 for this call (`$0.006`/min) |
+| Local **`large-v3`** (CUDA) | **0.90** | **0.92** | ~1.6 min on RTX 3060 Ti; $0 |
+| YouTube auto-captions | 0.89 | — | External reference |
+| Local `medium` | 0.83 | 0.85 | Solid default when disk/VRAM is limited |
+| Local `large-v3-turbo` | 0.64 | 0.65 | Faster, but more hallucinations / loops on this file |
+
+Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3` got **bulk**; local `medium` often said **Bork**. Speaker *names* (Teams) are not available from generic Whisper; tinydiarize only yields Person 1 / Person 2.
+
+**OpenAI `gpt-4o-transcribe` / `gpt-4o-mini-transcribe`:** not recommended for long meetings as a drop-in — they hit output-token caps and return truncated text unless you chunk audio yourself. Prefer `whisper-1` (or another provider that returns full `verbose_json` with segments) for WebVTT.
+
+### Recommendations — high-quality WebVTT
+
+1. **Turn on** *Export timed transcript as WebVTT* (and keep language set, e.g. `en`, when known).
+2. **Best local quality:** Whisper model **`large-v3`** + GPU whisper-cli (CUDA/Vulkan when available). Expect ~3 GB download once.
+3. **Best cloud quality / least setup:** transcription mode **HTTP API** → `https://api.openai.com/v1`, model **`whisper-1`**, API key in Preferences (OS keychain). Requires `verbose_json` with segment (or word) timestamps.
+4. **Balanced local:** `medium` if disk/VRAM is tight; verify **`large-v3-turbo`** on your own audio before relying on it for long meetings (we saw OK-loops / missing content with aggressive VAD on this sample).
+5. **Speakers:** enable *Label speakers* only when you need turn markers; use `small.en-tdrz` (English). Do not expect Teams-style real names.
+6. **Do not** post-process with a general LLM as the primary STT step — use a stronger ASR model first; optional LLM polish is separate and can drift from timed cues.
+7. **Validate** that `.txt` and `.vtt` wording match after export (they should, by design, in this release).
+
 ## [2.0.8] - 2026-07-18
 
 ### Added
@@ -291,3 +330,6 @@
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.9]: https://github.com/vglu/v2t/releases/tag/v2.0.9
+[2.0.8]: https://github.com/vglu/v2t/releases/tag/v2.0.8
+[2.0.7]: https://github.com/vglu/v2t/releases/tag/v2.0.7
