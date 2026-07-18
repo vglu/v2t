@@ -28,6 +28,9 @@ export type UiLanguage =
   | "pl"
   | "pt";
 
+/** Intent preset: Simple / Quality / Power, or Custom after manual edits. */
+export type ProfileId = "simple" | "quality" | "power" | "custom";
+
 /** Result of `Win32_VideoController` classification (Windows) or empty (macOS / Linux). */
 export type GpuKind = "nvidia" | "amd" | "intel" | "none";
 export type GpuInfo = { kind: GpuKind; names: string[] };
@@ -55,6 +58,8 @@ export type AppSettings = {
   recursiveFolderScan: boolean;
   /** false = show first-run setup wizard once; persisted in settings.json */
   onboardingCompleted: boolean;
+  /** Intent preset for defaults and Preferences surface. Missing → custom (upgrades). */
+  profileId: ProfileId;
   transcriptionMode: TranscriptionMode;
   /** Path to whisper-cli or main (optional). */
   whisperCliPath: string | null;
@@ -113,12 +118,13 @@ export const defaultAppSettings: AppSettings = {
   language: null,
   recursiveFolderScan: false,
   onboardingCompleted: true,
+  profileId: "simple",
   transcriptionMode: "httpApi",
   whisperCliPath: null,
   whisperModelsDir: null,
   whisperModel: "base",
   whisperAcceleration: "auto",
-  useSubtitlesWhenAvailable: false,
+  useSubtitlesWhenAvailable: true,
   subtitlePriorityLangs: ["uk", "ru", "en"],
   keepSrt: false,
   exportWebVtt: false,

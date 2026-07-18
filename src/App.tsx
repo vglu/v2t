@@ -97,6 +97,14 @@ export default function App() {
         ...(loaded ?? {}),
       };
       if (
+        next.profileId !== "simple" &&
+        next.profileId !== "quality" &&
+        next.profileId !== "power" &&
+        next.profileId !== "custom"
+      ) {
+        next.profileId = "custom";
+      }
+      if (
         !next.outputDir?.trim() &&
         docDir?.trim() &&
         next.onboardingCompleted === false

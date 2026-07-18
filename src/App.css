@@ -1968,6 +1968,67 @@ button.ghost {
   color: var(--muted);
 }
 
+.preferences-profile-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem 1.25rem;
+  margin: 0 0 1.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, #fff 70%, #f3f1ec);
+}
+
+.preferences-profile-bar-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 12rem;
+  max-width: 28rem;
+}
+
+.preferences-profile-bar-copy strong {
+  font-size: 0.92rem;
+  color: #20211e;
+}
+
+.preferences-profile-bar-copy span {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.preferences-profile-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.preferences-profile-chip {
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  border-radius: 999px;
+  background: #fff;
+  color: #3a3c36;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.35rem 0.85rem;
+}
+
+button.preferences-profile-chip--active,
+button.preferences-profile-chip--active:hover {
+  border-color: #2f6fed;
+  background: color-mix(in srgb, #2f6fed 12%, #fff);
+  color: #1a4bb8;
+}
+
+.preferences-profile-chip--custom {
+  border-style: dashed;
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .preferences-layout {
   display: grid;
   min-height: 0;

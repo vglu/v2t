@@ -66,7 +66,7 @@ describe("SettingsPanel", () => {
     const onChange = vi.fn();
     render(
       <SettingsPanel
-        settings={defaultAppSettings}
+        settings={{ ...defaultAppSettings, useSubtitlesWhenAvailable: false }}
         onChange={onChange}
         onSave={vi.fn()}
         onPersistSettings={vi.fn().mockResolvedValue(undefined)}

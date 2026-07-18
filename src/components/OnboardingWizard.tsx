@@ -13,10 +13,12 @@ import {
 } from "../lib/invokeSafe";
 import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
 import type { AppSettings, CookiesFromBrowser, GpuInfo, TranscriptionMode, WhisperModelMeta } from "../types/settings";
+import { applyPreset, type ProfileId } from "../lib/profiles";
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 7;
 
 type ModeChoice = "cloud" | "local" | "browser" | "later";
+type IntentChoice = Exclude<ProfileId, "custom">;
 
 type Props = {
   open: boolean;
@@ -37,17 +39,19 @@ function stepTitleKey(step: number, modeChoice: ModeChoice): string {
     case 0:
       return "step_title.welcome";
     case 1:
-      return "step_title.output";
+      return "step_title.intent";
     case 2:
-      return "step_title.tools";
+      return "step_title.output";
     case 3:
-      return "step_title.transcription";
+      return "step_title.tools";
     case 4:
+      return "step_title.transcription";
+    case 5:
       if (modeChoice === "cloud") return "step_title.cloud";
       if (modeChoice === "local") return "step_title.local";
       if (modeChoice === "browser") return "step_title.browser";
       return "step_title.later";
-    case 5:
+    case 6:
       return "step_title.run";
     default:
       return "";
@@ -98,6 +102,10 @@ export function OnboardingWizard({
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [modeChoice, setModeChoice] = useState<ModeChoice>("cloud");
+  const [intentChoice, setIntentChoice] = useState<IntentChoice>(() => {
+    const id = settings.profileId;
+    return id === "quality" || id === "power" || id === "simple" ? id : "simple";
+  });
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [outputError, setOutputError] = useState<string | null>(null);
 
@@ -405,6 +413,18 @@ export function OnboardingWizard({
 
   async function goNext() {
     if (step === 1) {
+      const next = applyPreset(settings, intentChoice);
+      setBusy(true);
+      try {
+        await persistSettings(next);
+      } finally {
+        setBusy(false);
+      }
+      setStep(2);
+      return;
+    }
+
+    if (step === 2) {
       if (!settings.outputDir?.trim()) {
         setOutputError(t("output.error_pick_folder"));
         return;
@@ -416,11 +436,11 @@ export function OnboardingWizard({
       } finally {
         setBusy(false);
       }
-      setStep(2);
+      setStep(3);
       return;
     }
 
-    if (step === 3) {
+    if (step === 4) {
       const tm: TranscriptionMode =
         modeChoice === "local"
           ? "localWhisper"
@@ -437,11 +457,11 @@ export function OnboardingWizard({
       } finally {
         setBusy(false);
       }
-      setStep(4);
+      setStep(5);
       return;
     }
 
-    if (step === 4 && modeChoice === "cloud") {
+    if (step === 5 && modeChoice === "cloud") {
       if (!settings.apiKey?.trim()) {
         setCloudError(t("cloud_step.error_no_key"));
         return;
@@ -453,34 +473,34 @@ export function OnboardingWizard({
       } finally {
         setBusy(false);
       }
-      setStep(5);
+      setStep(6);
       return;
     }
 
-    if (step === 4 && modeChoice === "local") {
+    if (step === 5 && modeChoice === "local") {
       setBusy(true);
       try {
         await persistSettings({ ...settings, transcriptionMode: "localWhisper" });
       } finally {
         setBusy(false);
       }
-      setStep(5);
+      setStep(6);
       return;
     }
 
-    if (step === 4 && modeChoice === "browser") {
+    if (step === 5 && modeChoice === "browser") {
       setBusy(true);
       try {
         await persistSettings({ ...settings, transcriptionMode: "browserWhisper" });
       } finally {
         setBusy(false);
       }
-      setStep(5);
+      setStep(6);
       return;
     }
 
-    if (step === 4 && modeChoice === "later") {
-      setStep(5);
+    if (step === 5 && modeChoice === "later") {
+      setStep(6);
       return;
     }
 
@@ -510,6 +530,39 @@ export function OnboardingWizard({
           </>
         );
       case 1:
+        return (
+          <>
+            <p>{t("intent.intro")}</p>
+            <div
+              className="onboarding-radio-group"
+              role="radiogroup"
+              aria-label={t("intent.group_aria")}
+              data-testid="onboarding-intent"
+            >
+              {(
+                [
+                  ["simple", "intent.simple"],
+                  ["quality", "intent.quality"],
+                  ["power", "intent.power"],
+                ] as const
+              ).map(([id, key]) => (
+                <label className="onboarding-radio" key={id}>
+                  <input
+                    type="radio"
+                    name="wiz-intent"
+                    checked={intentChoice === id}
+                    onChange={() => setIntentChoice(id)}
+                  />
+                  <span>
+                    <Trans i18nKey={key} t={t} components={{ strong: <strong /> }} />
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="onboarding-tip">{t("intent.tip")}</p>
+          </>
+        );
+      case 2:
         return (
           <>
             <p>
@@ -544,7 +597,7 @@ export function OnboardingWizard({
             )}
           </>
         );
-      case 2:
+      case 3:
         return (
           <>
             <p>
@@ -682,7 +735,7 @@ export function OnboardingWizard({
             </div>
           </>
         );
-      case 3:
+      case 4:
         return (
           <>
             <p>{t("mode.intro")}</p>
@@ -746,7 +799,7 @@ export function OnboardingWizard({
             </div>
           </>
         );
-      case 4:
+      case 5:
         if (modeChoice === "browser") {
           return (
             <>
@@ -1053,7 +1106,7 @@ export function OnboardingWizard({
             </button>
           </>
         );
-      case 5:
+      case 6:
         return (
           <>
             <p>
