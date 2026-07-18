@@ -12,7 +12,8 @@ use crate::pipeline::{self, JOB_CANCELLED_MSG};
 use crate::process_kill;
 use crate::progress::{JobEvent, QueueJobProgressEvent, SinkHandle};
 use crate::timed_transcript::{
-    build_cues_from_words, merge_overlapping_chunk_transcripts, read_timed_checkpoint,
+    build_cues_from_words, merge_overlapping_chunk_transcripts, plain_text_from_segments,
+    read_timed_checkpoint,
     require_timed_segments_for_export, secs_to_ms, validate_segments_against_media_duration,
     write_timed_checkpoint, TimedSegment, TimedTranscript, TimedWord, CHUNK_OVERLAP_SECS,
 };
@@ -472,8 +473,16 @@ pub fn parse_whisper_json(body: &str, label_speakers: bool) -> Result<TimedTrans
         .unwrap_or(&[]);
 
     let segments = if label_speakers {
-        // Prefer segment fallback so speaker turns are not lost in word rebuild.
-        parse_whisper_segments_fallback(raw_segments, true)?
+        // Prefer word rebuild with Person labels so cue soft-wrap can avoid
+        // orphan tails ("even a" | "bit more") while keeping speaker turns.
+        let words = words_from_whisper_segments_labeled(raw_segments)?;
+        if !words.is_empty() {
+            build_cues_from_words(&words).map_err(|e| {
+                format!("Local Whisper WebVTT export failed: word cue rebuild ({e})")
+            })?
+        } else {
+            parse_whisper_segments_fallback(raw_segments, true)?
+        }
     } else {
         let words = words_from_whisper_segments(raw_segments);
         if !words.is_empty() {
@@ -485,24 +494,21 @@ pub fn parse_whisper_json(body: &str, label_speakers: bool) -> Result<TimedTrans
         }
     };
 
-    let text = root
-        .text
-        .as_deref()
-        .map(|value| {
-            if label_speakers {
-                strip_speaker_turn_markers(value)
-            } else {
-                value.trim().to_string()
-            }
-        })
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| {
-            segments
-                .iter()
-                .map(|segment| segment.text.as_str())
-                .collect::<Vec<_>>()
-                .join(" ")
-        });
+    let text = if segments.is_empty() {
+        root.text
+            .as_deref()
+            .map(|value| {
+                if label_speakers {
+                    strip_speaker_turn_markers(value)
+                } else {
+                    value.trim().to_string()
+                }
+            })
+            .filter(|value| !value.is_empty())
+            .unwrap_or_default()
+    } else {
+        plain_text_from_segments(&segments)
+    };
 
     Ok(TimedTranscript { text, segments })
 }
@@ -540,10 +546,128 @@ fn words_from_whisper_segments(raw_segments: &[WhisperJsonSegment]) -> Vec<Timed
     merge_whisper_tokens_into_words(&token_timings)
 }
 
+/// Like [`words_from_whisper_segments`], but stamps Person 1 / Person 2 from
+/// tinydiarize `speaker_turn_next` and fills gaps when a segment has no tokens.
+fn words_from_whisper_segments_labeled(
+    raw_segments: &[WhisperJsonSegment],
+) -> Result<Vec<TimedWord>, String> {
+    let mut words = Vec::new();
+    let mut person: u8 = 1;
+    for (index, segment) in raw_segments.iter().enumerate() {
+        let speaker = Some(format!("Person {person}"));
+        let cleaned = strip_speaker_turn_markers(segment.text.as_deref().unwrap_or(""));
+        let mut from_tokens = Vec::new();
+        if let Some(tokens) = segment.tokens.as_ref() {
+            let mut token_timings: Vec<(String, u64, u64)> = Vec::new();
+            for token in tokens {
+                let raw_text = token.text.as_deref().unwrap_or("");
+                if raw_text.is_empty() || is_whisper_special_token(raw_text) {
+                    continue;
+                }
+                let Some((start_ms, end_ms)) = token_bounds_ms(token) else {
+                    continue;
+                };
+                if end_ms <= start_ms {
+                    continue;
+                }
+                token_timings.push((raw_text.to_string(), start_ms, end_ms));
+            }
+            from_tokens = merge_whisper_tokens_into_words(&token_timings);
+            for word in &mut from_tokens {
+                word.speaker = speaker.clone();
+            }
+        }
+
+        if from_tokens.is_empty() && !cleaned.is_empty() {
+            let (start_ms, end_ms) = segment_bounds_ms(segment, index)?;
+            from_tokens = interpolate_words_in_span(&cleaned, start_ms, end_ms, speaker);
+        }
+
+        words.extend(from_tokens);
+
+        if segment.speaker_turn_next == Some(true) {
+            person = if person == 1 { 2 } else { 1 };
+        }
+    }
+    Ok(words)
+}
+
+fn segment_bounds_ms(segment: &WhisperJsonSegment, index: usize) -> Result<(u64, u64), String> {
+    if let Some(offsets) = &segment.offsets {
+        if offsets.to <= offsets.from {
+            return Err(format!(
+                "Local Whisper WebVTT export failed: segment {index} has end <= start"
+            ));
+        }
+        return Ok((offsets.from.max(0) as u64, offsets.to.max(0) as u64));
+    }
+    if let (Some(start), Some(end)) = (segment.start, segment.end) {
+        let start_ms = secs_to_ms(start);
+        let end_ms = secs_to_ms(end);
+        if end_ms <= start_ms {
+            return Err(format!(
+                "Local Whisper WebVTT export failed: segment {index} has end <= start"
+            ));
+        }
+        return Ok((start_ms, end_ms));
+    }
+    if let Some(timestamps) = &segment.timestamps {
+        let from = timestamps.from.as_deref().ok_or_else(|| {
+            format!("Local Whisper WebVTT export failed: segment {index} missing timestamp from")
+        })?;
+        let to = timestamps.to.as_deref().ok_or_else(|| {
+            format!("Local Whisper WebVTT export failed: segment {index} missing timestamp to")
+        })?;
+        let start_ms = parse_whisper_clock_to_ms(from)?;
+        let end_ms = parse_whisper_clock_to_ms(to)?;
+        if end_ms <= start_ms {
+            return Err(format!(
+                "Local Whisper WebVTT export failed: segment {index} has end <= start"
+            ));
+        }
+        return Ok((start_ms, end_ms));
+    }
+    Err(format!(
+        "Local Whisper WebVTT export failed: segment {index} has no offsets/timestamps"
+    ))
+}
+
+/// Split a factual segment span into per-word timings (linear interpolation).
+/// Used only when whisper.cpp omitted token offsets for that segment.
+fn interpolate_words_in_span(
+    text: &str,
+    start_ms: u64,
+    end_ms: u64,
+    speaker: Option<String>,
+) -> Vec<TimedWord> {
+    let parts: Vec<&str> = text.split_whitespace().collect();
+    if parts.is_empty() {
+        return Vec::new();
+    }
+    let duration = end_ms.saturating_sub(start_ms).max(1);
+    let count = parts.len() as u64;
+    parts
+        .into_iter()
+        .enumerate()
+        .map(|(index, part)| {
+            let word_start = start_ms + duration * index as u64 / count;
+            let word_end = start_ms + duration * (index as u64 + 1) / count;
+            TimedWord {
+                start_ms: word_start,
+                end_ms: word_end.max(word_start.saturating_add(1)),
+                text: part.to_string(),
+                speaker: speaker.clone(),
+            }
+        })
+        .collect()
+}
+
 fn is_whisper_special_token(text: &str) -> bool {
     let trimmed = text.trim();
     (trimmed.starts_with('[') && trimmed.ends_with(']'))
         || (trimmed.starts_with("<|") && trimmed.ends_with("|>"))
+        || trimmed.eq_ignore_ascii_case("[SPEAKER_TURN]")
+        || trimmed.eq_ignore_ascii_case("(SPEAKER_TURN)")
 }
 
 fn token_bounds_ms(token: &WhisperJsonToken) -> Option<(u64, u64)> {
@@ -681,11 +805,7 @@ fn constrain_whisper_transcript_to_duration(
     }
 
     if segments.len() != original_segment_count {
-        transcript.text = segments
-            .iter()
-            .map(|segment| segment.text.as_str())
-            .collect::<Vec<_>>()
-            .join(" ");
+        transcript.text = plain_text_from_segments(&segments);
     }
     transcript.segments = segments;
 
@@ -1080,6 +1200,10 @@ mod tests {
         assert_eq!(
             dtw_preset_from_model_path(Path::new("ggml-large-v3-turbo.bin")),
             Some("large.v3.turbo")
+        );
+        assert_eq!(
+            dtw_preset_from_model_path(Path::new("ggml-large-v3.bin")),
+            Some("large.v3")
         );
         assert_eq!(
             dtw_preset_from_model_path(Path::new("ggml-tiny.en.bin")),

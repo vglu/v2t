@@ -73,6 +73,13 @@ pub const WHISPER_MODEL_CATALOG: &[WhisperModelCatalogEntry] = &[
         sha1_hex: "fd9727b6e1217c2f614f9b698455c4ffd82463b4",
     },
     WhisperModelCatalogEntry {
+        id: "large-v3",
+        file_name: "ggml-large-v3.bin",
+        size_mib: 2952,
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
+        sha1_hex: "ad82bf6a9043ceed055076d0fd39f5f186ff8062",
+    },
+    WhisperModelCatalogEntry {
         id: "large-v3-turbo",
         file_name: "ggml-large-v3-turbo.bin",
         size_mib: 1536,
@@ -125,5 +132,13 @@ mod tests {
         assert_eq!(entry.file_name, "ggml-small.en-tdrz.bin");
         assert_eq!(entry.sha1_hex, "b6c6e7e89af1a35c08e6de56b66ca6a02a2fdfa1");
         assert!(list_models_for_ui().iter().any(|m| m.id == "small.en-tdrz"));
+    }
+
+    #[test]
+    fn catalog_resolves_large_v3() {
+        let entry = catalog_entry("large-v3").expect("large-v3");
+        assert_eq!(entry.file_name, "ggml-large-v3.bin");
+        assert_eq!(entry.sha1_hex, "ad82bf6a9043ceed055076d0fd39f5f186ff8062");
+        assert!(list_models_for_ui().iter().any(|m| m.id == "large-v3"));
     }
 }

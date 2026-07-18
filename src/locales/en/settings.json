@@ -33,7 +33,7 @@
     "label_speakers_needs_vtt": "Enable WebVTT under Essentials → Also save… first."
   },
   "transcription": {
-    "mode_label": "Transcription mode",
+    "mode_label": "How should speech be recognized?",
     "mode_aria": "Transcription mode",
     "mode_options": {
       "http_api": "Cloud — HTTP API (OpenAI-compatible)",
@@ -41,16 +41,28 @@
       "browser": "In-app — Whisper (WASM / Transformers.js)"
     },
     "mode_summary": {
-      "local": "No API key. You need the whisper-cli executable and one ggml .bin model on disk.",
-      "browser": "No API key or whisper-cli. Transcription runs in the app (WASM); pick model size — first run may download weights.",
-      "cloud": "Uses your provider's API key. whisper-cli and local models are not used."
+      "local": "Runs privately on this computer. One-time setup and model download required.",
+      "browser": "Runs inside the app. Best for short recordings; the first run downloads a model.",
+      "cloud": "Fastest to set up. Audio is sent to the provider you configure."
+    },
+    "choice": {
+      "online_title": "Online service",
+      "online_body": "Simple setup and good for long batches. Requires an API key.",
+      "computer_title": "On this computer",
+      "computer_body": "Private and offline after a one-time download.",
+      "app_title": "Inside the app",
+      "app_body": "No separate installation. Best for shorter recordings."
     },
     "browser_warn": "Experimental: needs internet for the first model download; long audio may be slow or run out of memory. If this fails, switch to Cloud API or Local Whisper.",
     "transcription_aria": "Transcription settings",
     "engine_aria": "Engine settings for the active transcription mode",
-    "engine_depth_hint": "Model paths, API credentials, and downloads live under the Engine tab."
+    "engine_depth_hint": "Setup details are under Transcription. Technical file locations stay hidden unless you need troubleshooting."
   },
   "local_whisper": {
+    "friendly_setup_title": "Set up private transcription",
+    "friendly_setup_hint": "The app can download everything it needs. You normally do not need to choose program files or folders.",
+    "custom_location_summary": "Troubleshooting or custom installation",
+    "custom_location_hint": "Only use this if you installed the speech engine yourself or automatic setup did not work.",
     "step1_title": "1 · whisper-cli (engine)",
     "step1_hint": "<strong>Windows:</strong> official <code>whisper-bin-x64.zip</code> from <a>ggml-org/whisper.cpp</a> (MIT) — use the button below to download into app data (includes DLLs). <strong>macOS:</strong> no CLI zip in those releases; the button runs <code>which whisper-cli</code> / <code>whisper</code> / <code>main</code> and scans Homebrew paths, or use <strong>Pick file…</strong> after <code>brew install whisper-cpp</code>.",
     "linux_intro": "<strong>Linux:</strong> this app does not download whisper-cli here. Install a package or build from source, then set the path below or use <strong>Pick file…</strong>.",
@@ -99,6 +111,7 @@
     "model_option": "{{id}} — ~{{sizeMib}} MiB (browser, approximate)"
   },
   "cloud": {
+    "provider_details_summary": "Use another provider or model",
     "api_url_label": "API base URL",
     "api_model_label": "API model name",
     "api_key_label": "API key",
@@ -153,7 +166,27 @@
   },
   "recursive_scan": "Recursive folder scan (include subfolders)",
   "language_iso": {
-    "label": "Language (optional, ISO code)",
+    "label": "Default video language",
+    "default_hint": "Used for new batches. You can change it instantly while adding media or override individual queue items.",
+    "options": {
+      "auto": "Detect automatically",
+      "en": "English",
+      "ru": "Russian",
+      "uk": "Ukrainian",
+      "de": "German",
+      "es": "Spanish",
+      "fr": "French",
+      "pt": "Portuguese",
+      "pl": "Polish",
+      "it": "Italian",
+      "nl": "Dutch",
+      "tr": "Turkish",
+      "ar": "Arabic",
+      "zh": "Chinese",
+      "ja": "Japanese",
+      "ko": "Korean",
+      "hi": "Hindi"
+    },
     "placeholder": "auto",
     "examples_label": "Examples:",
     "ru_chip": "ru",

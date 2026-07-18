@@ -37,6 +37,8 @@ export type QueueJob = {
   /** Path or URL — passed to backend pipeline later */
   source: string;
   displayLabel: string;
+  /** Spoken-language override for this item. null = automatic detection. */
+  language: string | null;
   status: QueueJobStatus;
   detail?: string;
   /** Filled when status is `done` — path to the primary .txt transcript */

@@ -15,6 +15,7 @@ import {
   listWhisperModels,
   type ApiServerInfo,
 } from "../lib/invokeSafe";
+import { SPEECH_LANGUAGE_OPTIONS } from "../lib/speechLanguages";
 import { isProbablyLinux, isProbablyMac, isProbablyWindows } from "../lib/platform";
 import type { PrefsDepth, PrefsFocus } from "../types/preferences";
 import type {
@@ -60,13 +61,25 @@ const FULL_LANG_OPTIONS: ReadonlyArray<{ value: UiLanguage; label: string }> = [
   { value: "pt", label: "Português" },
 ];
 
+function friendlyModelLabel(model: WhisperModelMeta): string {
+  const tier = model.id.startsWith("tiny")
+    ? "Fastest"
+    : model.id.startsWith("base")
+      ? "Fast"
+      : model.id.startsWith("small")
+        ? "Balanced"
+        : model.id.startsWith("medium")
+          ? "More accurate"
+          : "Highest accuracy";
+  return `${tier} · ~${model.sizeMib} MiB`;
+}
+
 export function SettingsPanel({
   settings,
   onChange,
   onSave,
   onPersistSettings,
   onRefreshReadiness,
-  onLanguageChange,
   saving,
   depth,
   focus = null,
@@ -424,7 +437,12 @@ export function SettingsPanel({
               aria-label={t("language.select_aria")}
               data-testid="settings-language-switcher"
               value={settings.uiLanguage}
-              onChange={(e) => onLanguageChange(e.target.value as UiLanguage)}
+              onChange={(e) =>
+                onChange({
+                  ...settings,
+                  uiLanguage: e.target.value as UiLanguage,
+                })
+              }
             >
               {FULL_LANG_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -552,29 +570,57 @@ export function SettingsPanel({
             role="group"
             aria-label={t("transcription.transcription_aria")}
           >
-            <label className="field mb-sm">
+            <div className="field mb-sm">
               <span>{t("transcription.mode_label")}</span>
-              <select
+              <div
+                className="transcription-choice-list"
+                role="radiogroup"
                 aria-label={t("transcription.mode_aria")}
-                value={settings.transcriptionMode}
-                onChange={(e) =>
-                  onChange({
-                    ...settings,
-                    transcriptionMode: e.target.value as TranscriptionMode,
-                  })
-                }
               >
-                <option value="httpApi">
-                  {t("transcription.mode_options.http_api")}
-                </option>
-                <option value="localWhisper">
-                  {t("transcription.mode_options.local")}
-                </option>
-                <option value="browserWhisper">
-                  {t("transcription.mode_options.browser")}
-                </option>
-              </select>
-            </label>
+                {(
+                  [
+                    [
+                      "httpApi",
+                      t("transcription.choice.online_title"),
+                      t("transcription.choice.online_body"),
+                    ],
+                    [
+                      "localWhisper",
+                      t("transcription.choice.computer_title"),
+                      t("transcription.choice.computer_body"),
+                    ],
+                    [
+                      "browserWhisper",
+                      t("transcription.choice.app_title"),
+                      t("transcription.choice.app_body"),
+                    ],
+                  ] as ReadonlyArray<[TranscriptionMode, string, string]>
+                ).map(([value, title, body]) => (
+                  <label
+                    className={
+                      settings.transcriptionMode === value
+                        ? "transcription-choice transcription-choice--selected"
+                        : "transcription-choice"
+                    }
+                    key={value}
+                  >
+                    <input
+                      type="radio"
+                      name="transcription-mode"
+                      value={value}
+                      checked={settings.transcriptionMode === value}
+                      onChange={() =>
+                        onChange({ ...settings, transcriptionMode: value })
+                      }
+                    />
+                    <span>
+                      <strong>{title}</strong>
+                      <small>{body}</small>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
             <p className="hint settings-mode-summary">
               {useLocal
                 ? t("transcription.mode_summary.local")
@@ -591,54 +637,31 @@ export function SettingsPanel({
           </div>
 
           <label className="field">
-            <span>{t("language_iso.label")}</span>
-            <input
-              type="text"
+            <span>
+              {t("language_iso.label", { defaultValue: "Default video language" })}
+            </span>
+            <select
               value={settings.language ?? ""}
               onChange={(e) =>
                 onChange({
                   ...settings,
-                  language: e.target.value.trim() || null,
+                  language: e.target.value || null,
                 })
               }
-              placeholder={t("language_iso.placeholder")}
-              aria-describedby="language-examples-hint"
-            />
-            <div
-              className="field-lang-examples"
-              role="group"
-              aria-label={t("language_iso.examples_label")}
             >
-              <span className="field-lang-examples-label">
-                {t("language_iso.examples_label")}
-              </span>
-              <button
-                type="button"
-                className="lang-code-chip"
-                onClick={() => onChange({ ...settings, language: "ru" })}
-              >
-                {t("language_iso.ru_chip")}{" "}
-                <span className="lang-code-chip-desc">{t("language_iso.ru_desc")}</span>
-              </button>
-              <button
-                type="button"
-                className="lang-code-chip"
-                onClick={() => onChange({ ...settings, language: "uk" })}
-              >
-                {t("language_iso.uk_chip")}{" "}
-                <span className="lang-code-chip-desc">{t("language_iso.uk_desc")}</span>
-              </button>
-              <button
-                type="button"
-                className="lang-code-chip"
-                onClick={() => onChange({ ...settings, language: "en" })}
-              >
-                {t("language_iso.en_chip")}{" "}
-                <span className="lang-code-chip-desc">{t("language_iso.en_desc")}</span>
-              </button>
-            </div>
-            <p className="hint" id="language-examples-hint">
-              <Trans i18nKey="language_iso.hint" t={t} components={{ code: <code /> }} />
+              {SPEECH_LANGUAGE_OPTIONS.map(({ value, key, defaultLabel }) => (
+                <option key={value || "auto"} value={value}>
+                  {t(`language_iso.options.${key}`, {
+                    defaultValue: defaultLabel,
+                  })}
+                </option>
+              ))}
+            </select>
+            <p className="hint">
+              {t("language_iso.default_hint", {
+                defaultValue:
+                  "Used for new batches. You can change it while adding media or per queue item.",
+              })}
             </p>
           </label>
 
@@ -721,23 +744,11 @@ export function SettingsPanel({
         {useLocal ? (
           <div className="local-whisper-block" data-testid="local-whisper-block">
             <div className="settings-step-card">
-              <p className="settings-step-title">{t("local_whisper.step1_title")}</p>
+              <p className="settings-step-title">
+                {t("local_whisper.friendly_setup_title")}
+              </p>
               <p className="hint settings-step-body">
-                <Trans
-                  i18nKey="local_whisper.step1_hint"
-                  t={t}
-                  components={{
-                    strong: <strong />,
-                    code: <code />,
-                    a: (
-                      <a
-                        href="https://github.com/ggml-org/whisper.cpp/releases"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      />
-                    ),
-                  }}
-                />
+                {t("local_whisper.friendly_setup_hint")}
               </p>
               {isLinux ? (
                 <div
@@ -800,9 +811,6 @@ export function SettingsPanel({
                         : t("local_whisper.btn_find_mac")}
                   </button>
                 ) : null}
-                <button type="button" onClick={() => void pickWhisperCliExecutable()}>
-                  {t("local_whisper.btn_pick_file")}
-                </button>
               </div>
               {whisperCliDlProgress &&
               whisperCliDlProgress.total != null &&
@@ -839,22 +847,34 @@ export function SettingsPanel({
                   <div>{whisperCliDlError}</div>
                 </div>
               ) : null}
-              <label className="field">
-                <span>{t("local_whisper.path_field_label")}</span>
-                <div className="row-gap">
-                  <input
-                    type="text"
-                    value={settings.whisperCliPath ?? ""}
-                    onChange={(e) =>
-                      onChange({
-                        ...settings,
-                        whisperCliPath: e.target.value.trim() || null,
-                      })
-                    }
-                    placeholder={t("local_whisper.path_placeholder")}
-                  />
+              <details className="technical-details">
+                <summary>{t("local_whisper.custom_location_summary")}</summary>
+                <div className="technical-details-body">
+                  <p className="hint">
+                    {t("local_whisper.custom_location_hint")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void pickWhisperCliExecutable()}
+                  >
+                    {t("local_whisper.btn_pick_file")}
+                  </button>
+                  <label className="field">
+                    <span>{t("local_whisper.path_field_label")}</span>
+                    <input
+                      type="text"
+                      value={settings.whisperCliPath ?? ""}
+                      onChange={(e) =>
+                        onChange({
+                          ...settings,
+                          whisperCliPath: e.target.value.trim() || null,
+                        })
+                      }
+                      placeholder={t("local_whisper.path_placeholder")}
+                    />
+                  </label>
                 </div>
-              </label>
+              </details>
             </div>
 
             {isWin ? (
@@ -949,11 +969,7 @@ export function SettingsPanel({
                 >
                   {whisperModels.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {t("local_whisper.model_option", {
-                        id: m.id,
-                        sizeMib: m.sizeMib,
-                        fileName: m.fileName,
-                      })}
+                      {friendlyModelLabel(m)}
                     </option>
                   ))}
                 </select>
@@ -1006,7 +1022,7 @@ export function SettingsPanel({
                 >
                   {whisperModels.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {t("browser_whisper.model_option", { id: m.id, sizeMib: m.sizeMib })}
+                      {friendlyModelLabel(m)}
                     </option>
                   ))}
                 </select>
@@ -1015,26 +1031,11 @@ export function SettingsPanel({
           </div>
         ) : (
           <>
-            <div data-prefs-focus="api-credentials" id="prefs-focus-api-credentials">
-            <label className="field">
-              <span>{t("cloud.api_url_label")}</span>
-              <input
-                type="url"
-                value={settings.apiBaseUrl}
-                onChange={(e) =>
-                  onChange({ ...settings, apiBaseUrl: e.target.value })
-                }
-              />
-            </label>
-            <label className="field">
-              <span>{t("cloud.api_model_label")}</span>
-              <input
-                type="text"
-                value={settings.apiModel}
-                onChange={(e) => onChange({ ...settings, apiModel: e.target.value })}
-              />
-            </label>
-            <label className="field">
+            <label
+              className="field"
+              data-prefs-focus="api-credentials"
+              id="prefs-focus-api-credentials"
+            >
               <span>{t("cloud.api_key_label")}</span>
               <input
                 type="password"
@@ -1043,7 +1044,31 @@ export function SettingsPanel({
                 onChange={(e) => onChange({ ...settings, apiKey: e.target.value })}
               />
             </label>
-            </div>
+            <details className="technical-details">
+              <summary>{t("cloud.provider_details_summary")}</summary>
+              <div className="technical-details-body">
+                <label className="field">
+                  <span>{t("cloud.api_url_label")}</span>
+                  <input
+                    type="url"
+                    value={settings.apiBaseUrl}
+                    onChange={(e) =>
+                      onChange({ ...settings, apiBaseUrl: e.target.value })
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span>{t("cloud.api_model_label")}</span>
+                  <input
+                    type="text"
+                    value={settings.apiModel}
+                    onChange={(e) =>
+                      onChange({ ...settings, apiModel: e.target.value })
+                    }
+                  />
+                </label>
+              </div>
+            </details>
             <details className="help-details">
               <summary>{t("cloud.where_key_summary")}</summary>
               <div className="help-details-body">
@@ -1548,9 +1573,11 @@ export function SettingsPanel({
         </>
       ) : null}
 
-      <button type="button" className="primary" disabled={saving} onClick={onSave}>
-        {saving ? t("btn_saving") : t("btn_save")}
-      </button>
+      {!embeddedInSheet ? (
+        <button type="button" className="primary" disabled={saving} onClick={onSave}>
+          {saving ? t("btn_saving") : t("btn_save")}
+        </button>
+      ) : null}
     </section>
   );
 }
