@@ -4,6 +4,27 @@
     "queue": "Очередь",
     "settings": "Настройки"
   },
+  "preferences": {
+    "title": "Настройки",
+    "open": "Настройки",
+    "close": "Закрыть",
+    "close_aria": "Закрыть настройки",
+    "depth_aria": "Разделы настроек",
+    "depth": {
+      "essentials": "Основное",
+      "engine": "Движок",
+      "advanced": "Дополнительно"
+    }
+  },
+  "context": {
+    "mode_local": "Local Whisper",
+    "mode_browser": "Whisper в приложении",
+    "mode_cloud": "Cloud API",
+    "engine_title": "Режим транскрипции — открыть настройки",
+    "output_unset": "Папка вывода не задана",
+    "ready": "Готово",
+    "not_ready": "Нужна настройка"
+  },
   "header": {
     "lang_aria": "Язык приложения",
     "setup_guide_label": "Руководство по настройке",

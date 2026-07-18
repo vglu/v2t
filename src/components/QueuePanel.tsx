@@ -639,9 +639,33 @@ export function QueuePanel({ settings, readinessComplete }: Props) {
           data-testid="queue-empty-hint"
         >
           {readinessComplete ? (
-            <Trans i18nKey="empty_hint.ready_when_you_are" t={t} components={{ strong: <strong /> }} />
+            <>
+              <p className="queue-empty-lead">
+                <Trans
+                  i18nKey="empty_hint.ready_lead"
+                  t={t}
+                  components={{ strong: <strong /> }}
+                />
+              </p>
+              <ul className="queue-empty-triad" data-testid="queue-empty-triad">
+                <li>{t("empty_hint.triad_drop")}</li>
+                <li>{t("empty_hint.triad_paste")}</li>
+                <li>{t("empty_hint.triad_folder")}</li>
+              </ul>
+              <p className="queue-empty-then">
+                <Trans
+                  i18nKey="empty_hint.ready_then"
+                  t={t}
+                  components={{ strong: <strong /> }}
+                />
+              </p>
+            </>
           ) : (
-            <Trans i18nKey="empty_hint.finish_setup_first" t={t} components={{ strong: <strong /> }} />
+            <Trans
+              i18nKey="empty_hint.finish_setup_first"
+              t={t}
+              components={{ strong: <strong /> }}
+            />
           )}
         </div>
       ) : null}

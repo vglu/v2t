@@ -1,4 +1,5 @@
 import { Trans, useTranslation } from "react-i18next";
+import type { PrefsTarget } from "../types/preferences";
 import type { AppSettings, DependencyReport } from "../types/settings";
 
 type Props = {
@@ -9,7 +10,7 @@ type Props = {
     AppSettings,
     "outputDir" | "apiKey" | "transcriptionMode" | "whisperCliPath"
   >;
-  onOpenSettings: () => void;
+  onOpenPreferences: (target?: PrefsTarget) => void;
 };
 
 function StatusDot({ ok }: { ok: boolean }) {
@@ -25,7 +26,12 @@ function pathsProbablyEqual(a: string | null | undefined, b: string | null | und
   return x.replace(/\\/g, "/").toLowerCase() === y.replace(/\\/g, "/").toLowerCase();
 }
 
-export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings }: Props) {
+export function ReadinessPanel({
+  report,
+  documentsPath,
+  settings,
+  onOpenPreferences,
+}: Props) {
   const { t } = useTranslation("readiness");
   const toolsUnknown = report === null;
   const ffmpegOk = report?.ffmpegFound ?? false;
@@ -48,6 +54,19 @@ export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings
       : apiKeyOk;
 
   const allOk = toolsReady && outputOk && transcriptionReady;
+
+  function fixTarget(): PrefsTarget {
+    if (!outputOk) return { depth: "essentials", focus: "output-dir" };
+    if (!toolsUnknown && !ffmpegOk) return { depth: "advanced", focus: "ffmpeg" };
+    if (!toolsUnknown && !ytDlpOk) return { depth: "advanced", focus: "yt-dlp" };
+    if (useLocal && (!whisperCliOk || !modelOk)) {
+      return { depth: "engine", focus: "whisper-model" };
+    }
+    if (!useLocal && !useBrowser && !apiKeyOk) {
+      return { depth: "engine", focus: "api-credentials" };
+    }
+    return { depth: "essentials" };
+  }
 
   const rows: {
     id: string;
@@ -213,7 +232,7 @@ export function ReadinessPanel({ report, documentsPath, settings, onOpenSettings
           type="button"
           className="readiness-settings-btn"
           data-testid="readiness-open-settings"
-          onClick={onOpenSettings}
+          onClick={() => onOpenPreferences(fixTarget())}
         >
           {t("open_settings_btn")}
         </button>

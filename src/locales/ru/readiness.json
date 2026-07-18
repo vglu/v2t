@@ -12,7 +12,7 @@
   },
   "tools_unknown": "Инструменты: неизвестны (запустите в десктоп-приложении для обнаружения ffmpeg / yt-dlp)",
   "tool_hint": "Совет: в <strong>Настройках</strong> — на Windows или macOS скачайте <strong>ffmpeg и yt-dlp для меня</strong>, или установите вручную.",
-  "open_settings_btn": "Открыть настройки",
+  "open_settings_btn": "Исправить в настройках",
   "row": {
     "ffmpeg": {
       "label": "ffmpeg",

@@ -3,7 +3,12 @@
   "panel_aria": "Queue",
   "empty_hint": {
     "ready_when_you_are": "<strong>Ready when you are.</strong> Drop files or folders here, paste video links, or use the buttons below — then press <strong>Start queue</strong>.",
-    "finish_setup_first": "<strong>Finish setup first.</strong> Follow the checklist above (green dots). Open <strong>Settings</strong> if anything is missing, or use <strong>Setup guide</strong> for a short tour."
+    "ready_lead": "<strong>Ready when you are.</strong> Add sources any way you like:",
+    "triad_drop": "Drop files here",
+    "triad_paste": "Paste URLs (one per line)",
+    "triad_folder": "Add a folder",
+    "ready_then": "Then press <strong>Start queue</strong>.",
+    "finish_setup_first": "<strong>Finish setup first.</strong> Follow the checklist above (green dots). Open <strong>Preferences</strong> if anything is missing, or use <strong>Setup guide</strong> for a short tour."
   },
   "drop_zone": "Drop files or folders here (native drop uses system paths).",
   "btn": {

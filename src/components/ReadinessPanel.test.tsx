@@ -15,7 +15,7 @@ describe("ReadinessPanel", () => {
           transcriptionMode: "httpApi",
           whisperCliPath: null,
         }}
-        onOpenSettings={() => {}}
+        onOpenPreferences={() => {}}
       />,
     );
     expect(screen.getByTestId("deps-unknown")).toBeInTheDocument();
@@ -40,7 +40,7 @@ describe("ReadinessPanel", () => {
           transcriptionMode: "httpApi",
           whisperCliPath: null,
         }}
-        onOpenSettings={() => {}}
+        onOpenPreferences={() => {}}
       />,
     );
     expect(screen.getByTestId("deps-status")).toHaveClass("deps-ok");
@@ -48,7 +48,7 @@ describe("ReadinessPanel", () => {
     expect(screen.getByTestId("ytdlp-status")).toHaveTextContent("ok");
   });
 
-  it("calls onOpenSettings when button clicked", async () => {
+  it("calls onOpenPreferences with Fix target when button clicked", async () => {
     const user = userEvent.setup();
     const fn = vi.fn();
     render(
@@ -69,11 +69,43 @@ describe("ReadinessPanel", () => {
           transcriptionMode: "httpApi",
           whisperCliPath: null,
         }}
-        onOpenSettings={fn}
+        onOpenPreferences={fn}
       />,
     );
     expect(screen.getByTestId("readiness-tool-hint")).toBeInTheDocument();
     await user.click(screen.getByTestId("readiness-open-settings"));
     expect(fn).toHaveBeenCalledOnce();
+    expect(fn).toHaveBeenCalledWith({
+      depth: "essentials",
+      focus: "output-dir",
+    });
+  });
+
+  it("Fix targets Advanced ffmpeg when output is set but ffmpeg missing", async () => {
+    const user = userEvent.setup();
+    const fn = vi.fn();
+    render(
+      <ReadinessPanel
+        report={{
+          ffmpegFound: false,
+          ffmpegPath: null,
+          ytDlpFound: true,
+          ytDlpPath: "/bin/yt-dlp",
+          whisperCliFound: false,
+          whisperCliPath: null,
+          whisperModelReady: false,
+        }}
+        documentsPath={null}
+        settings={{
+          outputDir: "/out",
+          apiKey: "sk",
+          transcriptionMode: "httpApi",
+          whisperCliPath: null,
+        }}
+        onOpenPreferences={fn}
+      />,
+    );
+    await user.click(screen.getByTestId("readiness-open-settings"));
+    expect(fn).toHaveBeenCalledWith({ depth: "advanced", focus: "ffmpeg" });
   });
 });

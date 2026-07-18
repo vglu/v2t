@@ -126,6 +126,24 @@ describe("SettingsPanel", () => {
     });
   });
 
+  it("Engine depth hides cloud credentials when mode is local", () => {
+    render(
+      <SettingsPanel
+        settings={{ ...defaultAppSettings, transcriptionMode: "localWhisper" }}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onPersistSettings={vi.fn().mockResolvedValue(undefined)}
+        onLanguageChange={vi.fn()}
+        saving={false}
+        depth="engine"
+      />,
+    );
+    expect(screen.getByTestId("local-whisper-block")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("cloud-credential-store-hint"),
+    ).not.toBeInTheDocument();
+  });
+
   it("disables speaker labels when WebVTT export is off", () => {
     const onChange = vi.fn();
     render(
@@ -140,6 +158,7 @@ describe("SettingsPanel", () => {
         onPersistSettings={vi.fn().mockResolvedValue(undefined)}
         onLanguageChange={vi.fn()}
         saving={false}
+        depth="advanced"
       />,
     );
 
@@ -160,6 +179,7 @@ describe("SettingsPanel", () => {
         onPersistSettings={vi.fn().mockResolvedValue(undefined)}
         onLanguageChange={vi.fn()}
         saving={false}
+        depth="advanced"
       />,
     );
 
