@@ -1,155 +1,198 @@
 ﻿# v2t — Video to Text
 
-A portable desktop application (Tauri 2) that converts **video and audio** → text transcript.
-Supports local files, folders, and URLs — including **YouTube, TikTok, and hundreds of other sites**.
+Portable desktop app (**Tauri 2**) that turns **video / audio / links** into text transcripts (`.txt`, optional `.vtt` / `.srt`).
 
-[Demo video](https://youtu.be/cInVpU3ErlQ)
+**Current release: [v2.0.12](https://github.com/vglu/v2t/releases/tag/v2.0.12)** (2026-07-18)
+
+[Demo video](https://youtu.be/cInVpU3ErlQ) · [Changelog](CHANGELOG.md) · [Releases](https://github.com/vglu/v2t/releases)
+
+---
+
+## Status (what works today)
+
+| Area | Status |
+|------|--------|
+| Queue: files, folders, YouTube / TikTok / playlists | ✅ |
+| ffmpeg + yt-dlp (download from Preferences, or next to the app) | ✅ |
+| Profiles **Simple / Quality / Power** (+ Custom) | ✅ |
+| Light **Preferences** sheet + **Setup guide** (profile-branched) | ✅ |
+| Cloud HTTP Whisper API / local whisper.cpp / in-app WASM | ✅ |
+| Timed **WebVTT**, optional speakers (local tinydiarize) | ✅ |
+| yt-dlp cookie DB failure → **auto-retry without cookies** | ✅ (v2.0.12) |
+| In-app WASM **large-v3** | ❌ Not supported in webview — use **On this computer** |
+| Dependabot auto-PRs | ❌ Disabled (manual updates only) |
 
 ---
 
 ## How it works
 
-1. **Add sources** — drag & drop files/folders, or paste one URL per line (YouTube, TikTok, …).
-2. **Configure** — pick transcription mode, output folder, and language in **Settings**.
-3. **Run** — click **Start queue**. The app downloads (if URL), extracts audio via **ffmpeg**, and transcribes. Each job runs sequentially so slow operations (model download, long video) do not block the UI.
-4. **Get text** — `.txt` files appear in the output folder you chose.
+1. **Add sources** — paste links, or use **Files & folders** (drop zone).
+2. **Preferences** — output folder, profile, transcription mode, tools/cookies.
+3. **Start batch** — downloads (URLs), extracts audio with **ffmpeg**, transcribes.
+4. **Results** — `.txt` (and optional siblings) in your output folder.
 
-> **Tip:** Use the queue — add all your sources first, then start processing. The queue can be stopped at any time; already-completed jobs keep their results.
+First launch: **Setup guide** (or reopen from the header). Profiles gate how long setup is:
+
+| Profile | Intent | Setup length |
+|---------|--------|--------------|
+| **Simple** | Links → plain text, captions when available | Short; in-app Whisper by default |
+| **Quality** | Meetings / timed WebVTT, strong model | Tools + engine setup |
+| **Power** | Quality + keep media, folders, SRT, Deno/cookies | Full advanced tools |
+
+API keys, output folder, and tool paths are **never overwritten** when you switch profiles.
 
 ---
 
 ## Supported URL sources
 
-Paste one URL per line. Powered by **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**, which supports 1000+ sites, including:
+One URL per line. Powered by **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** (1000+ sites):
 
-- **YouTube** — videos, Shorts, Live recordings, playlists
-- **TikTok** — public videos (`tiktok.com/@user/video/…`) and short links (`vm.tiktok.com/…`)
-- **Twitter / X, Instagram, Facebook, Vimeo, Twitch VODs** — and many more
-- Any direct link to an audio or video file (`https://…/file.mp3`)
+- **YouTube** — videos, Shorts, playlists  
+- **TikTok** — public videos and short links (`vm.tiktok.com`, …)  
+- Twitter/X, Instagram, Facebook, Vimeo, Twitch VODs, …  
+- Direct media URLs (`https://…/file.mp3`)
 
-For playlists one queue item may produce multiple transcripts (one `.txt` per track).
-
-> **Note:** TikTok and some platforms may require you to be logged in. Use **Settings → Browser cookies
-> source** to let yt-dlp read cookies directly from your browser (see [Browser cookies](#browser-cookies-youtube--tiktok) below).
+Playlists can produce multiple transcripts (one `.txt` per track). Use `{track}` in the filename template if needed.
 
 ---
 
-## Browser cookies (YouTube / TikTok)
+## Browser cookies (YouTube / TikTok) — troubleshooting
 
-Some videos require a logged-in session — age-restricted YouTube content, private TikToks, etc.
-The app passes `--cookies-from-browser` to yt-dlp so it reads cookies directly from your browser.
+Some videos need a logged-in session (age-gated YouTube, login walls, etc.).  
+v2t passes yt-dlp `--cookies-from-browser` when cookies are enabled.
 
-**Configure:** Settings → *I'll install ffmpeg / yt-dlp myself* → **Cookies source for yt-dlp**
-(also available on the ffmpeg & yt-dlp step of the Setup guide).
+### Where to set it
 
-| Option | Browser used |
-|--------|-------------|
-| **Auto** (default) | Edge on Windows · Chrome on macOS · Firefox on Linux |
-| Chrome | Google Chrome |
-| Brave | Brave Browser |
-| Edge | Microsoft Edge |
-| Firefox | Mozilla Firefox |
-| Disabled | No cookies passed |
+**Preferences → Tools & advanced** → scroll **below** “Download ffmpeg & yt-dlp” →  
+**Cookies source for yt-dlp (YouTube / TikTok age-gate)** → **Save changes**.
 
-**Before using:** make sure you are already **logged in** to YouTube / TikTok in the chosen browser.
+(Also on the Power Setup guide tools step.)
 
-> ⚠️ **Chrome, Brave and Edge have two known limitations on Windows:**
->
-> 1. **Database lock** — the cookie file is locked while the browser is running. Close it completely before starting the queue ([yt-dlp #7271](https://github.com/yt-dlp/yt-dlp/issues/7271)).
-> 2. **App-bound encryption (Chrome 127+)** — since mid-2024 Chromium-based browsers encrypt cookies in a way only the browser process itself can decrypt. yt-dlp cannot read them even when the browser is closed. Error: `Failed to decrypt with DPAPI` ([yt-dlp #10927](https://github.com/yt-dlp/yt-dlp/issues/10927)).
->
-> **Firefox does not have either of these limitations** and is the most reliable choice on Windows.
-> Log in to YouTube / TikTok in Firefox, then select **Firefox** in the cookies setting.
+### Options
+
+| Option | What yt-dlp uses |
+|--------|------------------|
+| **Auto** (default) | **Firefox** on Windows/Linux · Chrome on macOS |
+| Chrome / Brave / Edge | That Chromium browser |
+| **Firefox** | Mozilla Firefox (recommended on Windows) |
+| **Disabled** | No `--cookies-from-browser` |
+
+### Recommended setup on Windows (Firefox)
+
+1. Install [Firefox](https://www.mozilla.org/firefox/).
+2. Open Firefox → log in to **YouTube** (and TikTok if needed) in a normal window.
+3. Optionally **fully quit Firefox** before a long batch (avoids rare DB locks while copying `cookies.sqlite`).
+4. In v2t: Preferences → Tools & advanced → cookies → **Firefox** → Save.
+5. Run the queue again.
+
+Firefox stores cookies in a plain SQLite DB that yt-dlp can read. That is why it works when Chrome does not.
+
+### Why Chrome / Edge / Brave fail on Windows
+
+Two separate problems (you may see either):
+
+1. **Cookie database lock** while the browser is open  
+   Error often looks like:  
+   `Could not copy Chrome cookie database`  
+   See [yt-dlp #7271](https://github.com/yt-dlp/yt-dlp/issues/7271).  
+   Closing the browser sometimes helps for the *lock* only — it does **not** fix encryption below.
+
+2. **App-bound encryption (Chrome 127+, mid‑2024+)**  
+   Cookies are encrypted so only Chrome/Edge itself can decrypt them.  
+   yt-dlp **cannot** read them even with the browser closed.  
+   Typical errors: `Failed to decrypt with DPAPI`, or copy/decrypt failures.  
+   See [yt-dlp #10927](https://github.com/yt-dlp/yt-dlp/issues/10927).
+
+**There is no reliable “just close Chrome” fix** for (2). Use Firefox, export a cookies file for yt-dlp manually, or disable cookies for public videos.
+
+### What v2t does automatically (v2.0.12+)
+
+If the first yt-dlp pass fails with a cookie-database / decrypt error, the app **retries the same download without cookies** and logs something like:
+
+`Browser cookies failed (Chrome/Edge lock or encryption). Retrying without cookies…`
+
+- **Public** videos often succeed on that retry.  
+- **Age-gated / login-required** videos still need working cookies (Firefox) or will fail again with a clearer message pointing to Preferences.
+
+### Quick decision guide
+
+| Symptom | Do this |
+|---------|---------|
+| `Could not copy Chrome cookie database` | Set cookies to **Firefox** or **Disabled**; Save; retry |
+| Public video, cookies failing | **Disabled** is fine (or rely on auto-retry) |
+| Age-restricted / “Sign in to confirm” | Firefox + logged-in YouTube session |
+| Still failing after Firefox | Update yt-dlp (Preferences → Download ffmpeg & yt-dlp), confirm login in Firefox, try again |
+| yt-dlp “older than 90 days” warning | Re-download yt-dlp from Preferences (optional but recommended) |
+
+### Deno / JS runtimes (separate from cookies)
+
+Some YouTube extractions paths need a JS runtime (`deno` / `node`).  
+If you see *no supported JavaScript runtime*, install Deno and set **yt-dlp JS runtimes** to `deno` in the same Tools section (Power profile / advanced).
 
 ---
 
 ## Transcription modes
 
-Open **Settings → Transcription** to choose:
+**Preferences → Transcription** (or General → transcription mode):
 
-### HTTP API (cloud) — default
+### Online service (HTTP API)
 
-Sends audio to any OpenAI-compatible `/v1/audio/transcriptions` endpoint.
+OpenAI-compatible `POST …/audio/transcriptions`. Key stored in the **OS credential store**.
 
-| Setting | Default | Notes |
-|---------|---------|-------|
-| API base URL | `https://api.openai.com/v1` | Change for Azure OpenAI, Groq, local servers, etc. |
-| Model | `whisper-1` | Any model accepted by the endpoint |
-| API key | — | Stored in OS credential store — never written to disk |
-| Language | auto-detect | ISO 639-1 code, e.g. `en`, `uk`, `de` |
+| Setting | Typical default |
+|---------|-----------------|
+| API base URL | `https://api.openai.com/v1` |
+| Model | `whisper-1` |
+| Language | auto or ISO code (`en`, `uk`, …) |
 
-Files larger than ~22 MiB are automatically split by ffmpeg and the text concatenated.
+Large files are split automatically when the provider has a size limit.
 
-**Getting an API key (OpenAI):** sign up at [platform.openai.com](https://platform.openai.com/) → [API keys](https://platform.openai.com/api-keys) → **Create new secret key**.
-Other providers (Azure OpenAI, Groq, etc.) — obtain the key and base URL from their dashboard.
+### On this computer (whisper.cpp / whisper-cli) — best quality
 
-### Local Whisper (whisper.cpp) — offline, no API key
+Fully local. For meeting-grade quality use model **`large-v3`** (+ GPU build when available).
 
-Runs transcription entirely on your machine using **[whisper.cpp](https://github.com/ggml-org/whisper.cpp)**.
+| Model | Approx. size | Notes |
+|-------|--------------|--------|
+| `tiny` / `base` / `small` | small | Drafts / weak hardware |
+| `medium` | ~1.5 GB | Solid CPU default |
+| `large-v3` | ~2.9 GB | **Best local quality** (benchmarks ≈ cloud `whisper-1`) |
+| `large-v3-turbo` | ~1.5 GB | Faster; verify on your audio (can hallucinate) |
 
-**Setup:**
-1. Select **Transcription → Local Whisper (whisper.cpp CLI)** in Settings.
-2. Place `whisper-cli` next to `v2t.exe`, or enter the full path in Settings.
-3. Choose a model and click **Download / verify model** — the file is fetched from Hugging Face and its SHA-1 checksum is verified.
+Download whisper-cli + model from Preferences when on Windows/macOS.
 
-**Available Whisper models:**
+### Inside the app (WASM / Transformers.js)
 
-| Model | Size | Speed | Quality | Recommended for |
-|-------|------|-------|---------|-----------------|
-| `tiny` | ~75 MB | Fastest | Basic | Quick drafts, weak hardware |
-| `base` | ~142 MB | Fast | Good | General use on older machines |
-| `small` | ~466 MB | Moderate | Better | Good balance on modern CPUs |
-| `medium` | ~1.5 GB | Slow | High | When accuracy matters |
-| `large-v3-turbo` | ~1.5 GB | Fast (GPU) | Best | GPU systems, highest accuracy |
-
-Model files (`ggml-*.bin`) are stored in `app_data_dir/models` by default (configurable in Settings).
-After the first download the app works **fully offline**.
-
-### Browser Whisper (WebAssembly)
-
-Runs the Whisper model directly in the WebView — no binary needed. Suitable for short clips; slower than whisper.cpp for long files.
+No whisper-cli. Fine for **short** clips.  
+**Do not use `large-v3` here** — WebView2 / ONNX often crashes (`OrtRun error code = 1`).  
+In-app list is capped at **medium** (v2.0.12+). For quality, switch to **On this computer**.
 
 ---
 
 ## Getting started
 
-### Prerequisites — two external tools
+### Tools
 
-| Tool | How to get |
-|------|-----------|
-| **ffmpeg** | Click **Settings → Download ffmpeg & yt-dlp for me** (automatic), or download from [ffmpeg.org](https://ffmpeg.org/download.html) and place next to `v2t.exe` |
-| **yt-dlp** | Same button, or download from [github.com/yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp/releases) and place next to `v2t.exe` |
+| Tool | How |
+|------|-----|
+| **ffmpeg** + **yt-dlp** | Preferences → Tools & advanced → **Download ffmpeg & yt-dlp for me**, or place binaries next to `v2t.exe` |
 
-### Portable layout (manual)
+### Typical workflow
 
-Place the binaries **next to the app executable**:
-
-| Platform | App | ffmpeg | yt-dlp |
-|----------|-----|--------|--------|
-| Windows | `v2t.exe` | `ffmpeg.exe` | `yt-dlp.exe` |
-| macOS / Linux | `v2t` | `ffmpeg` | `yt-dlp` |
-
-A `bin/` subfolder next to the executable is also recognized. Paths set in **Settings** take priority over auto-discovery.
-
-### Workflow step by step
-
-1. **Launch** `v2t`.
-2. **Settings tab** — set output folder, transcription mode, API key (cloud) or whisper-cli path (local), language.
-3. **Queue tab** — add sources:
-   - Drop files or folders onto the queue area.
-   - Paste URLs in the text box (one per line: YouTube, TikTok, …) and press **Add**.
-4. Click **Start queue** — jobs process sequentially; progress is shown per job.
-5. When done, find your `.txt` files in the output folder.
-
-> **Recommendation:** for long videos or large playlists, add everything to the queue first and let it run unattended. The queue handles slow operations (download, audio extraction, transcription) without blocking the UI, and you can stop/resume at any time.
+1. Launch **v2t** (complete Setup guide if shown).  
+2. Pick a **profile** (or leave Custom).  
+3. Set output folder; choose transcription mode.  
+4. Add URLs / files → **Start batch**.  
+5. Open the output folder for `.txt` / `.vtt`.
 
 ---
 
 ## Limitations
 
-- **File size (cloud API):** OpenAI `whisper-1` has a 25 MB per-request limit. The app automatically splits large files and joins the text.
-- **Playlists:** one URL item can produce multiple `.txt` files; use `{track}` in the filename template.
-- **Stop queue:** cancels current and pending jobs cleanly — kills ffmpeg/yt-dlp child processes and aborts HTTP requests.
+- **Cloud file size:** providers like OpenAI `whisper-1` limit request size; the app splits and merges.  
+- **Playlists:** one queue row → many transcripts.  
+- **Stop batch:** cancels running/pending jobs and kills child processes.  
+- **Chromium cookies on Windows:** unreliable; prefer Firefox (see above).  
+- **In-app WASM:** not for large models or long heavy jobs.
 
 ---
 
@@ -157,20 +200,16 @@ A `bin/` subfolder next to the executable is also recognized. Paths set in **Set
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) LTS
-- [Rust](https://rustup.rs/) stable
-- Windows: [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-
-### Run in dev mode
+- [Node.js](https://nodejs.org/) LTS  
+- [Rust](https://rustup.rs/) stable  
+- Windows: [MSVC Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-Place `ffmpeg.exe` and `yt-dlp.exe` in `src-tauri/target/debug/` for the dev build.
-
-### Production build
+Place `ffmpeg` / `yt-dlp` under `src-tauri/target/debug/` for URL tests in dev.
 
 ```bash
 npm run tauri build
@@ -178,35 +217,31 @@ npm run tauri build
 
 | Output | Path |
 |--------|------|
-| Standalone EXE | `src-tauri/target/release/v2t.exe` |
-| Windows installer (NSIS) | `src-tauri/target/release/bundle/nsis/` |
-| Windows installer (MSI) | `src-tauri/target/release/bundle/msi/` |
+| EXE | `src-tauri/target/release/v2t.exe` |
+| NSIS / MSI | `src-tauri/target/release/bundle/nsis/` · `bundle/msi/` |
 | macOS DMG | `src-tauri/target/release/bundle/dmg/` |
-| Linux .deb / AppImage | `src-tauri/target/release/bundle/deb/` and `bundle/appimage/` |
+| Linux | `bundle/deb/` · `bundle/appimage/` |
 
 ### Tests
 
 ```bash
-npm run test:run          # Vitest + Testing Library
-cd src-tauri && cargo test  # Rust unit tests
-npm run e2e               # Playwright (starts dev server)
+npm run test:run
+cd src-tauri && cargo test
+npm run e2e
 ```
 
 ---
 
-## Releases & CI (GitHub Actions)
+## Releases & CI
 
-| Workflow | Trigger | What it does |
-|----------|---------|--------------|
-| **CI** | push / PR to `main` | Build, Vitest, cargo test |
-| **Release** | push of a `v*` tag | Builds Windows (NSIS/MSI), macOS (aarch64 + x86_64 DMG), Linux (.deb + AppImage) → uploads to GitHub Releases |
+| Workflow | Trigger | Role |
+|----------|---------|------|
+| **CI** | push / PR to `main` | Build + Vitest + cargo test |
+| **Release** | tag `v*` | Windows / macOS / Linux installers → GitHub Release |
 
-**How to release:**
+```bash
+# after bumping version + CHANGELOG
+git tag v2.0.12 && git push origin v2.0.12
+```
 
-1. Update version in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`.
-2. Add an entry to `CHANGELOG.md`.
-3. Commit, then: `git tag v1.3.0 && git push origin v1.3.0`.
-
-If the release job fails with *Resource not accessible by integration*: GitHub → **Settings → Actions → General → Workflow permissions** → **Read and write permissions**.
-
-See also: [`docs/RELEASE.md`](docs/RELEASE.md) · [`CHANGELOG.md`](CHANGELOG.md)
+See [`docs/RELEASE.md`](docs/RELEASE.md) · [`CHANGELOG.md`](CHANGELOG.md)
