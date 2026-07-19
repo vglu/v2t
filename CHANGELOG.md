@@ -364,6 +364,8 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.12]: https://github.com/vglu/v2t/releases/tag/v2.0.12
+[2.0.11]: https://github.com/vglu/v2t/releases/tag/v2.0.11
 [2.0.10]: https://github.com/vglu/v2t/releases/tag/v2.0.10
 [2.0.9]: https://github.com/vglu/v2t/releases/tag/v2.0.9
 [2.0.8]: https://github.com/vglu/v2t/releases/tag/v2.0.8
