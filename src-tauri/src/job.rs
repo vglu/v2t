@@ -306,18 +306,18 @@ pub async fn run_process_queue_item(
 
     let date = Utc::now().format("%Y-%m-%d").to_string();
 
-    let video_output_path: Option<PathBuf> = if settings.keep_downloaded_video
+    let video_output_template: Option<String> = if settings.keep_downloaded_video
         && (source_kind == "url" || pipeline::is_http_url(&source))
     {
-        let name = output_template::video_filename_from_transcript_template(
+        Some(output_template::video_yt_dlp_output_template(
+            &out_dir,
             &settings.filename_template,
             &display_label,
             &date,
             job_index,
-            1,
             &source,
-        );
-        Some(out_dir.join(name))
+            subs::is_pure_playlist_url(&source),
+        )?)
     } else {
         None
     };
@@ -436,7 +436,7 @@ pub async fn run_process_queue_item(
             .map(str::to_string),
         &cancel,
         settings.keep_downloaded_video,
-        video_output_path,
+        video_output_template,
         audio_format_for_yt_dlp,
     )
     .await?;

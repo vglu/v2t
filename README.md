@@ -2,7 +2,7 @@
 
 Portable desktop app (**Tauri 2**) that turns **video / audio / links** into text transcripts (`.txt`, optional `.vtt` / `.srt`).
 
-**Current release: [v2.0.12](https://github.com/vglu/v2t/releases/tag/v2.0.12)** (2026-07-18)
+**Current release: [v2.0.13](https://github.com/vglu/v2t/releases/tag/v2.0.13)** (2026-07-22)
 
 [Demo video](https://youtu.be/cInVpU3ErlQ) · [Changelog](CHANGELOG.md) · [Releases](https://github.com/vglu/v2t/releases)
 
@@ -19,6 +19,7 @@ Portable desktop app (**Tauri 2**) that turns **video / audio / links** into tex
 | Cloud HTTP Whisper API / local whisper.cpp / in-app WASM | ✅ |
 | Timed **WebVTT**, optional speakers (local tinydiarize) | ✅ |
 | yt-dlp cookie DB failure → **auto-retry without cookies** | ✅ (v2.0.12) |
+| Keep video for playlists → **all entries**, ≤720p, per-playlist folder | ✅ (v2.0.13) |
 | In-app WASM **large-v3** | ❌ Not supported in webview — use **On this computer** |
 | Dependabot auto-PRs | ❌ Disabled (manual updates only) |
 
@@ -241,7 +242,7 @@ npm run e2e
 
 ```bash
 # after bumping version + CHANGELOG
-git tag v2.0.12 && git push origin v2.0.12
+git tag v2.0.13 && git push origin v2.0.13
 ```
 
 See [`docs/RELEASE.md`](docs/RELEASE.md) · [`CHANGELOG.md`](CHANGELOG.md)

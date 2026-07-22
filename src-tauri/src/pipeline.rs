@@ -709,23 +709,35 @@ pub(crate) async fn run_yt_dlp_streaming(
     })
 }
 
-/// Second yt-dlp pass: best video+audio merged to `mp4` (URL jobs only; used when user opts in).
+/// Prefer ≤720p video+audio (mp4 merge); fall back to best available.
+const YT_DLP_VIDEO_FORMAT_720: &str = "bv*[height<=720]+ba/b[height<=720]/bv*+ba/b";
+
+/// Second yt-dlp pass: best video+audio merged to mp4 (URL jobs only; used when user opts in).
+/// `output_template` is passed to yt-dlp `-o` as-is. For a single video use a concrete `.mp4`
+/// path; for playlists use yt-dlp placeholders (e.g. `%(playlist_title)s/%(playlist_index)03d_%(id)s.%(ext)s`)
+/// so each entry gets its own file under a playlist folder instead of overwriting one path.
 pub async fn download_best_video_mp4(
     maybe_log: Option<(&SinkHandle, &str)>,
     yt_dlp: &Path,
     url: &str,
-    dest_mp4: &Path,
+    output_template: &str,
     cancel: &CancellationToken,
     yt_dlp_js_runtimes: Option<&str>,
     cookies_from_browser: Option<&str>,
 ) -> Result<(), String> {
-    if let Some(parent) = dest_mp4.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("create video dir: {e}"))?;
+    let dest = output_template.trim().replace('\\', "/");
+    if dest.is_empty() {
+        return Err("Video output template is empty".to_string());
     }
-    let dest = dest_mp4
-        .to_str()
-        .ok_or("Video output path must be UTF-8")?
-        .replace('\\', "/");
+    // Only pre-create parents for concrete paths. Templates with `%(...)` are created by yt-dlp
+    // (a literal `%(playlist_title)s` folder would be wrong).
+    if !dest.contains("%(") {
+        if let Some(parent) = Path::new(&dest).parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent).map_err(|e| format!("create video dir: {e}"))?;
+            }
+        }
+    }
 
     let mut args: Vec<String> = Vec::new();
     push_yt_dlp_js_runtimes(&mut args, yt_dlp_js_runtimes);
@@ -734,8 +746,9 @@ pub async fn download_best_video_mp4(
         "--newline".into(),
         "--encoding".into(),
         "utf-8".into(),
+        "--windows-filenames".into(),
         "-f".into(),
-        "bv*+ba/b".into(),
+        YT_DLP_VIDEO_FORMAT_720.into(),
         "--merge-output-format".into(),
         "mp4".into(),
         "-o".into(),
@@ -770,8 +783,9 @@ pub async fn download_best_video_mp4(
             "--newline".into(),
             "--encoding".into(),
             "utf-8".into(),
+            "--windows-filenames".into(),
             "-f".into(),
-            "bv*+ba/b".into(),
+            YT_DLP_VIDEO_FORMAT_720.into(),
             "--merge-output-format".into(),
             "mp4".into(),
             "-o".into(),
@@ -810,7 +824,9 @@ pub async fn prepare_media_audio(
     cookies_from_browser: Option<String>,
     cancel: &CancellationToken,
     keep_downloaded_video: bool,
-    video_output_path: Option<PathBuf>,
+    // yt-dlp `-o` template for saved mp4(s). Playlist URLs must include placeholders
+    // like `%(playlist_index)s` / `%(id)s` so entries do not overwrite one file.
+    video_output_template: Option<String>,
     // When Some, tells yt-dlp's first pass to convert to this format via --audio-format
     // (mp3|m4a). None keeps bestaudio. Only used for URL sources.
     audio_format_for_yt_dlp: Option<DownloadedAudioFormat>,
@@ -1081,7 +1097,7 @@ pub async fn prepare_media_audio(
         }
 
         if keep_downloaded_video {
-            if let Some(ref vp) = video_output_path {
+            if let Some(ref vp) = video_output_template {
                 if is_http_url(&source) {
                     match download_best_video_mp4(
                         maybe_log,
@@ -1094,7 +1110,16 @@ pub async fn prepare_media_audio(
                     )
                     .await
                     {
-                        Ok(()) => {}
+                        Ok(()) => {
+                            if let Some((sink, jid)) = maybe_log.as_ref() {
+                                emit_pipeline_text(
+                                    sink,
+                                    jid,
+                                    "yt-dlp-video",
+                                    "Saved video file(s) to the output folder.",
+                                );
+                            }
+                        }
                         Err(e) => {
                             if let Some((sink, jid)) = maybe_log.as_ref() {
                                 emit_pipeline_text(

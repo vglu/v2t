@@ -157,7 +157,7 @@
   "filename_template_label": "Filename template",
   "filename_template_placeholder": "{title}_{date}_{index}_t{track}.txt",
   "delete_audio_after": "Delete temp audio after success",
-  "keep_video": "Save downloaded video to output folder (URL jobs — second yt-dlp pass, best mp4)",
+  "keep_video": "Save downloaded video to output folder (URL jobs — second yt-dlp pass, ≤720p mp4; playlists → one subfolder per playlist, every video)",
   "keep_audio": "Save downloaded audio to output folder (URL jobs + local video — extracted via ffmpeg)",
   "audio_format": {
     "label": "Audio format",

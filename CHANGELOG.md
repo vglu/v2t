@@ -2,6 +2,17 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.13] - 2026-07-22
+
+### Fixed
+
+- **Save downloaded video + playlists:** the second yt-dlp pass no longer writes every playlist entry to one fixed `.mp4` path (only the last file survived). Playlist / `list=` URLs now use a unique output template per entry.
+- Playlist videos are saved under **`output/<playlist title>/`**, not flat in the output root.
+
+### Changed
+
+- Kept videos prefer **≤720p** (`bv*[height<=720]+ba/…`) instead of unrestricted best quality.
+
 ## [2.0.12] - 2026-07-18
 
 ### Fixed
@@ -364,6 +375,7 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.13]: https://github.com/vglu/v2t/releases/tag/v2.0.13
 [2.0.12]: https://github.com/vglu/v2t/releases/tag/v2.0.12
 [2.0.11]: https://github.com/vglu/v2t/releases/tag/v2.0.11
 [2.0.10]: https://github.com/vglu/v2t/releases/tag/v2.0.10

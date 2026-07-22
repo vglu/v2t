@@ -103,6 +103,43 @@ pub fn video_filename_from_transcript_template(
     format_output_filename(template, title, date, index, track, source, "mp4")
 }
 
+/// yt-dlp `-o` path for the optional "save video" pass.
+///
+/// A single-video URL keeps the same naming as the transcript (`.mp4`).
+/// Playlist / `list=` URLs must use yt-dlp placeholders — a fixed path would
+/// overwrite every entry into one file.
+pub fn video_yt_dlp_output_template(
+    out_dir: &std::path::Path,
+    filename_template: &str,
+    display_label: &str,
+    date: &str,
+    job_index: u32,
+    source: &str,
+    is_playlist: bool,
+) -> Result<String, String> {
+    let dir = out_dir
+        .to_str()
+        .ok_or_else(|| "Output directory path must be UTF-8".to_string())?
+        .trim_end_matches(['/', '\\'])
+        .replace('\\', "/");
+    if is_playlist {
+        // One subfolder per playlist; unique file per entry (no overwrite).
+        Ok(format!(
+            "{dir}/%(playlist_title)s/%(playlist_index)03d_%(id)s_%(title).100B.%(ext)s"
+        ))
+    } else {
+        let name = video_filename_from_transcript_template(
+            filename_template,
+            display_label,
+            date,
+            job_index,
+            1,
+            source,
+        );
+        Ok(format!("{dir}/{name}"))
+    }
+}
+
 /// Audio file next to transcript: template rules with a caller-chosen extension
 /// (`m4a`, `mp3`, `opus`, `webm`, …).
 pub fn audio_filename_from_transcript_template(
@@ -267,6 +304,38 @@ mod tests {
             "url",
         );
         assert_eq!(v, "Clip_2026-03-27.mp4");
+    }
+
+    #[test]
+    fn video_yt_dlp_template_playlist_uses_placeholders() {
+        let dir = std::path::Path::new("/tmp/out");
+        let playlist = video_yt_dlp_output_template(
+            dir,
+            "{title}_{date}.txt",
+            "Playlist",
+            "2026-07-18",
+            1,
+            "https://www.youtube.com/playlist?list=PL123",
+            true,
+        )
+        .unwrap();
+        assert!(playlist.contains("%(playlist_title)s"));
+        assert!(playlist.contains("%(playlist_index)03d"));
+        assert!(playlist.contains("%(id)s"));
+        assert!(playlist.ends_with(".%(ext)s"));
+
+        let single = video_yt_dlp_output_template(
+            dir,
+            "{title}_{date}.txt",
+            "Clip",
+            "2026-07-18",
+            1,
+            "https://www.youtube.com/watch?v=abc",
+            false,
+        )
+        .unwrap();
+        assert!(single.ends_with("Clip_2026-07-18.mp4"));
+        assert!(!single.contains("%(id)s"));
     }
 
     #[test]
