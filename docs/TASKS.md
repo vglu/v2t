@@ -3,6 +3,58 @@
 Дата: 2026-03-27. Для передачи исполняющим агентам (Cursor, copilot и т.п.).
 Каждая задача независима. Агент берёт одну задачу, читает только указанные файлы, делает только указанные изменения.
 
+**Актуальный пакет (2026-07-25):** speakers / multilingual diarization — BA `.cursor/tasks/BA-20260725-114105-alice.md`.  
+Стартовать с **TASK-SPEAKERS-0** (safety). Epic B/C ждут OQ от PO.
+
+---
+
+## TASK-SPEAKERS-0 — Safety: tinydiarize только при language=en ✅
+
+**Приоритет:** критический (инцидент RU + Label speakers)  
+**Статус:** ✅ done (2026-07-25)  
+**Агент:** rust-tauri-reviewer + kieran-typescript-reviewer  
+**BA:** BA-20260725-114105  
+**Файлы:** `src-tauri/src/settings.rs`, `src-tauri/src/job.rs`, `src-tauri/src/whisper_local.rs`, `src/lib/speakersPolicy.ts`, `src/lib/speakersPolicy.test.ts`, `src/components/SettingsPanel.tsx`, `src/locales/{en,ru,uk}/settings.json`
+
+### Проблема
+
+`labelSpeakers` + WebVTT включает `-tdrz` и **форсит `-l en`**, игнорируя `language=ru` → `(speaking in foreign language)`.
+
+### Что сделать
+
+1. Rust: `pub fn label_speakers_effective(export_webvtt: bool, label_speakers: bool, language: Option<&str>) -> bool` — true только если оба флага и `language` trim case-insensitive == `"en"`. При `null`/auto → false.
+2. Использовать effective в `job.rs` (checkpoint + LocalWhisper branch) и в `whisper_local` (или только на call sites — достаточно call sites).
+3. Если пользователь просил speakers, но effective=false — `emit_pipeline_text` с ясным English сообщением.
+4. TS helper + SettingsPanel: disable checkbox + hint; смена language с en сбрасывает `labelSpeakers` в false.
+5. Unit tests Rust + Vitest для helper.
+
+### Не делать
+
+WhisperX/pyannote, Python sidecar, UI rename Person.
+
+### Проверка
+
+`cargo test label_speakers` / `npm run test:run` / `cargo check` / `npm run build`
+
+---
+
+## TASK-SPEAKERS-1 — Spike post-ASR diarization (Win + CUDA) ✅
+
+**Приоритет:** высокий  
+**Статус:** ✅ done (2026-07-25) — GO. Notes: `.cursor/tasks/SPIKE-20260725-speakers-pyannote.md`  
+**Метрики:** 45 s speech → 1.8 s CUDA, ~1.6 GB VRAM, Person turns JSON OK
+
+---
+
+## TASK-SPEAKERS-2 — Opt-in diarize sidecar MVP ✅
+
+**Приоритет:** средний  
+**Статус:** ✅ done (2026-07-25)  
+**Сделано:** `tools/diarize/*`, `diarize.rs`, `hf_token_store`, settings + UI (HF token / Python / fail policy), job post-ASR merge; tinydiarize skipped when diarize on.  
+**Релиз:** готово к **v2.0.14** вместе с Phase 0 (OQ7).
+
+---
+
 **Статус (2026-03-28):** в коде уже есть вкладки Queue / Settings (TASK-01), глобальные стили форм и a11y для селектов (TASK-08), часть TASK-09 (лог WASM в сессию), `keep_downloaded_video` и второй проход yt-dlp. Добавлена настройка **`ytDlpJsRuntimes`** → yt-dlp `--js-runtimes` в `prepare_media_audio` и `download_best_video_mp4`. Ниже — исторические спецификации; при расхождении с репозиторием ориентироваться на код и `docs/PLAN_NEXT.md`.
 
 **Новый пакет (2026-04-20):** TASK-11/12/13 — параллелизация pipeline, очереди и chunked-upload. Источник: BA-артефакт `.cursor/tasks/BA-20260420-180000-alice.md` (Алиса). Все 13 OQ закрыты PO. Стартовать с **TASK-11** (главный выигрыш для дефолтного `localWhisper` сценария).

@@ -14,6 +14,9 @@ export type DownloadedAudioFormat = "original" | "mp3" | "m4a";
 /** Local Whisper backend: "auto" picks CUDA on NVIDIA, else CPU. */
 export type WhisperAcceleration = "auto" | "cuda" | "vulkan" | "cpu";
 
+/** When pyannote diarize fails after ASR. */
+export type DiarizeFailPolicy = "keepTranscript" | "failJob";
+
 /** UI language. "auto" lets React derive from navigator.language; the
  * other values are ISO 639-1 codes matching the i18n catalogs in
  * `src/locales/`. Mirror of the Rust `UiLanguage` enum (`settings.rs`). */
@@ -80,6 +83,16 @@ export type AppSettings = {
   exportWebVtt: boolean;
   /** Label speakers as Person 1 / Person 2 via local tinydiarize (experimental). */
   labelSpeakers: boolean;
+  /** Post-ASR pyannote diarize (any language). Requires WebVTT + HF token + Python. */
+  diarizeSpeakers: boolean;
+  /** Hugging Face token for gated pyannote models (keyring). */
+  hfToken: string;
+  /** Path to Python with pyannote (venv python.exe). */
+  diarizePythonPath: string | null;
+  /** Optional path to run_diarize.py. */
+  diarizeScriptPath: string | null;
+  /** On diarize failure: keep transcript without Person tags, or fail the job. */
+  diarizeFailPolicy: DiarizeFailPolicy;
   /** UI language. "auto" derives from navigator.language. */
   uiLanguage: UiLanguage;
   /** Local REST API server config (bind 127.0.0.1 only). */
@@ -129,6 +142,11 @@ export const defaultAppSettings: AppSettings = {
   keepSrt: false,
   exportWebVtt: false,
   labelSpeakers: false,
+  diarizeSpeakers: false,
+  hfToken: "",
+  diarizePythonPath: null,
+  diarizeScriptPath: null,
+  diarizeFailPolicy: "keepTranscript",
   uiLanguage: "auto",
   apiServer: { enabled: false, port: 8788, bearerToken: "" },
   visionMode: "disabled",

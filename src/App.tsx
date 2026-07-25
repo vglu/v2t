@@ -7,6 +7,7 @@ import { QueuePanel } from "./components/QueuePanel";
 import { ReadinessPanel } from "./components/ReadinessPanel";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "./i18n";
 import {
+  apiServerApply,
   checkDependencies,
   defaultDocumentsDir,
   getApiServerInfo,
@@ -206,6 +207,14 @@ export default function App() {
       settingsRef.current = prefsDraft;
       setSettings(prefsDraft);
       await refreshDeps(prefsDraft);
+      // Preferences Save must also start/stop the REST server — otherwise
+      // enabling the checkbox and pressing Save leaves the API off until
+      // the separate "Apply / restart server" button is used.
+      try {
+        setApiInfo(await apiServerApply());
+      } catch {
+        // Keep saved settings; badge/status stay stale until Apply or restart.
+      }
     }
     return ok;
   }
@@ -218,7 +227,14 @@ export default function App() {
     const ok = await saveSettings(next);
     setSaving(false);
     setToast(ok ? t("toast.saved") : t("toast.save_failed"));
-    if (ok) await refreshDeps(next);
+    if (ok) {
+      await refreshDeps(next);
+      try {
+        setApiInfo(await apiServerApply());
+      } catch {
+        // Same as handleSave — persist succeeded; reconcile is best-effort.
+      }
+    }
   }
 
   async function finishOnboarding() {

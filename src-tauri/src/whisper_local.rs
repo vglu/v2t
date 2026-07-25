@@ -266,8 +266,9 @@ fn locate_vad_model(app: &tauri::AppHandle) -> Option<PathBuf> {
 /// When `export_webvtt` is true, requests full JSON (`-ojf`) and parses factual
 /// word/segment offsets. When false, keeps the legacy `-otxt` path.
 ///
-/// When `label_speakers` is true (with WebVTT), adds `-tdrz` and forces `-l en`
-/// for the English tinydiarize model.
+/// When `label_speakers` is true (with WebVTT), adds `-tdrz` and forces `-l en`.
+/// Callers must pass speakers only when [`crate::settings::label_speakers_effective`]
+/// is true — otherwise Russian (and other) jobs are destroyed by English decode.
 #[allow(clippy::too_many_arguments)]
 async fn transcribe_one_wav(
     wav_path: &Path,

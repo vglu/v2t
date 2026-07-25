@@ -2,6 +2,18 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.14] - 2026-07-25
+
+### Added
+
+- **Post-ASR pyannote diarize (opt-in):** after Whisper, assign Person 1 / Person 2 on the same timestamps for **any language** (including Russian). Preferences → Advanced → Speakers (pyannote): HF token (keychain), Python path, fail policy. CLI: `tools/diarize/`.
+- When pyannote diarize is enabled, **tinydiarize is skipped** so ASR language is not forced to English.
+
+### Fixed
+
+- **Label speakers safety:** tinydiarize / `-l en` only when Default video language is explicitly **English**. Auto / ru / uk keep WebVTT timings without Person tags (and without ruining the transcript).
+- **Preferences Save** also applies REST API server start/stop (no longer need a separate “Apply / restart” only path).
+
 ## [2.0.13] - 2026-07-22
 
 ### Fixed
@@ -375,6 +387,7 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.14]: https://github.com/vglu/v2t/releases/tag/v2.0.14
 [2.0.13]: https://github.com/vglu/v2t/releases/tag/v2.0.13
 [2.0.12]: https://github.com/vglu/v2t/releases/tag/v2.0.12
 [2.0.11]: https://github.com/vglu/v2t/releases/tag/v2.0.11

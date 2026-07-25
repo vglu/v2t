@@ -176,7 +176,7 @@ describe("SettingsPanel", () => {
     const onChange = vi.fn();
     render(
       <SettingsPanel
-        settings={{ ...defaultAppSettings, exportWebVtt: true }}
+        settings={{ ...defaultAppSettings, exportWebVtt: true, language: "en" }}
         onChange={onChange}
         onSave={vi.fn()}
         onPersistSettings={vi.fn().mockResolvedValue(undefined)}
@@ -197,6 +197,7 @@ describe("SettingsPanel", () => {
     expect(onChange).toHaveBeenCalledWith({
       ...defaultAppSettings,
       exportWebVtt: true,
+      language: "en",
       labelSpeakers: true,
     });
   });

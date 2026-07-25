@@ -239,9 +239,25 @@ pub struct AppSettings {
     #[serde(default, rename = "exportWebVtt")]
     pub export_webvtt: bool,
     /// Label speakers as Person 1 / Person 2 via local whisper.cpp tinydiarize (`-tdrz`).
-    /// Experimental; requires `ggml-small.en-tdrz` and WebVTT export. Ignored for HTTP/browser.
+    /// Experimental; requires `ggml-small.en-tdrz` and WebVTT. English-only — use
+    /// [`label_speakers_effective`] before applying (ignored unless language is `en`).
     #[serde(default, rename = "labelSpeakers")]
     pub label_speakers: bool,
+    /// Post-ASR pyannote diarize (any language). Requires WebVTT, HF token, Python path.
+    #[serde(default, rename = "diarizeSpeakers")]
+    pub diarize_speakers: bool,
+    /// Hugging Face token for gated pyannote models; cleared from disk, stored in keyring.
+    #[serde(default, rename = "hfToken")]
+    pub hf_token: String,
+    /// Path to Python with pyannote installed (venv `python.exe` on Windows).
+    #[serde(default, rename = "diarizePythonPath")]
+    pub diarize_python_path: Option<String>,
+    /// Optional path to `run_diarize.py` (default: resolve next to Python / `tools/diarize`).
+    #[serde(default, rename = "diarizeScriptPath")]
+    pub diarize_script_path: Option<String>,
+    /// When diarize fails: keep transcript without Person tags (default) or fail the job.
+    #[serde(default, rename = "diarizeFailPolicy")]
+    pub diarize_fail_policy: DiarizeFailPolicy,
     /// UI language; `Auto` lets the React layer derive from `navigator.language`.
     #[serde(default)]
     pub ui_language: UiLanguage,
@@ -260,6 +276,36 @@ pub struct AppSettings {
     /// REST API server config (M2 wave). Disabled by default; bind only to 127.0.0.1.
     #[serde(default)]
     pub api_server: ApiServerSettings,
+}
+
+/// Behavior when the pyannote diarize sidecar fails.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum DiarizeFailPolicy {
+    /// Keep `.txt` / `.vtt` without Person tags; job succeeds with a warning (default).
+    #[default]
+    KeepTranscript,
+    /// Fail the job so the operator can fix token / CUDA / env.
+    FailJob,
+}
+
+/// Whether tinydiarize speaker labels may run for this job.
+///
+/// `small.en-tdrz` forces English decoding. Applying it when the operator set
+/// Russian (or left language on auto) produces garbage like
+/// `(speaking in foreign language)`. Only an explicit `en` unlocks speakers.
+pub fn label_speakers_effective(
+    export_webvtt: bool,
+    label_speakers: bool,
+    language: Option<&str>,
+) -> bool {
+    if !(export_webvtt && label_speakers) {
+        return false;
+    }
+    matches!(
+        language.map(str::trim).filter(|s| !s.is_empty()),
+        Some(l) if l.eq_ignore_ascii_case("en")
+    )
 }
 
 impl Default for AppSettings {
@@ -292,6 +338,11 @@ impl Default for AppSettings {
             keep_srt: false,
             export_webvtt: false,
             label_speakers: false,
+            diarize_speakers: false,
+            hf_token: String::new(),
+            diarize_python_path: None,
+            diarize_script_path: None,
+            diarize_fail_policy: DiarizeFailPolicy::KeepTranscript,
             ui_language: UiLanguage::Auto,
             vision_mode: VisionMode::Disabled,
             gemini_model: default_gemini_model(),
@@ -346,15 +397,29 @@ pub fn load(app: &tauri::AppHandle) -> Result<AppSettings, String> {
         Err(_) => {}
     }
 
+    match crate::hf_token_store::get() {
+        Ok(Some(k)) => s.hf_token = k,
+        Ok(None) => {
+            if !s.hf_token.is_empty() {
+                let k = std::mem::take(&mut s.hf_token);
+                let _ = crate::hf_token_store::set(&k);
+                s.hf_token = k;
+            }
+        }
+        Err(_) => {}
+    }
+
     Ok(s)
 }
 
 pub fn save(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
     api_key_store::set(&settings.api_key)?;
     crate::gemini_key_store::set(&settings.gemini_api_key)?;
+    crate::hf_token_store::set(&settings.hf_token)?;
     let mut for_disk = settings.clone();
     for_disk.gemini_api_key.clear();
     for_disk.api_key.clear();
+    for_disk.hf_token.clear();
     let path = settings_path(app)?;
     let raw = serde_json::to_string_pretty(&for_disk)
         .map_err(|e| format!("Failed to serialize settings: {e}"))?;
@@ -455,6 +520,19 @@ mod tests {
         let json = r#"{"outputDir":null,"filenameTemplate":"{title}_{date}.txt","ffmpegPath":null,"ytDlpPath":null,"deleteAudioAfter":true,"apiBaseUrl":"https://api.openai.com/v1","apiModel":"whisper-1","apiKey":"","language":null}"#;
         let s: AppSettings = serde_json::from_str(json).unwrap();
         assert!(!s.label_speakers);
+    }
+
+    #[test]
+    fn label_speakers_effective_requires_explicit_english() {
+        assert!(!label_speakers_effective(true, true, None));
+        assert!(!label_speakers_effective(true, true, Some("")));
+        assert!(!label_speakers_effective(true, true, Some("ru")));
+        assert!(!label_speakers_effective(true, true, Some("uk")));
+        assert!(!label_speakers_effective(true, false, Some("en")));
+        assert!(!label_speakers_effective(false, true, Some("en")));
+        assert!(label_speakers_effective(true, true, Some("en")));
+        assert!(label_speakers_effective(true, true, Some("EN")));
+        assert!(label_speakers_effective(true, true, Some(" en ")));
     }
 
     #[test]

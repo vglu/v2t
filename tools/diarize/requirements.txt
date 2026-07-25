@@ -1,0 +1,6 @@
+# v2t diarize sidecar (Windows + CUDA first).
+# Install CUDA torch FIRST, then this file without upgrading torch:
+#   pip install torch==2.6.0+cu124 torchaudio==2.6.0+cu124 --index-url https://download.pytorch.org/whl/cu124
+#   pip install -r requirements.txt
+pyannote.audio==3.3.2
+huggingface_hub>=0.26,<1.0

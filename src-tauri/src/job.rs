@@ -7,6 +7,7 @@ use tokio_util::sync::CancellationToken;
 use crate::audio_save;
 use crate::cancel_registry::JobCancelRegistry;
 use crate::deps;
+use crate::diarize;
 use crate::model_download;
 use crate::output_template;
 use crate::pipeline;
@@ -146,8 +147,11 @@ fn resolve_stable_checkpoint_dir(
     use crate::timed_transcript::{normalize_http_provider_scope, LOCAL_WHISPER_PROVIDER_SCOPE};
 
     let use_tdrz = settings.transcription_mode == TranscriptionMode::LocalWhisper
-        && settings.export_webvtt
-        && settings.label_speakers;
+        && crate::settings::label_speakers_effective(
+            settings.export_webvtt,
+            settings.label_speakers,
+            settings.language.as_deref(),
+        );
     let (mode, provider_scope, model) = match settings.transcription_mode {
         TranscriptionMode::HttpApi => (
             "httpApi",
@@ -618,7 +622,35 @@ pub async fn run_process_queue_item(
                         )?;
                         std::fs::create_dir_all(&models_dir)
                             .map_err(|e| format!("create models dir: {e}"))?;
-                        let label_speakers = settings.export_webvtt && settings.label_speakers;
+                        let diarize_on = diarize::diarize_speakers_effective(&settings);
+                        let label_speakers = if diarize_on {
+                            // Post-ASR pyannote owns Person tags; do not also force tinydiarize `-l en`.
+                            false
+                        } else {
+                            crate::settings::label_speakers_effective(
+                                settings.export_webvtt,
+                                settings.label_speakers,
+                                lang,
+                            )
+                        };
+                        if diarize_on && settings.label_speakers {
+                            pipeline::emit_pipeline_text(
+                                &sink,
+                                &job_id,
+                                "speakers",
+                                "tinydiarize skipped: post-ASR pyannote diarize is enabled (keeps your ASR language).",
+                            );
+                        } else if settings.label_speakers
+                            && settings.export_webvtt
+                            && !label_speakers
+                        {
+                            pipeline::emit_pipeline_text(
+                                &sink,
+                                &job_id,
+                                "speakers",
+                                "Speaker labels skipped: tinydiarize is English-only (needs language = English). WebVTT timed cues are still written; only Person 1/2 tags are omitted. Transcription continues with your selected language/model.",
+                            );
+                        }
                         let entry = if label_speakers {
                             whisper_catalog::catalog_entry("small.en-tdrz").ok_or_else(|| {
                                 "Speaker labels require catalog model 'small.en-tdrz'".to_string()
@@ -706,6 +738,36 @@ pub async fn run_process_queue_item(
             }
         };
 
+        let transcript = if diarize::diarize_speakers_effective(&settings) {
+            emit_progress(
+                &sink,
+                &job_id,
+                "diarize",
+                &format!("Diarizing speakers {track}/{n_tracks}…"),
+            );
+            let sink_warn = sink.clone();
+            let jid = job_id.clone();
+            diarize::apply_diarize_to_transcript(
+                &settings,
+                wav_path,
+                &work_dir,
+                outcome.transcript,
+                &cancel,
+                |msg| {
+                    pipeline::emit_pipeline_text(&sink_warn, &jid, "diarize", msg);
+                },
+            )
+            .await
+            .map_err(|e| {
+                if e != pipeline::JOB_CANCELLED_MSG {
+                    emit_subtask_status(&sink, &job_id, track, "error", Some(e.clone()));
+                }
+                e
+            })?
+        } else {
+            outcome.transcript
+        };
+
         emit_progress(
             &sink,
             &job_id,
@@ -713,9 +775,7 @@ pub async fn run_process_queue_item(
             &format!("Writing transcript {track}/{n_tracks}…"),
         );
 
-        if let Err(e) =
-            write_transcript_pair(&dest_path, &outcome.transcript, settings.export_webvtt)
-        {
+        if let Err(e) = write_transcript_pair(&dest_path, &transcript, settings.export_webvtt) {
             let msg = format!("Failed to write transcript pair: {e}");
             emit_subtask_status(&sink, &job_id, track, "error", Some(msg.clone()));
             return Err(msg);

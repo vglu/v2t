@@ -16,6 +16,7 @@ import {
   type ApiServerInfo,
 } from "../lib/invokeSafe";
 import { SPEECH_LANGUAGE_OPTIONS } from "../lib/speechLanguages";
+import { speakersAllowedForLanguage } from "../lib/speakersPolicy";
 import {
   clampBrowserWhisperModel,
   isBrowserWhisperModelSafe,
@@ -660,12 +661,17 @@ export function SettingsPanel({
             </span>
             <select
               value={settings.language ?? ""}
-              onChange={(e) =>
+              onChange={(e) => {
+                const language = e.target.value || null;
                 onChange({
                   ...settings,
-                  language: e.target.value || null,
-                })
-              }
+                  language,
+                  // tinydiarize is English-only — drop the toggle when leaving en
+                  labelSpeakers: speakersAllowedForLanguage(language)
+                    ? settings.labelSpeakers
+                    : false,
+                });
+              }}
             >
               {SPEECH_LANGUAGE_OPTIONS.map(({ value, key, defaultLabel }) => (
                 <option key={value || "auto"} value={value}>
@@ -1443,12 +1449,18 @@ export function SettingsPanel({
       <p className="settings-section-title">{t("section.speakers")}</p>
       <label
         className="field checkbox"
-        style={settings.exportWebVtt ? undefined : { opacity: 0.55 }}
+        style={
+          settings.exportWebVtt && speakersAllowedForLanguage(settings.language)
+            ? undefined
+            : { opacity: 0.55 }
+        }
       >
         <input
           type="checkbox"
           checked={settings.labelSpeakers}
-          disabled={!settings.exportWebVtt}
+          disabled={
+            !settings.exportWebVtt || !speakersAllowedForLanguage(settings.language)
+          }
           aria-describedby="label-speakers-hint"
           onChange={(e) =>
             onChange({ ...settings, labelSpeakers: e.target.checked })
@@ -1462,6 +1474,143 @@ export function SettingsPanel({
       {!settings.exportWebVtt ? (
         <p className="hint">{t("output.label_speakers_needs_vtt")}</p>
       ) : null}
+      {settings.exportWebVtt && !speakersAllowedForLanguage(settings.language) ? (
+        <p className="hint hint--warn">{t("output.label_speakers_needs_en")}</p>
+      ) : null}
+
+      <p className="settings-section-title">{t("section.diarize")}</p>
+      <p className="hint">{t("output.diarize_intro")}</p>
+      <label
+        className="field checkbox"
+        style={
+          settings.exportWebVtt &&
+          Boolean(settings.hfToken.trim()) &&
+          Boolean(settings.diarizePythonPath?.trim())
+            ? undefined
+            : { opacity: 0.55 }
+        }
+      >
+        <input
+          type="checkbox"
+          checked={settings.diarizeSpeakers}
+          disabled={
+            !settings.exportWebVtt ||
+            !settings.hfToken.trim() ||
+            !settings.diarizePythonPath?.trim()
+          }
+          aria-describedby="diarize-speakers-hint"
+          onChange={(e) =>
+            onChange({ ...settings, diarizeSpeakers: e.target.checked })
+          }
+        />
+        <span>{t("output.diarize_speakers_label")}</span>
+      </label>
+      <p className="hint" id="diarize-speakers-hint">
+        {t("output.diarize_speakers_hint")}
+      </p>
+      {!settings.exportWebVtt ? (
+        <p className="hint">{t("output.diarize_needs_vtt")}</p>
+      ) : null}
+      {!settings.hfToken.trim() ? (
+        <p className="hint hint--warn">{t("output.diarize_needs_token")}</p>
+      ) : null}
+      {!settings.diarizePythonPath?.trim() ? (
+        <p className="hint hint--warn">{t("output.diarize_needs_python")}</p>
+      ) : null}
+
+      <label className="field">
+        <span>{t("output.hf_token_label")}</span>
+        <input
+          type="password"
+          autoComplete="off"
+          value={settings.hfToken}
+          placeholder="hf_…"
+          onChange={(e) => {
+            const hfToken = e.target.value;
+            onChange({
+              ...settings,
+              hfToken,
+              diarizeSpeakers:
+                settings.diarizeSpeakers &&
+                Boolean(hfToken.trim()) &&
+                Boolean(settings.diarizePythonPath?.trim()),
+            });
+          }}
+        />
+      </label>
+      <p className="hint">
+        <Trans
+          i18nKey="output.hf_token_hint"
+          t={t}
+          components={{
+            a1: (
+              <a
+                href="https://huggingface.co/settings/tokens"
+                target="_blank"
+                rel="noopener noreferrer"
+              />
+            ),
+            a2: (
+              <a
+                href="https://huggingface.co/pyannote/speaker-diarization-3.1"
+                target="_blank"
+                rel="noopener noreferrer"
+              />
+            ),
+          }}
+        />
+      </p>
+
+      <label className="field">
+        <span>{t("output.diarize_python_label")}</span>
+        <input
+          type="text"
+          value={settings.diarizePythonPath ?? ""}
+          placeholder={t("output.diarize_python_placeholder")}
+          onChange={(e) => {
+            const diarizePythonPath = e.target.value.trim() ? e.target.value : null;
+            onChange({
+              ...settings,
+              diarizePythonPath,
+              diarizeSpeakers:
+                settings.diarizeSpeakers &&
+                Boolean(settings.hfToken.trim()) &&
+                Boolean(diarizePythonPath?.trim()),
+            });
+          }}
+        />
+      </label>
+      <label className="field">
+        <span>{t("output.diarize_script_label")}</span>
+        <input
+          type="text"
+          value={settings.diarizeScriptPath ?? ""}
+          placeholder={t("output.diarize_script_placeholder")}
+          onChange={(e) =>
+            onChange({
+              ...settings,
+              diarizeScriptPath: e.target.value.trim() ? e.target.value : null,
+            })
+          }
+        />
+      </label>
+      <label className="field">
+        <span>{t("output.diarize_fail_policy_label")}</span>
+        <select
+          value={settings.diarizeFailPolicy}
+          onChange={(e) =>
+            onChange({
+              ...settings,
+              diarizeFailPolicy: e.target.value as "keepTranscript" | "failJob",
+            })
+          }
+        >
+          <option value="keepTranscript">
+            {t("output.diarize_fail_keep")}
+          </option>
+          <option value="failJob">{t("output.diarize_fail_job")}</option>
+        </select>
+      </label>
 
       <p className="settings-section-title">{t("section.other")}</p>
       <label className="field checkbox">

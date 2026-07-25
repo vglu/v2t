@@ -7,6 +7,8 @@
     "transcription": "Транскрипція та моделі",
     "media_tools": "Відомості про медіа (ffmpeg, yt-dlp)",
     "subtitles_fast_path": "Швидкий шлях для субтитрів",
+    "speakers": "Мітки мовців",
+    "diarize": "Мовці (pyannote diarize)",
     "other": "Інші"
   },
   "language": {
@@ -23,7 +25,24 @@
     "export_webvtt_label": "Експортувати транскрипт із таймкодами у WebVTT",
     "export_webvtt_hint": "Створює додатковий файл .vtt із таймкодами сегментів поруч із кожним транскриптом .txt. Звичайний текстовий файл також зберігається. Мітки мовців із вихідних субтитрів зберігаються, якщо вони є (це не діаризація мовців ASR).",
     "label_speakers_label": "Підписувати мовців (Person 1 / Person 2)",
-    "label_speakers_hint": "Підписує мовців як Person 1 / Person 2 через локальний tinydiarize (експериментально, найкраще для англійської). Потрібна модель ggml-small.en-tdrz. Не справжні імена."
+    "label_speakers_hint": "Лише англійський tinydiarize (ggml-small.en-tdrz). Форсує English ASR. Для російської / української / будь-якої мови використовуйте блок «Мовці (pyannote diarize)» нижче.",
+    "label_speakers_needs_vtt": "Спочатку увімкніть WebVTT в Основне → Також зберегти…",
+    "label_speakers_needs_en": "Мітки мовців потрібні лише при мові відео = English. При Auto / російській / українській: WebVTT як і раніше зберігає таймкоди (.vtt поруч із .txt) — не буде лише тегів Person 1/2 (tinydiarize інакше форсує English і псує текст).",
+    "diarize_intro": "Діаризація після ASR: мова Whisper не змінюється, потім Person 1 / Person 2 на тих самих таймкодах. Рекомендовано Windows + CUDA. Потрібен локальний Python venv з pyannote (див. tools/diarize/requirements.txt).",
+    "diarize_speakers_label": "Діаризація мовців після транскрипції (pyannote)",
+    "diarize_speakers_hint": "Запускає tools/diarize/run_diarize.py після ASR. Коли увімкнено, tinydiarize пропускається — мова не форсується в English.",
+    "diarize_needs_vtt": "Спочатку увімкніть WebVTT в Основне → Також зберегти…",
+    "diarize_needs_token": "Спочатку додайте токен Hugging Face нижче.",
+    "diarize_needs_python": "Вкажіть шлях до Python з venv з pyannote перед увімкненням diarize.",
+    "hf_token_label": "Токен Hugging Face",
+    "hf_token_hint": "Створіть токен на <a1>huggingface.co/settings/tokens</a1>. Прийміть ліцензію моделі <a2>pyannote/speaker-diarization-3.1</a2>. Зберігається в keychain ОС — не в settings.json.",
+    "diarize_python_label": "Шлях до Python (venv з pyannote)",
+    "diarize_python_placeholder": "напр. D:\\path\\to\\.venv\\Scripts\\python.exe",
+    "diarize_script_label": "Шлях до run_diarize.py (необов’язково)",
+    "diarize_script_placeholder": "Порожньо = авто tools/diarize/run_diarize.py",
+    "diarize_fail_policy_label": "Якщо diarize впав",
+    "diarize_fail_keep": "Зберегти транскрипт без Person (рекомендовано)",
+    "diarize_fail_job": "Провалити завдання"
   },
   "transcription": {
     "mode_label": "Режим перекладу",

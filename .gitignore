@@ -75,6 +75,13 @@ coverage/
 *.temp
 .cache/
 
+# Local ML spikes (venvs + models; scripts may be committed selectively)
+spikes/**/.venv/
+spikes/**/out/
+spikes/**/*.wav
+spikes/**/*.pt
+spikes/**/*.bin
+
 # Translation bot artifacts (drafts + state + logs are local; node_modules is per-bot)
 scripts/translation-bot/state/
 scripts/translation-bot/output/
