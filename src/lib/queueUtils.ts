@@ -30,3 +30,33 @@ export function newJobId(): string {
   }
   return `job-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+/** TikTok photo posts and other non-media links yt-dlp cannot fetch. */
+export function isUnsupportedMediaUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+
+  // Fast path for the most common rule.
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("tiktok.com") && lower.includes("/photo/")) return true;
+
+  try {
+    const u = new URL(trimmed);
+    const host = u.hostname.replace(/^www\./i, "").toLowerCase();
+    if (!host.endsWith("tiktok.com")) return false;
+    const path = u.pathname;
+
+    // Profile root: /@user (with or without trailing slash) -> unsupported.
+    // Note: /@user/video/... is supported (not classified as unsupported here).
+    if (path === "" || path === "/") return false;
+    if (/^\/@[^/]+\/?$/.test(path)) return !path.toLowerCase().includes("/video/");
+    return false;
+  } catch {
+    // Fallback: keep behavior conservative.
+    // Examples we treat as unsupported: tiktok.com/@user and no further path.
+    const m = lower.match(/tiktok\.com\/@[^/?#]+\/?([?#].*)?$/);
+    if (!m) return false;
+    if (lower.includes("/video/")) return false;
+    return true;
+  }
+}

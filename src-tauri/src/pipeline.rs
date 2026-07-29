@@ -8,9 +8,11 @@ use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
 use crate::deps;
+use crate::net_pacing::{extract_host, HostGate, PacingConfig, PacingOutcome};
 use crate::process_kill;
 use crate::progress::{JobEvent, PipelineLogEvent, QueueJobProgressEvent, SinkHandle};
 use crate::settings::DownloadedAudioFormat;
+use crate::yt_dlp_error::{self, DownloadFailureKind};
 use crate::yt_dlp_progress::{self, YtDlpEvent};
 
 pub const JOB_CANCELLED_MSG: &str = "Job cancelled";
@@ -64,23 +66,30 @@ fn push_yt_dlp_cookies(args: &mut Vec<String>, browser: Option<&str>) {
 }
 
 /// Chromium cookie DB lock / app-bound encryption on Windows (yt-dlp #7271 / #10927).
+/// Delegates to `yt_dlp_error` to avoid code duplication.
 pub(crate) fn yt_dlp_cookie_db_failure(stderr: &[u8]) -> bool {
-    let s = String::from_utf8_lossy(stderr).to_ascii_lowercase();
-    s.contains("could not copy") && s.contains("cookie")
-        || s.contains("cookie database") && (s.contains("permission denied") || s.contains("failed to decrypt"))
-        || s.contains("failed to decrypt with dpapi")
+    yt_dlp_error::yt_dlp_cookie_db_failure(stderr)
 }
 
 fn format_yt_dlp_fail(exit: i32, stderr: &[u8]) -> String {
     let tail = tail_stderr(stderr);
-    if yt_dlp_cookie_db_failure(stderr) {
-        return format!(
-            "yt-dlp failed (exit {exit}): {tail}\n\n\
-Chrome/Edge/Brave cookies often fail on Windows (locked DB or app-bound encryption). \
-In Preferences → Tools set cookies to Firefox (log into YouTube there) or Disabled, then retry."
-        );
+    let kind = yt_dlp_error::classify(stderr);
+    let label = kind.label();
+    let mut msg = format!("yt-dlp failed (exit {exit}) [{label}]: {tail}");
+    match kind {
+        DownloadFailureKind::CookieStore => {
+            msg.push_str(
+                "\n\nChrome/Edge/Brave cookies often fail on Windows (locked DB or \
+app-bound encryption). In Preferences → Tools set cookies to Firefox \
+(log into YouTube there) or Disabled, then retry.",
+            );
+        }
+        DownloadFailureKind::ExtractorStale => {
+            msg.push_str("\n\nyt-dlp is outdated — update it in Preferences → Tools.");
+        }
+        _ => {}
     }
-    format!("yt-dlp failed (exit {exit}): {tail}")
+    msg
 }
 
 /// yt-dlp format when `-x` postprocessing fails: best audio stream, else best single file.
@@ -273,8 +282,22 @@ async fn download_yt_dlp_with_args(
     cancel: &CancellationToken,
     maybe_log: Option<(&SinkHandle, &str)>,
     log_label: &str,
+    source_url: &str,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
 ) -> Result<std::process::Output, String> {
-    run_yt_dlp_streaming(yt_dlp, args, YT_DLP_HEARTBEAT, cancel, maybe_log, log_label).await
+    run_yt_dlp_maybe_paced(
+        gate,
+        pacing,
+        source_url,
+        yt_dlp,
+        args,
+        YT_DLP_HEARTBEAT,
+        cancel,
+        maybe_log,
+        log_label,
+    )
+    .await
 }
 
 async fn retry_yt_dlp_merged_video_audio(
@@ -286,6 +309,8 @@ async fn retry_yt_dlp_merged_video_audio(
     work_dir: &Path,
     cancel: &CancellationToken,
     maybe_log: Option<(&SinkHandle, &str)>,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
 ) -> Result<std::process::Output, String> {
     if let Some((sink, jid)) = maybe_log.as_ref() {
         emit_pipeline_text(
@@ -306,7 +331,7 @@ async fn retry_yt_dlp_merged_video_audio(
         Some(YT_DLP_RETRY_MERGE_FORMAT),
         Some("mp4"),
     );
-    download_yt_dlp_with_args(yt_dlp, &merge_args, cancel, maybe_log, "yt-dlp").await
+    download_yt_dlp_with_args(yt_dlp, &merge_args, cancel, maybe_log, "yt-dlp", source, gate, pacing).await
 }
 
 async fn retry_yt_dlp_tiktok_h264(
@@ -318,6 +343,8 @@ async fn retry_yt_dlp_tiktok_h264(
     work_dir: &Path,
     cancel: &CancellationToken,
     maybe_log: Option<(&SinkHandle, &str)>,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
 ) -> Result<std::process::Output, String> {
     if let Some((sink, jid)) = maybe_log.as_ref() {
         emit_pipeline_text(
@@ -338,7 +365,7 @@ async fn retry_yt_dlp_tiktok_h264(
         Some(YT_DLP_TIKTOK_H264_FORMAT),
         None,
     );
-    download_yt_dlp_with_args(yt_dlp, &args, cancel, maybe_log, "yt-dlp").await
+    download_yt_dlp_with_args(yt_dlp, &args, cancel, maybe_log, "yt-dlp", source, gate, pacing).await
 }
 
 pub fn tail_stderr(data: &[u8]) -> String {
@@ -709,6 +736,64 @@ pub(crate) async fn run_yt_dlp_streaming(
     })
 }
 
+/// Run yt-dlp with host-level pacing: `acquire` a slot, run, then `report` the outcome.
+///
+/// When the gate allows it, this is a drop-in replacement for `run_yt_dlp_streaming`.
+/// The source URL is used only to extract the host for per-host rate tracking.
+pub(crate) async fn run_yt_dlp_paced(
+    gate: &HostGate,
+    cfg: &PacingConfig,
+    source_url: &str,
+    program: &Path,
+    args: &[String],
+    heartbeat: Duration,
+    cancel: &CancellationToken,
+    maybe_log: Option<(&SinkHandle, &str)>,
+    phase_label: &str,
+) -> Result<std::process::Output, String> {
+    let host = extract_host(source_url);
+    gate.acquire(&host, cfg, cancel).await?;
+
+    let result =
+        run_yt_dlp_streaming(program, args, heartbeat, cancel, maybe_log, phase_label).await;
+
+    let outcome = match &result {
+        Ok(out) if out.status.success() => PacingOutcome::Ok,
+        Ok(out) => match yt_dlp_error::classify(&out.stderr) {
+            DownloadFailureKind::RateLimited => PacingOutcome::RateLimited,
+            DownloadFailureKind::ServiceUnavailable | DownloadFailureKind::Forbidden => {
+                PacingOutcome::ServerBusy
+            }
+            _ => PacingOutcome::Ok,
+        },
+        // Stalled / cancelled — don't adjust cooldown (it's a local issue).
+        Err(_) => PacingOutcome::Ok,
+    };
+    gate.report(&host, outcome, cfg);
+
+    result
+}
+
+/// Run yt-dlp with pacing when gate+cfg are provided, or fall back to plain streaming.
+pub(crate) async fn run_yt_dlp_maybe_paced(
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
+    source_url: &str,
+    program: &Path,
+    args: &[String],
+    heartbeat: Duration,
+    cancel: &CancellationToken,
+    maybe_log: Option<(&SinkHandle, &str)>,
+    phase_label: &str,
+) -> Result<std::process::Output, String> {
+    match (gate, pacing) {
+        (Some(g), Some(cfg)) => {
+            run_yt_dlp_paced(g, cfg, source_url, program, args, heartbeat, cancel, maybe_log, phase_label).await
+        }
+        _ => run_yt_dlp_streaming(program, args, heartbeat, cancel, maybe_log, phase_label).await,
+    }
+}
+
 /// Prefer ≤720p video+audio (mp4 merge); fall back to best available.
 const YT_DLP_VIDEO_FORMAT_720: &str = "bv*[height<=720]+ba/b[height<=720]/bv*+ba/b";
 
@@ -724,6 +809,8 @@ pub async fn download_best_video_mp4(
     cancel: &CancellationToken,
     yt_dlp_js_runtimes: Option<&str>,
     cookies_from_browser: Option<&str>,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
 ) -> Result<(), String> {
     let dest = output_template.trim().replace('\\', "/");
     if dest.is_empty() {
@@ -756,7 +843,10 @@ pub async fn download_best_video_mp4(
         url.trim().to_string(),
     ]);
 
-    let mut out = run_yt_dlp_streaming(
+    let mut out = run_yt_dlp_maybe_paced(
+        gate,
+        pacing,
+        url,
         yt_dlp,
         &args,
         YT_DLP_HEARTBEAT,
@@ -792,7 +882,10 @@ pub async fn download_best_video_mp4(
             dest,
             url.trim().to_string(),
         ]);
-        out = run_yt_dlp_streaming(
+        out = run_yt_dlp_maybe_paced(
+            gate,
+            pacing,
+            url,
             yt_dlp,
             &retry_args,
             YT_DLP_HEARTBEAT,
@@ -830,6 +923,8 @@ pub async fn prepare_media_audio(
     // When Some, tells yt-dlp's first pass to convert to this format via --audio-format
     // (mp3|m4a). None keeps bestaudio. Only used for URL sources.
     audio_format_for_yt_dlp: Option<DownloadedAudioFormat>,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
 ) -> Result<PrepareAudioResult, String> {
     let source = source.trim().to_string();
     if source.is_empty() {
@@ -860,91 +955,33 @@ pub async fn prepare_media_audio(
             .replace('\\', "/");
 
         let js = yt_dlp_js_runtimes.as_deref();
-        let mut cookies = cookies_from_browser.as_deref();
+        let original_cookies = cookies_from_browser.as_deref();
         let tiktok = is_tiktok_url(&source);
-        let args = if tiktok {
-            build_yt_dlp_download_args(
-                &source,
-                &template,
-                js,
-                cookies,
-                false,
-                audio_format_for_yt_dlp,
-                Some(YT_DLP_TIKTOK_H264_FORMAT),
-                None,
-            )
-        } else {
-            build_yt_dlp_download_args(
-                &source,
-                &template,
-                js,
-                cookies,
-                true,
-                audio_format_for_yt_dlp,
-                None,
-                None,
-            )
-        };
 
-        let mut out = match run_yt_dlp_streaming(
-            &yt_dlp,
-            &args,
-            YT_DLP_HEARTBEAT,
-            cancel,
-            maybe_log,
-            "yt-dlp",
-        )
-        .await
-        {
-            Ok(o) => o,
-            Err(e) => {
-                let _ = fs::remove_dir_all(&work_dir);
-                return Err(e);
-            }
-        };
+        // max_http_attempts = total allowed tries (1 means no retry on HTTP errors).
+        let max_http_attempts: u32 = pacing.map(|p| p.max_attempts as u32).unwrap_or(1);
+        // Counts how many HTTP-error retries have been consumed so far.
+        let mut http_attempt: u32 = 0;
 
-        // Chromium cookie extraction often fails on Windows; many public videos work without cookies.
-        if !out.status.success() && cookies.is_some() && yt_dlp_cookie_db_failure(&out.stderr) {
-            if let Some((sink, jid)) = maybe_log.as_ref() {
-                emit_pipeline_text(
-                    sink,
-                    jid,
-                    "yt-dlp",
-                    "Browser cookies failed (Chrome/Edge lock or encryption). Retrying without cookies…",
-                );
-            }
-            clear_work_dir_media_files(&work_dir)?;
-            cookies = None;
-            let retry_args = if tiktok {
+        let (media, source_media_files_are_audio) = 'http_retry: loop {
+            // Reset per-attempt state so each outer retry starts fresh.
+            let mut cookies = original_cookies;
+
+            // ── Initial download ─────────────────────────────────────────────
+            let initial_args = if tiktok {
                 build_yt_dlp_download_args(
-                    &source,
-                    &template,
-                    js,
-                    None,
-                    false,
-                    audio_format_for_yt_dlp,
-                    Some(YT_DLP_TIKTOK_H264_FORMAT),
-                    None,
+                    &source, &template, js, cookies, false,
+                    audio_format_for_yt_dlp, Some(YT_DLP_TIKTOK_H264_FORMAT), None,
                 )
             } else {
                 build_yt_dlp_download_args(
-                    &source,
-                    &template,
-                    js,
-                    None,
-                    true,
-                    audio_format_for_yt_dlp,
-                    None,
-                    None,
+                    &source, &template, js, cookies, true,
+                    audio_format_for_yt_dlp, None, None,
                 )
             };
-            out = match run_yt_dlp_streaming(
-                &yt_dlp,
-                &retry_args,
-                YT_DLP_HEARTBEAT,
-                cancel,
-                maybe_log,
-                "yt-dlp",
+
+            let mut out = match download_yt_dlp_with_args(
+                &yt_dlp, &initial_args, cancel, maybe_log, "yt-dlp", &source, gate, pacing,
             )
             .await
             {
@@ -954,123 +991,128 @@ pub async fn prepare_media_audio(
                     return Err(e);
                 }
             };
-        }
 
-        let mut source_media_files_are_audio = !tiktok;
-        if !tiktok && !out.status.success() && yt_dlp_extract_audio_probe_failed(&out.stderr) {
-            if let Some((sink, jid)) = maybe_log.as_ref() {
-                emit_pipeline_text(
-                    sink,
-                    jid,
-                    "yt-dlp",
-                    "yt-dlp audio postprocessing failed; retrying with best-audio format (ba/b).",
+            // ── Cookie retry (existing logic) ────────────────────────────────
+            if !out.status.success() && cookies.is_some() && yt_dlp_cookie_db_failure(&out.stderr)
+            {
+                if let Some((sink, jid)) = maybe_log.as_ref() {
+                    emit_pipeline_text(
+                        sink, jid, "yt-dlp",
+                        "Browser cookies failed (Chrome/Edge lock or encryption). Retrying without cookies…",
+                    );
+                }
+                clear_work_dir_media_files(&work_dir)?;
+                cookies = None;
+                let retry_args = if tiktok {
+                    build_yt_dlp_download_args(
+                        &source, &template, js, None, false,
+                        audio_format_for_yt_dlp, Some(YT_DLP_TIKTOK_H264_FORMAT), None,
+                    )
+                } else {
+                    build_yt_dlp_download_args(
+                        &source, &template, js, None, true,
+                        audio_format_for_yt_dlp, None, None,
+                    )
+                };
+                out = match download_yt_dlp_with_args(
+                    &yt_dlp, &retry_args, cancel, maybe_log, "yt-dlp", &source, gate, pacing,
+                )
+                .await
+                {
+                    Ok(o) => o,
+                    Err(e) => {
+                        let _ = fs::remove_dir_all(&work_dir);
+                        return Err(e);
+                    }
+                };
+            }
+
+            // ── Audio probe retry (existing logic) ───────────────────────────
+            let mut source_media_files_are_audio = !tiktok;
+            if !tiktok && !out.status.success() && yt_dlp_extract_audio_probe_failed(&out.stderr) {
+                if let Some((sink, jid)) = maybe_log.as_ref() {
+                    emit_pipeline_text(
+                        sink, jid, "yt-dlp",
+                        "yt-dlp audio postprocessing failed; retrying with best-audio format (ba/b).",
+                    );
+                }
+                clear_work_dir_media_files(&work_dir)?;
+                let retry_args = build_yt_dlp_download_args(
+                    &source, &template, js, cookies, false, None,
+                    Some(YT_DLP_RETRY_BEST_AUDIO_FORMAT), None,
                 );
+                out = match download_yt_dlp_with_args(
+                    &yt_dlp, &retry_args, cancel, maybe_log, "yt-dlp", &source, gate, pacing,
+                )
+                .await
+                {
+                    Ok(o) => o,
+                    Err(e) => {
+                        let _ = fs::remove_dir_all(&work_dir);
+                        return Err(e);
+                    }
+                };
+                source_media_files_are_audio = false;
             }
-            clear_work_dir_media_files(&work_dir)?;
-            let retry_args = build_yt_dlp_download_args(
-                &source,
-                &template,
-                js,
-                cookies,
-                false,
-                None,
-                Some(YT_DLP_RETRY_BEST_AUDIO_FORMAT),
-                None,
-            );
-            out = match run_yt_dlp_streaming(
-                &yt_dlp,
-                &retry_args,
-                YT_DLP_HEARTBEAT,
-                cancel,
-                maybe_log,
-                "yt-dlp",
-            )
-            .await
-            {
-                Ok(o) => o,
-                Err(e) => {
-                    let _ = fs::remove_dir_all(&work_dir);
-                    return Err(e);
-                }
-            };
-            source_media_files_are_audio = false;
-        }
-        if !out.status.success() {
-            let _ = fs::remove_dir_all(&work_dir);
-            return Err(format_yt_dlp_fail(
-                out.status.code().unwrap_or(-1),
-                &out.stderr,
-            ));
-        }
-        if let Some((sink, jid)) = maybe_log.as_ref() {
-            emit_pipeline_log(sink, jid, "yt-dlp", &out.stderr);
-        }
 
-        if cancel.is_cancelled() {
-            let _ = fs::remove_dir_all(&work_dir);
-            return Err(JOB_CANCELLED_MSG.to_string());
-        }
-
-        let mut media = sorted_downloaded_media(&work_dir)?;
-
-        if any_media_lacks_audio(
-            &ffmpeg,
-            ffmpeg_override.as_deref(),
-            &media,
-            cancel,
-        )
-        .await?
-        {
-            out = match retry_yt_dlp_merged_video_audio(
-                &source,
-                &template,
-                js,
-                cookies,
-                &yt_dlp,
-                &work_dir,
-                cancel,
-                maybe_log,
-            )
-            .await
-            {
-                Ok(o) => o,
-                Err(e) => {
-                    let _ = fs::remove_dir_all(&work_dir);
-                    return Err(e);
-                }
-            };
+            // ── HTTP-error outer retry (new) ─────────────────────────────────
             if !out.status.success() {
+                let kind = yt_dlp_error::classify(&out.stderr);
+                if kind.is_retryable() && http_attempt + 1 < max_http_attempts {
+                    http_attempt += 1;
+                    let wait = if let Some(cfg) = pacing {
+                        kind.backoff(http_attempt, cfg)
+                    } else {
+                        Duration::from_secs(5)
+                    };
+                    if let Some((sink, jid)) = maybe_log.as_ref() {
+                        emit_pipeline_text(
+                            sink, jid, "yt-dlp",
+                            &format!(
+                                "[{}] Waiting {}s before retry {}/{}…",
+                                kind.label(),
+                                wait.as_secs(),
+                                http_attempt,
+                                max_http_attempts,
+                            ),
+                        );
+                    }
+                    tokio::select! {
+                        _ = tokio::time::sleep(wait) => {}
+                        _ = cancel.cancelled() => {
+                            let _ = fs::remove_dir_all(&work_dir);
+                            return Err(JOB_CANCELLED_MSG.to_string());
+                        }
+                    }
+                    clear_work_dir_media_files(&work_dir).ok();
+                    continue 'http_retry;
+                }
                 let _ = fs::remove_dir_all(&work_dir);
-                return Err(format!(
-                    "yt-dlp merged download failed (exit {}): {}",
-                    out.status.code().unwrap_or(-1),
-                    tail_stderr(&out.stderr)
-                ));
+                return Err(format_yt_dlp_fail(out.status.code().unwrap_or(-1), &out.stderr));
             }
+
             if let Some((sink, jid)) = maybe_log.as_ref() {
                 emit_pipeline_log(sink, jid, "yt-dlp", &out.stderr);
             }
-            media = sorted_downloaded_media(&work_dir)?;
-            source_media_files_are_audio = false;
 
-            if any_media_lacks_audio(
-                &ffmpeg,
-                ffmpeg_override.as_deref(),
-                &media,
-                cancel,
-            )
-            .await?
-            && is_tiktok_url(&source)
-            {
-                out = match retry_yt_dlp_tiktok_h264(
-                    &source,
-                    &template,
-                    js,
-                    cookies,
-                    &yt_dlp,
-                    &work_dir,
-                    cancel,
-                    maybe_log,
+            if cancel.is_cancelled() {
+                let _ = fs::remove_dir_all(&work_dir);
+                return Err(JOB_CANCELLED_MSG.to_string());
+            }
+
+            let mut media = match sorted_downloaded_media(&work_dir) {
+                Ok(m) => m,
+                Err(e) => {
+                    let _ = fs::remove_dir_all(&work_dir);
+                    return Err(e);
+                }
+            };
+
+            // ── Audio-track checks (merged / TikTok H264 retries) ────────────
+            if any_media_lacks_audio(&ffmpeg, ffmpeg_override.as_deref(), &media, cancel).await? {
+                out = match retry_yt_dlp_merged_video_audio(
+                    &source, &template, js, cookies, &yt_dlp, &work_dir, cancel, maybe_log, gate,
+                    pacing,
                 )
                 .await
                 {
@@ -1083,7 +1125,7 @@ pub async fn prepare_media_audio(
                 if !out.status.success() {
                     let _ = fs::remove_dir_all(&work_dir);
                     return Err(format!(
-                        "yt-dlp TikTok H.264 download failed (exit {}): {}",
+                        "yt-dlp merged download failed (exit {}): {}",
                         out.status.code().unwrap_or(-1),
                         tail_stderr(&out.stderr)
                     ));
@@ -1091,10 +1133,55 @@ pub async fn prepare_media_audio(
                 if let Some((sink, jid)) = maybe_log.as_ref() {
                     emit_pipeline_log(sink, jid, "yt-dlp", &out.stderr);
                 }
-                media = sorted_downloaded_media(&work_dir)?;
+                media = match sorted_downloaded_media(&work_dir) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        let _ = fs::remove_dir_all(&work_dir);
+                        return Err(e);
+                    }
+                };
                 source_media_files_are_audio = false;
+
+                if any_media_lacks_audio(&ffmpeg, ffmpeg_override.as_deref(), &media, cancel)
+                    .await?
+                    && is_tiktok_url(&source)
+                {
+                    out = match retry_yt_dlp_tiktok_h264(
+                        &source, &template, js, cookies, &yt_dlp, &work_dir, cancel, maybe_log,
+                        gate, pacing,
+                    )
+                    .await
+                    {
+                        Ok(o) => o,
+                        Err(e) => {
+                            let _ = fs::remove_dir_all(&work_dir);
+                            return Err(e);
+                        }
+                    };
+                    if !out.status.success() {
+                        let _ = fs::remove_dir_all(&work_dir);
+                        return Err(format!(
+                            "yt-dlp TikTok H.264 download failed (exit {}): {}",
+                            out.status.code().unwrap_or(-1),
+                            tail_stderr(&out.stderr)
+                        ));
+                    }
+                    if let Some((sink, jid)) = maybe_log.as_ref() {
+                        emit_pipeline_log(sink, jid, "yt-dlp", &out.stderr);
+                    }
+                    media = match sorted_downloaded_media(&work_dir) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            let _ = fs::remove_dir_all(&work_dir);
+                            return Err(e);
+                        }
+                    };
+                    source_media_files_are_audio = false;
+                }
             }
-        }
+
+            break 'http_retry (media, source_media_files_are_audio);
+        };
 
         if keep_downloaded_video {
             if let Some(ref vp) = video_output_template {
@@ -1146,7 +1233,9 @@ pub async fn prepare_media_audio(
                             vp,
                             cancel,
                             js,
-                            cookies,
+                            original_cookies,
+                            gate,
+                            pacing,
                         )
                         .await
                         {

@@ -18,7 +18,8 @@ use std::path::Path;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use crate::pipeline::{run_yt_dlp_streaming, tail_stderr};
+use crate::net_pacing::{HostGate, PacingConfig};
+use crate::pipeline::{run_yt_dlp_maybe_paced, tail_stderr};
 
 /// True when the URL cannot be a playlist, so pre-resolve would waste a request.
 ///
@@ -97,6 +98,8 @@ pub async fn resolve_playlist_metadata(
     cookies_from_browser: Option<&str>,
     yt_dlp_js_runtimes: Option<&str>,
     cancel: &CancellationToken,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
 ) -> Result<PlaylistMetadataResult, String> {
     let mut args: Vec<String> = Vec::new();
     if let Some(b) = cookies_from_browser
@@ -122,7 +125,10 @@ pub async fn resolve_playlist_metadata(
         url.trim().to_string(),
     ]);
 
-    let out = run_yt_dlp_streaming(
+    let out = run_yt_dlp_maybe_paced(
+        gate,
+        pacing,
+        url,
         yt_dlp,
         &args,
         META_HEARTBEAT,

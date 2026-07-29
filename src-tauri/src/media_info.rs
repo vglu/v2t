@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use crate::pipeline::{run_yt_dlp_streaming, tail_stderr};
+use crate::net_pacing::{HostGate, PacingConfig};
+use crate::pipeline::{run_yt_dlp_maybe_paced, tail_stderr};
 use crate::subs;
 
 const DUMP_HEARTBEAT: Duration = Duration::from_secs(60);
@@ -201,6 +202,8 @@ pub async fn fetch_remote_facts(
     cookies_from_browser: Option<&str>,
     yt_dlp_js_runtimes: Option<&str>,
     cancel: &CancellationToken,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
 ) -> Result<RemoteMediaFacts, String> {
     if subs::is_pure_playlist_url(url) {
         return Err("playlist URL — skip remote media-info dump".into());
@@ -227,7 +230,10 @@ pub async fn fetch_remote_facts(
         url.trim().to_string(),
     ]);
 
-    let out = run_yt_dlp_streaming(
+    let out = run_yt_dlp_maybe_paced(
+        gate,
+        pacing,
+        url,
         yt_dlp,
         &args,
         DUMP_HEARTBEAT,

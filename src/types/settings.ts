@@ -107,6 +107,29 @@ export type AppSettings = {
   geminiApiKey: string;
   /** True = user is on free tier; show rate limit warnings. */
   geminiFreeTier: boolean;
+
+  // ── Download pacing & retry (TASK-Q2-2) ──────────────────────────────────
+
+  /** Minimum gap (ms) between yt-dlp spawns for the same host. */
+  downloadMinIntervalMs: number;
+  /** Random jitter (ms) added on top of downloadMinIntervalMs. */
+  downloadJitterMs: number;
+  /** Maximum download attempts per item when the error is retryable. */
+  downloadMaxAttempts: number;
+  /** Base duration (ms) for exponential backoff between retry attempts. */
+  downloadBackoffBaseMs: number;
+  /** Upper cap (ms) for both backoff and per-host cooldown. */
+  downloadBackoffMaxMs: number;
+  /** Per-host cooldown (ms) applied after a 429 response. */
+  downloadCooldownMs: number;
+  /** Number of concurrent URL downloads. */
+  acquireConcurrency: number;
+  /** Number of concurrent transcriptions. */
+  transcribeConcurrency: number;
+  /** Backpressure: max downloaded-but-not-yet-transcribed items. */
+  maxPendingArtifacts: number;
+  /** Backpressure: max total size (MiB) of pending artifacts. */
+  maxPendingArtifactsMb: number;
 };
 
 export type ApiServerSettings = {
@@ -156,6 +179,16 @@ export const defaultAppSettings: AppSettings = {
   geminiModel: "gemini-2.5-flash",
   geminiApiKey: "",
   geminiFreeTier: true,
+  downloadMinIntervalMs: 1500,
+  downloadJitterMs: 750,
+  downloadMaxAttempts: 4,
+  downloadBackoffBaseMs: 5000,
+  downloadBackoffMaxMs: 120000,
+  downloadCooldownMs: 60000,
+  acquireConcurrency: 1,
+  transcribeConcurrency: 1,
+  maxPendingArtifacts: 10,
+  maxPendingArtifactsMb: 4096,
 };
 
 export type DependencyReport = {

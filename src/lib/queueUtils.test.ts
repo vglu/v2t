@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { fileBasenameNoExt, parseInputLines, shortLabel } from "./queueUtils";
+import {
+  fileBasenameNoExt,
+  isUnsupportedMediaUrl,
+  parseInputLines,
+  shortLabel,
+} from "./queueUtils";
 
 describe("parseInputLines", () => {
   it("splits and trims", () => {
@@ -42,5 +47,33 @@ describe("fileBasenameNoExt", () => {
 
   it("preserves leading dot files", () => {
     expect(fileBasenameNoExt(".env")).toBe(".env");
+  });
+});
+
+describe("isUnsupportedMediaUrl", () => {
+  it("marks tiktok photo posts as unsupported", () => {
+    expect(isUnsupportedMediaUrl("https://www.tiktok.com/photo/123")).toBe(
+      true,
+    );
+    expect(
+      isUnsupportedMediaUrl("https://m.tiktok.com/photo/abc?lang=en"),
+    ).toBe(true);
+  });
+
+  it("marks tiktok profile root links without /video/ as unsupported", () => {
+    expect(isUnsupportedMediaUrl("https://www.tiktok.com/@user")).toBe(true);
+    expect(isUnsupportedMediaUrl("https://tiktok.com/@user/")).toBe(true);
+    expect(
+      isUnsupportedMediaUrl("https://tiktok.com/@user?lang=en"),
+    ).toBe(true);
+  });
+
+  it("does not mark supported video URLs as unsupported", () => {
+    expect(
+      isUnsupportedMediaUrl("https://www.tiktok.com/@user/video/123"),
+    ).toBe(false);
+    expect(
+      isUnsupportedMediaUrl("https://www.youtube.com/watch?v=abc"),
+    ).toBe(false);
   });
 });

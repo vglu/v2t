@@ -47,3 +47,5 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 lopdf = "0.34"
 base64 = { version = "0.22", features = ["std"] }
 
+[dev-dependencies]
+tokio = { version = "1", features = ["time", "process", "macros", "rt-multi-thread", "io-util", "net", "sync", "test-util"] }

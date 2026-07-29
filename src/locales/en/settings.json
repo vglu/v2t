@@ -169,6 +169,8 @@
       "none": "Disabled — do not use browser cookies"
     },
     "cookies_hint": "Passes <code>--cookies-from-browser</code> to yt-dlp. The browser must be installed and you must be logged in to YouTube / TikTok in it. <strong>Chrome, Brave and Edge have two known issues on Windows:</strong> (1) their cookie database is locked while the browser is running — close it first; (2) since Chrome 127+ cookies are encrypted with app-bound encryption (DPAPI) that yt-dlp cannot decrypt even when the browser is closed (<a>issue #10927</a>). <strong>Firefox is the most reliable option</strong> — log in there and select Firefox.",
+    "ytdlp_version_line": "yt-dlp version: {{version}}",
+    "ytdlp_outdated_hint": "Your yt-dlp is older than 60 days. Update it via <a>Download tools</a>.",
     "tools_msg_done": "ffmpeg and yt-dlp saved to app data and paths updated."
   },
   "filename_template_label": "Filename template",

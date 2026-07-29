@@ -13,6 +13,7 @@ import {
   getApiServerInfo,
   installDeno,
   listWhisperModels,
+  ytDlpVersion,
   type ApiServerInfo,
 } from "../lib/invokeSafe";
 import { SPEECH_LANGUAGE_OPTIONS } from "../lib/speechLanguages";
@@ -81,6 +82,20 @@ function friendlyModelLabel(model: WhisperModelMeta): string {
   return `${tier} · ~${model.sizeMib} MiB`;
 }
 
+function parseYtDlpVersionDate(version: string): Date | null {
+  // Expected forms: YYYY.MM.DD (common), YYYY-MM-DD, or with extra prefixes/suffixes.
+  const m = version.match(/(\d{4})[.\-](\d{2})[.\-](\d{2})/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
+  // Use UTC to make the "days old" math stable.
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt;
+}
+
 export function SettingsPanel({
   settings,
   onChange,
@@ -128,6 +143,9 @@ export function SettingsPanel({
     received: number;
     total: number | null;
   } | null>(null);
+
+  const [ytDlpVer, setYtDlpVer] = useState<string | null>(null);
+  const [ytDlpOutdated, setYtDlpOutdated] = useState(false);
 
   const [whisperCliDlBusy, setWhisperCliDlBusy] = useState(false);
   const [whisperCliDlMsg, setWhisperCliDlMsg] = useState<string | null>(null);
@@ -256,6 +274,30 @@ export function SettingsPanel({
       unlisten?.();
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const v = await ytDlpVersion(settings.ytDlpPath);
+      if (cancelled) return;
+      setYtDlpVer(v);
+      if (!v) {
+        setYtDlpOutdated(false);
+        return;
+      }
+      const dt = parseYtDlpVersionDate(v);
+      if (!dt) {
+        setYtDlpOutdated(false);
+        return;
+      }
+      const daysOld = (Date.now() - dt.getTime()) / (24 * 60 * 60 * 1000);
+      setYtDlpOutdated(daysOld > 60);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.ytDlpPath]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -1234,6 +1276,26 @@ export function SettingsPanel({
       <p className="settings-section-title">{t("section.media_tools")}</p>
       <div data-prefs-focus="ffmpeg" id="prefs-focus-ffmpeg" />
       <div data-prefs-focus="yt-dlp" id="prefs-focus-yt-dlp" />
+
+      {ytDlpVer ? (
+        <p className="hint">
+          {t("media_tools.ytdlp_version_line", { version: ytDlpVer })}
+        </p>
+      ) : null}
+      {showManagedToolDownloads && ytDlpOutdated ? (
+        <p className="hint hint--warn" role="note">
+          <Trans
+            i18nKey="media_tools.ytdlp_outdated_hint"
+            t={t}
+            components={{
+              a: (
+                <a href="#download-media-tools-btn" />
+              ),
+            }}
+          />
+        </p>
+      ) : null}
+
       {showManagedToolDownloads ? (
         <>
           {isWin ? (
@@ -1278,6 +1340,7 @@ export function SettingsPanel({
             <button
               type="button"
               disabled={toolDlBusy}
+              id="download-media-tools-btn"
               onClick={() => void onDownloadMediaTools()}
             >
               {toolDlBusy ? t("media_tools.btn_downloading") : t("media_tools.btn_download")}

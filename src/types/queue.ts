@@ -3,6 +3,7 @@ export type QueueJobStatus =
   | "running"
   | "done"
   | "error"
+  | "unsupported"
   | "cancelled";
 
 export type QueueJobKind = "file" | "url" | "folder";

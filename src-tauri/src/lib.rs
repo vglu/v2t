@@ -33,11 +33,14 @@ mod webhook;
 mod whisper_bottle_macos;
 mod whisper_catalog;
 mod whisper_local;
+mod net_pacing;
+mod yt_dlp_error;
 mod yt_dlp_metadata;
 mod yt_dlp_progress;
 
 use api_server::ApiServerSupervisor;
 use cancel_registry::JobCancelRegistry;
+use net_pacing::HostGate;
 use job::{BrowserTrackInfo, ProcessQueueItemOutcome, ProcessQueueItemResult};
 use progress::{SinkHandle, TauriSink};
 use serde::Serialize;
@@ -46,6 +49,7 @@ use settings::{AppSettings, WhisperAcceleration};
 use std::path::PathBuf;
 use tauri::Manager;
 use tokio_util::sync::CancellationToken;
+use tool_download::yt_dlp_version;
 
 pub use timed_transcript::{TimedSegment, TimedTranscript};
 
@@ -90,6 +94,7 @@ fn scan_media_folder(path: String, recursive: bool) -> Result<Vec<String>, Strin
 fn save_failed_links(
     links_file_path: String,
     failed_urls: Vec<String>,
+    unsupported_urls: Vec<String>,
     copy_to_dir: Option<String>,
 ) -> Result<u32, String> {
     let p = std::path::PathBuf::from(links_file_path.trim());
@@ -97,7 +102,7 @@ fn save_failed_links(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .map(|s| std::path::PathBuf::from(s));
-    failed_links::save_failed_links_sidecar(&p, &failed_urls, copy.as_deref())
+    failed_links::save_failed_links_sidecar(&p, &failed_urls, &unsupported_urls, copy.as_deref())
 }
 
 #[tauri::command]
@@ -121,6 +126,8 @@ async fn prepare_media_audio(
         false,
         None,
         None,
+        None,
+        None,
     )
     .await
 }
@@ -129,6 +136,7 @@ async fn prepare_media_audio(
 async fn process_queue_item(
     app: tauri::AppHandle,
     registry: tauri::State<'_, JobCancelRegistry>,
+    gate: tauri::State<'_, HostGate>,
     job_id: String,
     job_index: u32,
     source: String,
@@ -140,6 +148,7 @@ async fn process_queue_item(
 ) -> Result<ProcessQueueItemOutcome, String> {
     let cancel = registry.register_job(&job_id);
     let sink: SinkHandle = TauriSink::handle(app.clone());
+    let pacing_cfg = net_pacing::PacingConfig::from_settings(&settings);
     let out = job::run_process_queue_item(
         app,
         sink,
@@ -152,6 +161,8 @@ async fn process_queue_item(
         ffmpeg_path_override,
         yt_dlp_path_override,
         cancel,
+        Some(&gate),
+        Some(&pacing_cfg),
     )
     .await;
     match &out {
@@ -359,6 +370,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(JobCancelRegistry::default())
         .manage(ApiServerSupervisor::new())
+        .manage(HostGate::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -417,6 +429,7 @@ pub fn run() {
             api_server_regenerate_token,
             validate_gemini_model,
             estimate_ocr_batch,
+            yt_dlp_version,
             save_failed_links
         ])
         .build(tauri::generate_context!())

@@ -28,7 +28,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use crate::pipeline::{run_yt_dlp_streaming, tail_stderr};
+use crate::net_pacing::{HostGate, PacingConfig};
+use crate::pipeline::{run_yt_dlp_maybe_paced, tail_stderr};
 
 /// `--dump-json --skip-download` is one round-trip; 60 s is generous on flaky links.
 const PROBE_HEARTBEAT: Duration = Duration::from_secs(60);
@@ -119,6 +120,8 @@ pub async fn probe_subs(
     cookies_from_browser: Option<&str>,
     yt_dlp_js_runtimes: Option<&str>,
     cancel: &CancellationToken,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
 ) -> Result<SubsProbe, String> {
     let mut args: Vec<String> = Vec::new();
     if let Some(b) = cookies_from_browser
@@ -141,8 +144,18 @@ pub async fn probe_subs(
         url.trim().to_string(),
     ]);
 
-    let out =
-        run_yt_dlp_streaming(yt_dlp, &args, PROBE_HEARTBEAT, cancel, None, "yt-dlp-subs").await?;
+    let out = run_yt_dlp_maybe_paced(
+        gate,
+        pacing,
+        url,
+        yt_dlp,
+        &args,
+        PROBE_HEARTBEAT,
+        cancel,
+        None,
+        "yt-dlp-subs",
+    )
+    .await?;
     if !out.status.success() {
         return Err(format!(
             "yt-dlp probe failed (exit {}): {}",
@@ -176,6 +189,8 @@ pub async fn download_srt(
     cookies_from_browser: Option<&str>,
     yt_dlp_js_runtimes: Option<&str>,
     cancel: &CancellationToken,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
 ) -> Result<PathBuf, String> {
     std::fs::create_dir_all(work_dir).map_err(|e| format!("create subs work dir: {e}"))?;
 
@@ -213,8 +228,18 @@ pub async fn download_srt(
         url.trim().to_string(),
     ]);
 
-    let out =
-        run_yt_dlp_streaming(yt_dlp, &args, FETCH_HEARTBEAT, cancel, None, "yt-dlp-subs").await?;
+    let out = run_yt_dlp_maybe_paced(
+        gate,
+        pacing,
+        url,
+        yt_dlp,
+        &args,
+        FETCH_HEARTBEAT,
+        cancel,
+        None,
+        "yt-dlp-subs",
+    )
+    .await?;
     if !out.status.success() {
         return Err(format!(
             "yt-dlp sub fetch failed (exit {}): {}",

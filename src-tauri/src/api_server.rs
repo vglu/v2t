@@ -672,6 +672,8 @@ fn spawn_api_job(state: Arc<ApiServerState>, prepared: PreparedJob) {
         let sink: SinkHandle = Arc::new(ApiJobSink::new(registry.clone(), job_id.clone()));
         registry.mark_running(&job_id);
 
+        let gate = app.state::<crate::net_pacing::HostGate>();
+        let pacing_cfg = crate::net_pacing::PacingConfig::from_settings(&effective);
         let outcome = job::run_process_queue_item(
             app.clone(),
             sink,
@@ -684,6 +686,8 @@ fn spawn_api_job(state: Arc<ApiServerState>, prepared: PreparedJob) {
             ffmpeg_override,
             yt_dlp_override,
             cancel,
+            Some(&gate),
+            Some(&pacing_cfg),
         )
         .await;
 

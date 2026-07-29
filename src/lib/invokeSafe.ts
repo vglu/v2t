@@ -131,14 +131,16 @@ export async function cancelQueueJob(jobId: string | null): Promise<void> {
 export async function saveFailedLinks(args: {
   linksFilePath: string;
   failedUrls: string[];
+  unsupportedUrls?: string[];
   copyToDir?: string | null;
 }): Promise<number | null> {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
-    const { linksFilePath, failedUrls, copyToDir } = args;
+    const { linksFilePath, failedUrls, unsupportedUrls, copyToDir } = args;
     return await invoke<number>("save_failed_links", {
       linksFilePath,
       failedUrls,
+      unsupportedUrls: unsupportedUrls ?? [],
       copyToDir: copyToDir ?? null,
     });
   } catch {
@@ -167,6 +169,19 @@ export async function defaultDocumentsDir(): Promise<string | null> {
 export async function downloadMediaTools(): Promise<DownloadedMediaTools> {
   const { invoke } = await import("@tauri-apps/api/core");
   return await invoke<DownloadedMediaTools>("download_media_tools");
+}
+
+export async function ytDlpVersion(
+  ytDlpPathOverride?: string | null,
+): Promise<string | null> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<string>("yt_dlp_version", {
+      ytDlpPathOverride: ytDlpPathOverride ?? null,
+    });
+  } catch {
+    return null;
+  }
 }
 
 export async function downloadWhisperCli(

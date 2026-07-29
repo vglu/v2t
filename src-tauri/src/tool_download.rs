@@ -13,6 +13,7 @@ use sha2::Digest;
 use tauri::path::BaseDirectory;
 use tauri::AppHandle;
 use tauri::Manager;
+use crate::deps;
 
 #[cfg(any(windows, target_os = "macos"))]
 use crate::tool_manifest::tools_manifest;
@@ -59,6 +60,40 @@ pub fn default_documents_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .resolve("", BaseDirectory::Document)
         .map_err(|e| format!("resolve Document: {e}"))
+}
+
+/// Get `yt-dlp --version` for the configured / overridden binary.
+///
+/// Used in Preferences → Tools to warn if the binary is older than 60 days.
+#[tauri::command]
+pub async fn yt_dlp_version(yt_dlp_path_override: Option<String>) -> Result<String, String> {
+    let yt_dlp = deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp")
+        .ok_or_else(|| {
+            "yt-dlp not found (set yt-dlp path in Preferences → Tools)".to_string()
+        })?;
+
+    let mut cmd = tokio::process::Command::new(&yt_dlp);
+    cmd.arg("--version");
+
+    let fut = cmd.output();
+    let out = tokio::time::timeout(std::time::Duration::from_secs(30), fut)
+        .await
+        .map_err(|_| "yt-dlp --version timed out".to_string())?;
+    let out = out.map_err(|e| format!("yt-dlp --version failed: {e}"))?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let msg = if !stderr.is_empty() { stderr } else { stdout };
+        return Err(format!("yt-dlp --version failed: {msg}"));
+    }
+
+    let s = if !out.stdout.is_empty() {
+        String::from_utf8_lossy(&out.stdout).to_string()
+    } else {
+        String::from_utf8_lossy(&out.stderr).to_string()
+    };
+    Ok(s.trim().to_string())
 }
 
 pub async fn download_managed_media_tools(

@@ -33,6 +33,46 @@ fn default_gemini_free_tier() -> bool {
     true
 }
 
+fn default_download_min_interval_ms() -> u32 {
+    1500
+}
+
+fn default_download_jitter_ms() -> u32 {
+    750
+}
+
+fn default_download_max_attempts() -> u8 {
+    4
+}
+
+fn default_download_backoff_base_ms() -> u32 {
+    5000
+}
+
+fn default_download_backoff_max_ms() -> u32 {
+    120_000
+}
+
+fn default_download_cooldown_ms() -> u32 {
+    60_000
+}
+
+fn default_acquire_concurrency() -> u8 {
+    1
+}
+
+fn default_transcribe_concurrency() -> u8 {
+    1
+}
+
+fn default_max_pending_artifacts() -> u8 {
+    10
+}
+
+fn default_max_pending_artifacts_mb() -> u32 {
+    4096
+}
+
 fn default_profile_id_for_serde() -> String {
     // Missing field in existing settings.json → custom (do not rewrite power-user configs).
     "custom".to_string()
@@ -279,6 +319,39 @@ pub struct AppSettings {
     /// REST API server config (M2 wave). Disabled by default; bind only to 127.0.0.1.
     #[serde(default)]
     pub api_server: ApiServerSettings,
+
+    // ── Download pacing & retry (TASK-Q2-2) ──────────────────────────────────
+
+    /// Minimum gap (ms) between yt-dlp spawns for the same host.
+    #[serde(default = "default_download_min_interval_ms")]
+    pub download_min_interval_ms: u32,
+    /// Random jitter (ms) added on top of `download_min_interval_ms`.
+    #[serde(default = "default_download_jitter_ms")]
+    pub download_jitter_ms: u32,
+    /// Maximum download attempts per item when the error is retryable.
+    #[serde(default = "default_download_max_attempts")]
+    pub download_max_attempts: u8,
+    /// Base duration (ms) for exponential backoff between retry attempts.
+    #[serde(default = "default_download_backoff_base_ms")]
+    pub download_backoff_base_ms: u32,
+    /// Upper cap (ms) for both backoff and per-host cooldown.
+    #[serde(default = "default_download_backoff_max_ms")]
+    pub download_backoff_max_ms: u32,
+    /// Per-host cooldown (ms) applied after a 429 response.
+    #[serde(default = "default_download_cooldown_ms")]
+    pub download_cooldown_ms: u32,
+    /// Number of concurrent URL downloads (Acquire lane).
+    #[serde(default = "default_acquire_concurrency")]
+    pub acquire_concurrency: u8,
+    /// Number of concurrent transcriptions (Transcribe lane).
+    #[serde(default = "default_transcribe_concurrency")]
+    pub transcribe_concurrency: u8,
+    /// Backpressure: max downloaded-but-not-yet-transcribed items.
+    #[serde(default = "default_max_pending_artifacts")]
+    pub max_pending_artifacts: u8,
+    /// Backpressure: max total size (MiB) of pending artifacts.
+    #[serde(default = "default_max_pending_artifacts_mb")]
+    pub max_pending_artifacts_mb: u32,
 }
 
 /// Behavior when the pyannote diarize sidecar fails.
@@ -353,6 +426,16 @@ impl Default for AppSettings {
             gemini_api_key: String::new(),
             gemini_free_tier: true,
             api_server: ApiServerSettings::default(),
+            download_min_interval_ms: default_download_min_interval_ms(),
+            download_jitter_ms: default_download_jitter_ms(),
+            download_max_attempts: default_download_max_attempts(),
+            download_backoff_base_ms: default_download_backoff_base_ms(),
+            download_backoff_max_ms: default_download_backoff_max_ms(),
+            download_cooldown_ms: default_download_cooldown_ms(),
+            acquire_concurrency: default_acquire_concurrency(),
+            transcribe_concurrency: default_transcribe_concurrency(),
+            max_pending_artifacts: default_max_pending_artifacts(),
+            max_pending_artifacts_mb: default_max_pending_artifacts_mb(),
         }
     }
 }

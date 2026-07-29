@@ -10,6 +10,7 @@ use crate::deps;
 use crate::diarize;
 use crate::media_info;
 use crate::model_download;
+use crate::net_pacing::{HostGate, PacingConfig};
 use crate::output_template;
 use crate::pipeline;
 use crate::progress::{JobEvent, QueueJobProgressEvent, SinkHandle, SubtaskStatusEvent, TauriSink};
@@ -288,6 +289,8 @@ pub async fn run_process_queue_item(
     ffmpeg_path_override: Option<String>,
     yt_dlp_path_override: Option<String>,
     cancel: CancellationToken,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
 ) -> Result<ProcessQueueItemOutcome, String> {
     let out_dir = require_output_dir(&settings)?;
 
@@ -357,6 +360,8 @@ pub async fn run_process_queue_item(
                 settings.cookies_from_browser.yt_dlp_arg(),
                 settings.yt_dlp_js_runtimes.as_deref(),
                 &cancel,
+                gate,
+                pacing,
             )
             .await
             {
@@ -420,6 +425,8 @@ pub async fn run_process_queue_item(
                 &out_dir,
                 &yt_dlp,
                 &cancel,
+                gate,
+                pacing,
             )
             .await
             {
@@ -458,6 +465,8 @@ pub async fn run_process_queue_item(
         settings.keep_downloaded_video,
         video_output_template,
         audio_format_for_yt_dlp,
+        gate,
+        pacing,
     )
     .await?;
 
@@ -516,6 +525,8 @@ pub async fn run_process_queue_item(
                             settings.cookies_from_browser.yt_dlp_arg(),
                             settings.yt_dlp_js_runtimes.as_deref(),
                             &cancel,
+                            gate,
+                            pacing,
                         )
                         .await
                         {
@@ -544,6 +555,8 @@ pub async fn run_process_queue_item(
                 settings.cookies_from_browser.yt_dlp_arg(),
                 settings.yt_dlp_js_runtimes.as_deref(),
                 &cancel,
+                gate,
+                pacing,
             )
             .await
             {
@@ -1092,12 +1105,14 @@ async fn try_subs_fast_path(
     out_dir: &Path,
     yt_dlp: &Path,
     cancel: &CancellationToken,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
 ) -> Result<Option<ProcessQueueItemOutcome>, String> {
     let cookies = settings.cookies_from_browser.yt_dlp_arg();
     let js = settings.yt_dlp_js_runtimes.as_deref();
 
     emit_progress(sink, job_id, "subs", "Probing subtitles…");
-    let probe = match subs::probe_subs(yt_dlp, source, cookies, js, cancel).await {
+    let probe = match subs::probe_subs(yt_dlp, source, cookies, js, cancel, gate, pacing).await {
         Ok(p) => p,
         Err(e) => {
             if e == pipeline::JOB_CANCELLED_MSG {
@@ -1140,8 +1155,11 @@ async fn try_subs_fast_path(
         .as_nanos();
     let work_dir = std::env::temp_dir().join(format!("v2t-subs-{nanos}"));
 
-    let srt_path =
-        match subs::download_srt(yt_dlp, source, &lang, &work_dir, cookies, js, cancel).await {
+    let srt_path = match subs::download_srt(
+        yt_dlp, source, &lang, &work_dir, cookies, js, cancel, gate, pacing,
+    )
+    .await
+    {
             Ok(p) => p,
             Err(e) => {
                 let _ = fs::remove_dir_all(&work_dir);

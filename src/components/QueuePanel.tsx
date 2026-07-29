@@ -15,6 +15,7 @@ import {
 import { transcribeBrowserTracks } from "../lib/browserWhisper";
 import {
   fileBasenameNoExt,
+  isUnsupportedMediaUrl,
   newJobId,
   parseInputLines,
   shortLabel,
@@ -180,7 +181,10 @@ export function QueuePanel({
           ...j,
           id: newJobId(),
           language: batchLanguage,
-          status: "pending" as const,
+          status:
+            j.kind === "url" && isUnsupportedMediaUrl(j.source)
+              ? ("unsupported" as const)
+              : ("pending" as const),
         })),
       ]);
     },
@@ -711,6 +715,11 @@ export function QueuePanel({
   );
   const failedUrlCount = failedUrlJobs.length;
 
+  const unsupportedUrlJobs = useMemo(
+    () => jobs.filter((j) => j.status === "unsupported" && j.kind === "url"),
+    [jobs],
+  );
+
   const saveBrokenLinks = useCallback(async () => {
     const outDir = settings.outputDir?.trim();
     if (!outDir) {
@@ -721,6 +730,7 @@ export function QueuePanel({
 
     // Keep order as in the queue; backend will de-dupe and normalize.
     const failedUrls = failedUrlJobs.map((j) => j.source);
+    const unsupportedUrls = unsupportedUrlJobs.map((j) => j.source);
 
     const defaultLinksFile = joinPaths(outDir, "broken_links.txt");
     const linksFilePath = brokenLinksPath.trim() || defaultLinksFile;
@@ -729,11 +739,20 @@ export function QueuePanel({
     const savedCount = await saveFailedLinks({
       linksFilePath,
       failedUrls,
+      unsupportedUrls,
       copyToDir: outDir,
     });
     const n = typeof savedCount === "number" ? savedCount : 0;
     appendLog(t("msg.broken_links_saved", { count: n, file: linksFilePath }));
-  }, [appendLog, brokenLinksPath, failedUrlJobs, saveFailedLinks, settings.outputDir, t]);
+  }, [
+    appendLog,
+    brokenLinksPath,
+    failedUrlJobs,
+    saveFailedLinks,
+    settings.outputDir,
+    t,
+    unsupportedUrlJobs,
+  ]);
 
   const addUrlsLabel =
     pendingUrlCount <= 0
@@ -1187,7 +1206,11 @@ function FragmentRow({
               defaultValue: `Video language for ${headerLabel}`,
             })}
             value={job.language ?? ""}
-            disabled={job.status === "running" || job.status === "done"}
+            disabled={
+              job.status === "running" ||
+              job.status === "done" ||
+              job.status === "unsupported"
+            }
             onChange={(event) =>
               onLanguageChange(job.id, event.target.value || null)
             }
