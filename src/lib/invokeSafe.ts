@@ -1,4 +1,6 @@
 import type {
+  AcquiredArtifact,
+  AcquireOutcome,
   BrowserTrackInfo,
   ProcessQueueItemOutcome,
   ProcessQueueItemResult,
@@ -260,6 +262,36 @@ export async function processQueueItem(args: {
   }
 }
 
+export async function acquireMediaItem(args: {
+  jobId: string;
+  jobIndex: number;
+  source: string;
+  sourceKind: "url" | "file";
+  displayLabel: string;
+  settings: AppSettings;
+}): Promise<AcquireOutcome> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { settings, jobId, jobIndex, source, sourceKind, displayLabel } = args;
+    return await invoke<AcquireOutcome>("acquire_media_item", {
+      jobId,
+      jobIndex,
+      source,
+      sourceKind,
+      displayLabel,
+      settings,
+    });
+  } catch (e) {
+    const msg =
+      typeof e === "string"
+        ? e
+        : e instanceof Error
+          ? e.message
+          : "invoke failed (run inside Tauri app)";
+    throw new Error(msg);
+  }
+}
+
 export async function browserQueueJobFinish(args: {
   jobId: string;
   tracks: BrowserTrackInfo[];
@@ -295,6 +327,45 @@ export async function browserQueueJobFinish(args: {
           ? e.message
           : "browser_queue_job_finish failed";
     throw new Error(msg);
+  }
+}
+
+export async function transcribeArtifact(args: {
+  jobId: string;
+  jobIndex: number;
+  source: string;
+  sourceKind: "url" | "file";
+  artifact: AcquiredArtifact;
+  settings: AppSettings;
+}): Promise<ProcessQueueItemResult> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { settings, jobId, jobIndex, source, sourceKind, artifact } = args;
+    return await invoke<ProcessQueueItemResult>("transcribe_artifact", {
+      jobId,
+      jobIndex,
+      source,
+      sourceKind,
+      artifact,
+      settings,
+    });
+  } catch (e) {
+    const msg =
+      typeof e === "string"
+        ? e
+        : e instanceof Error
+          ? e.message
+          : "invoke failed (run inside Tauri app)";
+    throw new Error(msg);
+  }
+}
+
+export async function discardArtifact(artifact: AcquiredArtifact): Promise<void> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("discard_artifact", { artifact });
+  } catch {
+    /* web / tests */
   }
 }
 

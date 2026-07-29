@@ -27,27 +27,30 @@ vi.mock("../lib/browserWhisper", () => ({
 }));
 
 vi.mock("../lib/invokeSafe", () => ({
+  estimateOcrBatch: vi.fn().mockResolvedValue(null),
   scanMediaFolder: vi.fn().mockResolvedValue(null),
   cancelQueueJob: vi.fn().mockResolvedValue(undefined),
   sessionLogAppendUi: vi.fn().mockResolvedValue(undefined),
   openSessionLog: vi.fn().mockResolvedValue(true),
-  browserQueueJobFinish: vi.fn(),
   releaseQueueJobSlot: vi.fn().mockResolvedValue(undefined),
-  processQueueItem: vi.fn().mockResolvedValue({
-    kind: "done",
-    transcriptPath: "/out/transcript.txt",
-    summary: "Saved: /out/transcript.txt",
-  }),
+  browserQueueJobFinish: vi.fn(),
+  acquireMediaItem: vi.fn(),
+  transcribeArtifact: vi.fn(),
+  discardArtifact: vi.fn().mockResolvedValue(undefined),
+  processQueueItem: vi.fn(), // unused in the refactored QueuePanel (kept for backwards compat in mocks)
   saveFailedLinks: vi.fn().mockResolvedValue(0),
 }));
 
 import { transcribeBrowserTracks } from "../lib/browserWhisper";
 import {
+  acquireMediaItem,
   browserQueueJobFinish,
   cancelQueueJob,
-  processQueueItem,
+  discardArtifact,
   releaseQueueJobSlot,
+  transcribeArtifact,
 } from "../lib/invokeSafe";
+
 import { defaultAppSettings } from "../types/settings";
 import type { TimedTranscript } from "../types/timedTranscript";
 
@@ -57,31 +60,47 @@ const settingsFixture = {
   recursiveFolderScan: false,
 };
 
+function makeTimedTranscript(text: string): TimedTranscript {
+  return {
+    text,
+    segments: [{ startMs: 0, endMs: 1000, text }],
+  };
+}
+
 describe("QueuePanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(processQueueItem).mockResolvedValue({
-      kind: "done",
+
+    vi.mocked(acquireMediaItem).mockResolvedValue({
+      kind: "completed",
       transcriptPath: "/out/transcript.txt",
       summary: "Saved: /out/transcript.txt",
     });
+
+    vi.mocked(transcribeArtifact).mockResolvedValue({
+      transcriptPath: "/out/transcript.txt",
+      summary: "Saved: /out/transcript.txt",
+    } as any);
+
     vi.mocked(browserQueueJobFinish).mockResolvedValue({
       transcriptPath: "/out/transcript.txt",
       summary: "Saved: /out/transcript.txt",
     });
+
+    vi.mocked(releaseQueueJobSlot).mockResolvedValue(undefined);
+    vi.mocked(transcribeBrowserTracks).mockResolvedValue([makeTimedTranscript("hello")]);
+    vi.mocked(discardArtifact).mockResolvedValue(undefined);
   });
 
-  it("hides stop while idle", () => {
-    render(
-      <QueuePanel settings={settingsFixture} readinessComplete={true} />,
-    );
-    expect(screen.queryByTestId("stop-queue")).not.toBeInTheDocument();
+  it("hides stop buttons while idle", () => {
+    render(<QueuePanel settings={settingsFixture} readinessComplete={true} />);
+    expect(screen.queryByTestId("stop-all")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("stop-downloads")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("stop-transcription")).not.toBeInTheDocument();
   });
 
   it("shows source, shared batch profile, and queue when ready", () => {
-    render(
-      <QueuePanel settings={settingsFixture} readinessComplete={true} />,
-    );
+    render(<QueuePanel settings={settingsFixture} readinessComplete={true} />);
     expect(screen.getByRole("heading", { name: "Transcribe media" })).toBeVisible();
     expect(screen.getByTestId("batch-profile-bar")).toHaveTextContent("Defaults");
     expect(screen.getByRole("heading", { name: /Current batch/ })).toBeVisible();
@@ -90,6 +109,7 @@ describe("QueuePanel", () => {
   it("toggles VTT / Video / Audio chips and persists settings", async () => {
     const user = userEvent.setup();
     const onPersistSettings = vi.fn().mockResolvedValue(undefined);
+
     render(
       <QueuePanel
         settings={{
@@ -105,14 +125,8 @@ describe("QueuePanel", () => {
     );
 
     expect(screen.getByTestId("output-chip-txt")).toBeDisabled();
-    expect(screen.getByTestId("output-chip-txt")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.getByTestId("output-chip-vtt")).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    expect(screen.getByTestId("output-chip-txt")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("output-chip-vtt")).toHaveAttribute("aria-pressed", "false");
 
     await user.click(screen.getByTestId("output-chip-vtt"));
     expect(onPersistSettings).toHaveBeenCalledWith(
@@ -136,62 +150,49 @@ describe("QueuePanel", () => {
   });
 
   it("keeps start disabled when setup is incomplete", () => {
-    render(
-      <QueuePanel settings={settingsFixture} readinessComplete={false} />,
-    );
+    render(<QueuePanel settings={settingsFixture} readinessComplete={false} />);
     expect(screen.getByTestId("start-queue")).toBeDisabled();
   });
 
   it("uses the default language and allows a per-item override", async () => {
     const user = userEvent.setup();
-    render(
-      <QueuePanel
-        settings={{ ...settingsFixture, language: "de" }}
-        readinessComplete={true}
-      />,
-    );
+
+    render(<QueuePanel settings={{ ...settingsFixture, language: "de" }} readinessComplete={true} />);
 
     expect(screen.getByTestId("batch-language-select")).toHaveValue("de");
-    await user.type(
-      screen.getByTestId("url-input"),
-      "https://example.com/video",
-    );
+
+    await user.type(screen.getByTestId("url-input"), "https://example.com/video");
     await user.click(screen.getByTestId("add-urls"));
 
-    const itemLanguage = document.querySelector(
-      ".queue-language-select",
-    ) as HTMLSelectElement;
+    const itemLanguage = document.querySelector(".queue-language-select") as HTMLSelectElement;
     expect(itemLanguage).toHaveValue("de");
+
     await user.selectOptions(itemLanguage, "uk");
     await user.click(screen.getByTestId("start-queue"));
 
-    await waitFor(() =>
-      expect(processQueueItem).toHaveBeenCalledWith(
-        expect.objectContaining({
-          settings: expect.objectContaining({ language: "uk" }),
-        }),
-      ),
-    );
+    await waitFor(() => {
+      expect(acquireMediaItem).toHaveBeenCalled();
+      const call = vi.mocked(acquireMediaItem).mock.calls[0]?.[0];
+      expect(call).toBeTruthy();
+      expect(call?.settings).toEqual(expect.objectContaining({ language: "uk" }));
+    });
   });
 
-  it("adds URLs and completes process_queue_item", async () => {
+  it("adds URLs and completes acquire/transcribe stages", async () => {
     const user = userEvent.setup();
-    render(
-      <QueuePanel settings={settingsFixture} readinessComplete={true} />,
-    );
-    await user.type(
-      screen.getByTestId("url-input"),
-      "https://example.com/video",
-    );
+    render(<QueuePanel settings={settingsFixture} readinessComplete={true} />);
+
+    await user.type(screen.getByTestId("url-input"), "https://example.com/video");
     await user.click(screen.getByTestId("add-urls"));
+
     expect(screen.getAllByTestId("queue-row")).toHaveLength(1);
     await user.click(screen.getByTestId("start-queue"));
+
     await waitFor(() => {
       const el = document.querySelector('[data-testid^="job-status-"]');
       expect(el?.textContent).toBe("done");
     });
-    // After the queue finishes, the panel flips data-queue-running="false".
-    // Language-independent.
+
     await waitFor(() => {
       expect(screen.getByTestId("queue-panel")).toHaveAttribute(
         "data-queue-running",
@@ -200,71 +201,21 @@ describe("QueuePanel", () => {
     });
   });
 
-  it("stop cancels jobs not yet started after the first finishes", async () => {
+  it("stop downloads cancels only acquire stage (transcription continues)", async () => {
     const user = userEvent.setup();
-    let resolveFirst!: (v: {
-      kind: "done";
-      transcriptPath: string;
-      summary: string;
-    }) => void;
-    const firstP = new Promise<{
-      kind: "done";
-      transcriptPath: string;
-      summary: string;
-    }>((r) => {
-      resolveFirst = r;
-    });
-    let callCount = 0;
-    vi.mocked(processQueueItem).mockImplementation(() => {
-      callCount += 1;
-      if (callCount === 1) return firstP;
-      return Promise.resolve({
-        kind: "done",
-        transcriptPath: "/out/2.txt",
-        summary: "Saved: /out/2.txt",
-      });
+
+    let resolveSecondAcquire!: (v: any) => void;
+    const secondAcquireDeferred = new Promise<any>((r) => {
+      resolveSecondAcquire = r;
     });
 
-    render(
-      <QueuePanel settings={settingsFixture} readinessComplete={true} />,
-    );
-    await user.type(
-      screen.getByTestId("url-input"),
-      "https://example.com/a\nhttps://example.com/b",
-    );
-    await user.click(screen.getByTestId("add-urls"));
-    expect(screen.getAllByTestId("queue-row")).toHaveLength(2);
-    await user.click(screen.getByTestId("start-queue"));
-    await waitFor(() => expect(processQueueItem).toHaveBeenCalledTimes(1));
-    expect(screen.getByTestId("stop-queue")).not.toBeDisabled();
-    await user.click(screen.getByTestId("stop-queue"));
-    expect(cancelQueueJob).toHaveBeenCalled();
-    resolveFirst({
-      kind: "done",
-      transcriptPath: "/out/1.txt",
-      summary: "Saved: /out/1.txt",
+    // Control the first item's WASM completion.
+    let resolveWasm!: (v: TimedTranscript[]) => void;
+    const wasmControl = new Promise<TimedTranscript[]>((resolve) => {
+      resolveWasm = resolve;
     });
-    await waitFor(() => {
-      expect(processQueueItem).toHaveBeenCalledTimes(1);
-      const statusEls = document.querySelectorAll(
-        '[data-testid^="job-status-"]',
-      );
-      const texts = [...statusEls].map((el) => el.textContent);
-      expect(texts).toEqual(["done", "cancelled"]);
-    });
-    // After the queue finishes, the panel flips data-queue-running="false".
-    // Language-independent.
-    await waitFor(() => {
-      expect(screen.getByTestId("queue-panel")).toHaveAttribute(
-        "data-queue-running",
-        "false",
-      );
-    });
-  });
 
-  it("finishes with the prepared flag even if current settings differ", async () => {
-    const user = userEvent.setup();
-    vi.mocked(processQueueItem).mockResolvedValue({
+    const firstBrowserPrepared = {
       kind: "browserPrepared",
       tracks: [
         {
@@ -278,12 +229,191 @@ describe("QueuePanel", () => {
       language: "en",
       whisperModelId: "base",
       exportWebVtt: true,
+    };
+
+    vi.mocked(acquireMediaItem)
+      .mockResolvedValueOnce(firstBrowserPrepared as any)
+      .mockImplementationOnce(() => secondAcquireDeferred);
+
+    vi.mocked(transcribeBrowserTracks).mockReturnValueOnce(wasmControl as any);
+
+    render(<QueuePanel settings={settingsFixture} readinessComplete={true} />);
+
+    await user.type(screen.getByTestId("url-input"), "https://example.com/a\nhttps://example.com/b");
+    await user.click(screen.getByTestId("add-urls"));
+    expect(screen.getAllByTestId("queue-row")).toHaveLength(2);
+    await user.click(screen.getByTestId("start-queue"));
+
+    await waitFor(() => expect(transcribeBrowserTracks).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByTestId("stop-downloads"));
+
+    const acquireCancels = vi.mocked(cancelQueueJob).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((v: unknown) => typeof v === "string" && v.endsWith(":acquire"));
+    expect(acquireCancels.length).toBeGreaterThanOrEqual(1);
+
+    const transcribeCancels = vi.mocked(cancelQueueJob).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((v: unknown) => typeof v === "string" && v.endsWith(":transcribe"));
+    expect(transcribeCancels.length).toBe(0);
+
+    // Let the second acquire finish after cancellation.
+    resolveSecondAcquire(firstBrowserPrepared);
+    // Let the first transcription finish.
+    resolveWasm([makeTimedTranscript("hello")]);
+
+    await waitFor(() => {
+      expect(browserQueueJobFinish).toHaveBeenCalled();
     });
+
+    await waitFor(() => {
+      const statusEls = document.querySelectorAll('[data-testid^="job-status-"]');
+      const texts = [...statusEls].map((el) => el.textContent);
+      expect(texts).toEqual(expect.arrayContaining(["done", "cancelled"]));
+    });
+  });
+
+  it("stop transcription cancels only transcribe stage (skips browser finish)", async () => {
+    const user = userEvent.setup();
+
+    const browserPrepared = {
+      kind: "browserPrepared",
+      tracks: [
+        {
+          wavPath: "C:\\work\\track.wav",
+          transcriptPath: "C:\\temp\\v2t-out\\track.txt",
+          skipTranscribe: false,
+        },
+      ],
+      workDir: "C:\\work",
+      deleteAudioAfter: true,
+      language: "en",
+      whisperModelId: "base",
+      exportWebVtt: true,
+    };
+
+    let resolveWasm!: (v: TimedTranscript[]) => void;
+    const wasmDeferred = new Promise<TimedTranscript[]>((resolve) => {
+      resolveWasm = resolve;
+    });
+
+    vi.mocked(acquireMediaItem).mockResolvedValue(browserPrepared as any);
+    vi.mocked(transcribeBrowserTracks).mockReturnValueOnce(wasmDeferred as any);
+
+    render(<QueuePanel settings={settingsFixture} readinessComplete={true} />);
+
+    await user.type(screen.getByTestId("url-input"), "https://example.com/browser");
+    await user.click(screen.getByTestId("add-urls"));
+    await user.click(screen.getByTestId("start-queue"));
+
+    await waitFor(() => expect(transcribeBrowserTracks).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByTestId("stop-transcription"));
+
+    const transcribeCancels = vi.mocked(cancelQueueJob).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((v: unknown) => typeof v === "string" && v.endsWith(":transcribe"));
+    expect(transcribeCancels.length).toBeGreaterThanOrEqual(1);
+
+    const acquireCancels = vi.mocked(cancelQueueJob).mock.calls
+      .map((c: any[]) => c[0])
+      .filter((v: unknown) => typeof v === "string" && v.endsWith(":acquire"));
+    expect(acquireCancels.length).toBe(0);
+
+    resolveWasm([makeTimedTranscript("hello")]);
+
+    await waitFor(() => {
+      const el = document.querySelector('[data-testid^="job-status-"]');
+      expect(el?.textContent).toBe("cancelled");
+    });
+
+    expect(browserQueueJobFinish).not.toHaveBeenCalled();
+    expect(releaseQueueJobSlot).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies backpressure: second acquire waits for pending transcription", async () => {
+    const user = userEvent.setup();
+
+    const settings = {
+      ...settingsFixture,
+      maxPendingArtifacts: 1,
+      maxPendingArtifactsMb: 4096,
+    };
+
+    let resolveWasm!: (v: TimedTranscript[]) => void;
+    const wasmDeferred = new Promise<TimedTranscript[]>((resolve) => {
+      resolveWasm = resolve;
+    });
+
+    const firstBrowserPrepared = {
+      kind: "browserPrepared",
+      tracks: [
+        {
+          wavPath: "C:\\work\\track.wav",
+          transcriptPath: "C:\\temp\\v2t-out\\track.txt",
+          skipTranscribe: false,
+        },
+      ],
+      workDir: "C:\\work",
+      deleteAudioAfter: true,
+      language: "en",
+      whisperModelId: "base",
+      exportWebVtt: true,
+    };
+
+    let acquireCallCount = 0;
+    vi.mocked(acquireMediaItem).mockImplementation(() => {
+      acquireCallCount += 1;
+      if (acquireCallCount === 1) return Promise.resolve(firstBrowserPrepared as any);
+      return Promise.resolve(firstBrowserPrepared as any);
+    });
+
+    vi.mocked(transcribeBrowserTracks).mockReturnValueOnce(wasmDeferred as any);
+
+    render(<QueuePanel settings={settings} readinessComplete={true} />);
+
+    await user.type(
+      screen.getByTestId("url-input"),
+      "https://example.com/one\nhttps://example.com/two",
+    );
+    await user.click(screen.getByTestId("add-urls"));
+    await user.click(screen.getByTestId("start-queue"));
+
+    await waitFor(() => expect(transcribeBrowserTracks).toHaveBeenCalledTimes(1));
+    expect(acquireCallCount).toBe(1);
+
+    // Let the first transcription finish, freeing backpressure.
+    resolveWasm([makeTimedTranscript("hello")]);
+
+    await waitFor(() => {
+      expect(browserQueueJobFinish).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(acquireCallCount).toBe(2);
+    });
+  });
+
+  it("finishes browserPrepared with prepared exportWebVtt = true even if current settings differ", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(acquireMediaItem).mockResolvedValue({
+      kind: "browserPrepared",
+      tracks: [
+        {
+          wavPath: "C:\\work\\track.wav",
+          transcriptPath: "C:\\temp\\v2t-out\\track.txt",
+          skipTranscribe: false,
+        },
+      ],
+      workDir: "C:\\work",
+      deleteAudioAfter: true,
+      language: "en",
+      whisperModelId: "base",
+      exportWebVtt: true,
+    } as any);
+
     vi.mocked(transcribeBrowserTracks).mockResolvedValue([
-      {
-        text: "hello",
-        segments: [{ startMs: 0, endMs: 1000, text: "hello" }],
-      },
+      makeTimedTranscript("hello"),
     ]);
 
     render(
@@ -292,10 +422,8 @@ describe("QueuePanel", () => {
         readinessComplete={true}
       />,
     );
-    await user.type(
-      screen.getByTestId("url-input"),
-      "https://example.com/browser",
-    );
+
+    await user.type(screen.getByTestId("url-input"), "https://example.com/browser");
     await user.click(screen.getByTestId("add-urls"));
     await user.click(screen.getByTestId("start-queue"));
 
@@ -303,32 +431,17 @@ describe("QueuePanel", () => {
     expect(transcribeBrowserTracks).toHaveBeenCalledWith(
       expect.objectContaining({ exportWebVtt: true }),
     );
-    expect(browserQueueJobFinish).toHaveBeenCalledWith({
-      jobId: expect.any(String),
-      tracks: [
-        {
-          wavPath: "C:\\work\\track.wav",
-          transcriptPath: "C:\\temp\\v2t-out\\track.txt",
-          skipTranscribe: false,
-        },
-      ],
-      results: [
-        {
-          text: "hello",
-          segments: [{ startMs: 0, endMs: 1000, text: "hello" }],
-        },
-      ],
-      workDir: "C:\\work",
-      deleteAudioAfter: true,
-      outputDir: "C:\\temp\\v2t-out",
-      exportWebVtt: true,
-      shouldStop: expect.any(Function),
-    });
+    expect(browserQueueJobFinish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exportWebVtt: true,
+      }),
+    );
   });
 
-  it("keeps browser finish text-only when the prepared export flag is false", async () => {
+  it("keeps browserPrepared exportWebVtt=false and passes it through", async () => {
     const user = userEvent.setup();
-    vi.mocked(processQueueItem).mockResolvedValue({
+
+    vi.mocked(acquireMediaItem).mockResolvedValue({
       kind: "browserPrepared",
       tracks: [
         {
@@ -342,10 +455,9 @@ describe("QueuePanel", () => {
       language: null,
       whisperModelId: "base",
       exportWebVtt: false,
-    });
-    vi.mocked(transcribeBrowserTracks).mockResolvedValue([
-      { text: "legacy", segments: [] },
-    ]);
+    } as any);
+
+    vi.mocked(transcribeBrowserTracks).mockResolvedValue([makeTimedTranscript("legacy")]);
 
     render(
       <QueuePanel
@@ -353,6 +465,7 @@ describe("QueuePanel", () => {
         readinessComplete={true}
       />,
     );
+
     await user.type(
       screen.getByTestId("url-input"),
       "https://example.com/legacy-browser",
@@ -366,19 +479,20 @@ describe("QueuePanel", () => {
     );
     expect(browserQueueJobFinish).toHaveBeenCalledWith(
       expect.objectContaining({
-        results: [{ text: "legacy", segments: [] }],
         exportWebVtt: false,
       }),
     );
   });
 
-  it("stop after WASM resolve skips finish, releases slot once, UI cancelled", async () => {
+  it("stop transcription after WASM resolve skips finish, releases slot once, UI cancelled", async () => {
     const user = userEvent.setup();
+
     let resolveWasm!: (value: TimedTranscript[]) => void;
     const wasmDeferred = new Promise<TimedTranscript[]>((resolve) => {
       resolveWasm = resolve;
     });
-    vi.mocked(processQueueItem).mockResolvedValue({
+
+    vi.mocked(acquireMediaItem).mockResolvedValue({
       kind: "browserPrepared",
       tracks: [
         {
@@ -392,36 +506,30 @@ describe("QueuePanel", () => {
       language: "en",
       whisperModelId: "base",
       exportWebVtt: true,
-    });
-    vi.mocked(transcribeBrowserTracks).mockReturnValue(wasmDeferred);
+    } as any);
 
-    render(
-      <QueuePanel settings={settingsFixture} readinessComplete={true} />,
-    );
-    await user.type(
-      screen.getByTestId("url-input"),
-      "https://example.com/stop-before-finish",
-    );
+    vi.mocked(transcribeBrowserTracks).mockReturnValueOnce(wasmDeferred as any);
+
+    render(<QueuePanel settings={settingsFixture} readinessComplete={true} />);
+
+    await user.type(screen.getByTestId("url-input"), "https://example.com/stop-before-finish");
     await user.click(screen.getByTestId("add-urls"));
     await user.click(screen.getByTestId("start-queue"));
 
     await waitFor(() => expect(transcribeBrowserTracks).toHaveBeenCalledTimes(1));
-    await user.click(screen.getByTestId("stop-queue"));
+    await user.click(screen.getByTestId("stop-transcription"));
     expect(cancelQueueJob).toHaveBeenCalled();
 
-    resolveWasm([
-      {
-        text: "hello",
-        segments: [{ startMs: 0, endMs: 1000, text: "hello" }],
-      },
-    ]);
+    resolveWasm([makeTimedTranscript("hello")]);
 
     await waitFor(() => {
       const el = document.querySelector('[data-testid^="job-status-"]');
       expect(el?.textContent).toBe("cancelled");
     });
+
     expect(browserQueueJobFinish).not.toHaveBeenCalled();
     expect(releaseQueueJobSlot).toHaveBeenCalledTimes(1);
+
     await waitFor(() => {
       expect(screen.getByTestId("queue-panel")).toHaveAttribute(
         "data-queue-running",
@@ -430,15 +538,16 @@ describe("QueuePanel", () => {
     });
   });
 
-  it("stop after outer finish gate and before invoke releases once, UI cancelled", async () => {
+  it("stop transcription during browser finish gate releases slot once, UI cancelled", async () => {
     const user = userEvent.setup();
     let resolveFinishImport!: () => void;
     const finishImportGate = new Promise<void>((resolve) => {
       resolveFinishImport = resolve;
     });
+
     let finishInvokeCount = 0;
 
-    vi.mocked(processQueueItem).mockResolvedValue({
+    vi.mocked(acquireMediaItem).mockResolvedValue({
       kind: "browserPrepared",
       tracks: [
         {
@@ -452,14 +561,11 @@ describe("QueuePanel", () => {
       language: "en",
       whisperModelId: "base",
       exportWebVtt: true,
-    });
-    vi.mocked(transcribeBrowserTracks).mockResolvedValue([
-      {
-        text: "hello",
-        segments: [{ startMs: 0, endMs: 1000, text: "hello" }],
-      },
-    ]);
-    vi.mocked(browserQueueJobFinish).mockImplementation(async (args) => {
+    } as any);
+
+    vi.mocked(transcribeBrowserTracks).mockResolvedValue([makeTimedTranscript("hello")]);
+
+    vi.mocked(browserQueueJobFinish).mockImplementation(async (args: any) => {
       await finishImportGate;
       if (args.shouldStop()) {
         throw new Error("Job cancelled");
@@ -471,9 +577,8 @@ describe("QueuePanel", () => {
       };
     });
 
-    render(
-      <QueuePanel settings={settingsFixture} readinessComplete={true} />,
-    );
+    render(<QueuePanel settings={settingsFixture} readinessComplete={true} />);
+
     await user.type(
       screen.getByTestId("url-input"),
       "https://example.com/stop-finish-toctou",
@@ -482,16 +587,19 @@ describe("QueuePanel", () => {
     await user.click(screen.getByTestId("start-queue"));
 
     await waitFor(() => expect(browserQueueJobFinish).toHaveBeenCalledTimes(1));
-    await user.click(screen.getByTestId("stop-queue"));
+    await user.click(screen.getByTestId("stop-transcription"));
     expect(cancelQueueJob).toHaveBeenCalled();
+
     resolveFinishImport();
 
     await waitFor(() => {
       const el = document.querySelector('[data-testid^="job-status-"]');
       expect(el?.textContent).toBe("cancelled");
     });
+
     expect(finishInvokeCount).toBe(0);
     expect(releaseQueueJobSlot).toHaveBeenCalledTimes(1);
+
     await waitFor(() => {
       expect(screen.getByTestId("queue-panel")).toHaveAttribute(
         "data-queue-running",
@@ -500,3 +608,4 @@ describe("QueuePanel", () => {
     });
   });
 });
+

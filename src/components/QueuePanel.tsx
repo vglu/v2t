@@ -4,15 +4,16 @@ import { useTranslation } from "react-i18next";
 import {
   browserQueueJobFinish,
   cancelQueueJob,
+  acquireMediaItem,
+  transcribeArtifact,
+  discardArtifact,
   estimateOcrBatch,
   openSessionLog,
-  processQueueItem,
   releaseQueueJobSlot,
   saveFailedLinks,
   scanMediaFolder,
   sessionLogAppendUi,
 } from "../lib/invokeSafe";
-import { transcribeBrowserTracks } from "../lib/browserWhisper";
 import {
   fileBasenameNoExt,
   isUnsupportedMediaUrl,
@@ -24,10 +25,11 @@ import { SPEECH_LANGUAGE_OPTIONS } from "../lib/speechLanguages";
 import { reconcileProfileId } from "../lib/profiles";
 import type {
   JobProgressSnapshot,
-  QueueJob,
+  QueueItem,
   SubtaskState,
   SubtaskStatus,
 } from "../types/queue";
+import { itemStatus } from "../types/queue";
 import type { AppSettings, CostEstimate } from "../types/settings";
 import { JobProgressBar } from "./JobProgressBar";
 import { SubtaskList } from "./SubtaskList";
@@ -121,22 +123,20 @@ export function QueuePanel({
   const [batchLanguage, setBatchLanguage] = useState<string | null>(
     settings.language,
   );
-  const [jobs, setJobs] = useState<QueueJob[]>([]);
+  const [items, setItems] = useState<QueueItem[]>([]);
   const [logLines, setLogLines] = useState<string[]>([]);
-  const [jobProgress, setJobProgress] = useState<
+  const [itemProgress, setItemProgress] = useState<
     Record<string, JobProgressSnapshot>
   >({});
   const [logVisible, setLogVisible] = useState(false);
   const [showDownloadPercents, setShowDownloadPercents] = useState(false);
-  const runningRef = useRef(false);
-  const stopRequestedRef = useRef(false);
-  const currentJobIdRef = useRef<string | null>(null);
+  const stopDownloadsRef = useRef(false);
+  const stopTranscriptionRef = useRef(false);
   const [queueRunning, setQueueRunning] = useState(false);
   const [ocrEstimate, setOcrEstimate] = useState<CostEstimate | null>(null);
   const [brokenLinksPath, setBrokenLinksPath] = useState("");
 
   const setQueueActive = useCallback((active: boolean) => {
-    runningRef.current = active;
     setQueueRunning(active);
   }, []);
 
@@ -148,15 +148,15 @@ export function QueuePanel({
       const ext = src.split(".").pop()?.toLowerCase() ?? "";
       return IMAGE_DOC_EXTS.has(ext);
     }
-    const ocrSources = jobs
-      .filter((j) => j.status === "pending" && isVisionSource(j.source))
+    const ocrSources = items
+      .filter((j) => j.acquire.status === "pending" && isVisionSource(j.source))
       .map((j) => j.source);
     if (ocrSources.length === 0 || settings.visionMode !== "gemini") {
       setOcrEstimate(null);
       return;
     }
     estimateOcrBatch(ocrSources).then((est) => setOcrEstimate(est ?? null));
-  }, [jobs, settings.visionMode]);
+  }, [items, settings.visionMode]);
 
   const appendLog = useCallback((line: string) => {
     const ts = new Date().toISOString().slice(11, 19);
@@ -172,20 +172,40 @@ export function QueuePanel({
     setBatchLanguage(settings.language);
   }, [settings.language]);
 
-  const addJobs = useCallback(
-    (incoming: Omit<QueueJob, "id" | "status" | "language">[]) => {
+  const addItems = useCallback(
+    (
+      incoming: Array<{
+        kind: QueueItem["kind"];
+        source: string;
+        displayLabel: string;
+      }>,
+    ) => {
       if (incoming.length === 0) return;
-      setJobs((prev) => [
+      setItems((prev) => [
         ...prev,
-        ...incoming.map((j) => ({
-          ...j,
-          id: newJobId(),
-          language: batchLanguage,
-          status:
-            j.kind === "url" && isUnsupportedMediaUrl(j.source)
-              ? ("unsupported" as const)
-              : ("pending" as const),
-        })),
+        ...incoming.map((j) => {
+          const unsupported =
+            j.kind === "url" && isUnsupportedMediaUrl(j.source);
+          return {
+            id: newJobId(),
+            ...j,
+            language: batchLanguage,
+            acquire: {
+              status: unsupported ? ("unsupported" as const) : ("pending" as const),
+              attempts: 0,
+              detail: unsupported ? "Unsupported" : undefined,
+            },
+            transcribe: {
+              status: unsupported ? ("cancelled" as const) : ("pending" as const),
+              attempts: 0,
+              detail: unsupported ? "Cancelled" : undefined,
+            },
+            transcriptPath: undefined,
+            subtasks: undefined,
+            artifact: undefined,
+            browserPrepared: undefined,
+          } as QueueItem;
+        }),
       ]);
     },
     [batchLanguage],
@@ -196,27 +216,32 @@ export function QueuePanel({
     setBatchLanguage(next);
   }, []);
 
-  const changeJobLanguage = useCallback((jobId: string, next: string | null) => {
-    setJobs((prev) =>
-      prev.map((job) =>
-        job.id === jobId && job.status !== "running" && job.status !== "done"
-          ? { ...job, language: next }
-          : job,
-      ),
+  const changeItemLanguage = useCallback((itemId: string, next: string | null) => {
+    setItems((prev) =>
+      prev.map((it) => {
+        const canEdit =
+          it.acquire.status !== "running" &&
+          it.transcribe.status !== "running" &&
+          it.transcribe.status !== "done" &&
+          it.acquire.status !== "unsupported";
+        if (!canEdit) return it;
+        if (it.id !== itemId) return it;
+        return { ...it, language: next };
+      }),
     );
   }, []);
 
   const onPathsDropped = useCallback(
     (paths: string[]) => {
-      const items = paths.map((source) => ({
+      const incoming = paths.map((source) => ({
         kind: "file" as const,
         source,
         displayLabel: fileBasenameNoExt(source),
       }));
-      addJobs(items);
-      appendLog(t("msg.added_paths_drop", { count: items.length }));
+      addItems(incoming);
+      appendLog(t("msg.added_paths_drop", { count: incoming.length }));
     },
-    [addJobs, appendLog],
+    [addItems, appendLog],
   );
 
   useEffect(() => {
@@ -263,7 +288,7 @@ export function QueuePanel({
           const p = ev.payload;
           appendLog(`[${p.phase}] ${p.message}`);
           if (p.jobId) {
-            setJobProgress((prev) => ({
+            setItemProgress((prev) => ({
               ...prev,
               [p.jobId]: {
                 phase: p.phase,
@@ -303,17 +328,14 @@ export function QueuePanel({
             originalUrl: s.originalUrl,
             status: "pending",
           }));
-          setJobs((prev) =>
-            prev.map((j) =>
-              j.id === jobId
-                ? {
-                    ...j,
-                    playlistTitle: playlistTitle ?? undefined,
-                    subtasks: initial,
-                  }
-                : j,
-            ),
-          );
+          setItems((prev) => {
+            const it = prev.find((x) => x.id === jobId);
+            if (it) {
+              it.playlistTitle = playlistTitle ?? undefined;
+              it.subtasks = initial;
+            }
+            return [...prev];
+          });
         });
         const u4 = await listen<{
           jobId: string;
@@ -324,23 +346,21 @@ export function QueuePanel({
           if (ac.signal.aborted) return;
           const { jobId, subtaskIndex, status, reason } = ev.payload;
           if (!jobId || !subtaskIndex) return;
-          setJobs((prev) =>
-            prev.map((j) => {
-              if (j.id !== jobId || !j.subtasks) return j;
-              return {
-                ...j,
-                subtasks: j.subtasks.map((s) =>
-                  s.index === subtaskIndex
-                    ? {
-                        ...s,
-                        status,
-                        reason: reason ?? undefined,
-                      }
-                    : s,
-                ),
-              };
-            }),
-          );
+          setItems((prev) => {
+            const it = prev.find((x) => x.id === jobId);
+            if (it?.subtasks) {
+              it.subtasks = it.subtasks.map((s) =>
+                s.index === subtaskIndex
+                  ? {
+                      ...s,
+                      status,
+                      reason: reason ?? undefined,
+                    }
+                  : s,
+              );
+            }
+            return [...prev];
+          });
         });
         return [u1, u2, u3, u4] as const;
       })
@@ -367,7 +387,7 @@ export function QueuePanel({
   function addUrlsFromDraft() {
     const lines = parseInputLines(urlDraft);
     if (lines.length === 0) return;
-    addJobs(
+    addItems(
       lines.map((source) => ({
         kind: "url" as const,
         source,
@@ -387,7 +407,7 @@ export function QueuePanel({
       appendLog(t("msg.no_media_found"));
       return;
     }
-    addJobs(
+    addItems(
       files.map((source) => ({
         kind: "file" as const,
         source,
@@ -426,7 +446,7 @@ export function QueuePanel({
     if (picked === null) return;
     const list = Array.isArray(picked) ? picked : [picked];
     if (list.length === 0) return;
-    addJobs(
+    addItems(
       list.map((source) => ({
         kind: "file" as const,
         source,
@@ -436,174 +456,154 @@ export function QueuePanel({
     appendLog(t("msg.added_files_picker", { count: list.length }));
   }
 
-  const cancelPendingSnapshot = useCallback((slice: QueueJob[]) => {
+  const cancelAcquirePendingSnapshot = useCallback((slice: QueueItem[]) => {
     const ids = new Set(slice.map((j) => j.id));
-    setJobs((prev) =>
-      prev.map((j) =>
-        ids.has(j.id) && j.status === "pending"
-          ? { ...j, status: "cancelled" as const, detail: "Cancelled" }
-          : j,
-      ),
-    );
+    setItems((prev) => {
+      for (const it of prev) {
+        if (!ids.has(it.id)) continue;
+        if (it.acquire.status === "pending" || it.acquire.status === "waiting") {
+          it.acquire.status = "cancelled";
+          it.acquire.detail = "Cancelled";
+        }
+      }
+      return [...prev];
+    });
   }, []);
 
-  function stopQueue() {
-    if (!runningRef.current) return;
-    stopRequestedRef.current = true;
-    void cancelQueueJob(currentJobIdRef.current);
+  const cancelTranscribePendingSnapshot = useCallback((slice: QueueItem[]) => {
+    const ids = new Set(slice.map((j) => j.id));
+    setItems((prev) => {
+      for (const it of prev) {
+        if (!ids.has(it.id)) continue;
+        if (it.transcribe.status === "pending") {
+          it.transcribe.status = "cancelled";
+          it.transcribe.detail = "Cancelled";
+        }
+      }
+      return [...prev];
+    });
+  }, []);
+
+  function stopDownloads() {
+    if (!queueRunning) return;
+    stopDownloadsRef.current = true;
+
+    // Cancel running acquire stage tokens (cooperative cancellation).
+    for (const it of items) {
+      if (it.acquire.status === "running") {
+        void cancelQueueJob(`${it.id}:acquire`);
+      }
+    }
+    cancelAcquirePendingSnapshot(items);
+    appendLog(t("msg.stop_requested"));
+  }
+
+  function stopTranscription() {
+    if (!queueRunning) return;
+    stopTranscriptionRef.current = true;
+
+    for (const it of items) {
+      if (it.transcribe.status === "running") {
+        void cancelQueueJob(`${it.id}:transcribe`);
+      }
+    }
+    cancelTranscribePendingSnapshot(
+      items.filter((it) => it.acquire.status === "done"),
+    );
+    appendLog(t("msg.stop_requested"));
+  }
+
+  function stopAll() {
+    if (!queueRunning) return;
+    stopDownloadsRef.current = true;
+    stopTranscriptionRef.current = true;
+
+    const runningIds = new Set<string>();
+    for (const it of items) {
+      if (it.acquire.status === "running" || it.transcribe.status === "running") {
+        runningIds.add(it.id);
+      }
+    }
+    for (const id of runningIds) {
+      void cancelQueueJob(id);
+    }
+    cancelAcquirePendingSnapshot(items);
+    cancelTranscribePendingSnapshot(items.filter((it) => it.acquire.status === "done"));
     appendLog(t("msg.stop_requested"));
   }
 
   async function startQueue() {
-    if (runningRef.current) {
+    // Start both loops together; they run independently and stop buttons
+    // target different stage tokens.
+    if (queueRunning) {
       appendLog(t("msg.queue_already_running"));
       return;
     }
-    const pending = jobs.filter((j) => j.status === "pending");
-    if (pending.length === 0) {
+
+    const pendingAcquire = items.filter(
+      (it) => it.acquire.status === "pending" || it.acquire.status === "waiting",
+    );
+    if (pendingAcquire.length === 0) {
       appendLog(t("msg.nothing_to_run"));
       return;
     }
-    stopRequestedRef.current = false;
+
+    stopDownloadsRef.current = false;
+    stopTranscriptionRef.current = false;
     setQueueActive(true);
-    appendLog(t("msg.starting_queue", { count: pending.length }));
+    appendLog(t("msg.starting_queue", { count: pendingAcquire.length }));
+
     try {
-      for (let i = 0; i < pending.length; i++) {
-        if (stopRequestedRef.current) {
-          cancelPendingSnapshot(pending.slice(i));
-          appendLog(t("msg.queue_stopped"));
-          break;
-        }
-        const job = pending[i]!;
-        const jobIndex = i + 1;
-        setJobs((prev) =>
-          prev.map((j) =>
-            j.id === job.id ? { ...j, status: "running", detail: undefined } : j,
-          ),
-        );
-        appendLog(t("msg.running", { label: job.displayLabel }));
-        currentJobIdRef.current = job.id;
-        try {
-          const outcome = await processQueueItem({
-            jobId: job.id,
-            jobIndex,
-            source: job.source,
-            sourceKind: job.kind === "url" ? "url" : "file",
-            displayLabel: job.displayLabel,
-            settings: { ...settings, language: job.language },
-          });
+      const { runAcquireLoop, runTranscribeLoop, PendingArtifactsBackpressure } =
+        await import("../lib/queueRunners");
+      const backpressure = PendingArtifactsBackpressure.fromSettings(settings);
 
-          let result: { transcriptPath: string; summary: string };
-          if (outcome.kind === "browserPrepared") {
-            const outDir = settings.outputDir?.trim();
-            if (!outDir) {
-              throw new Error(t("error.output_dir_required"));
-            }
-            const exportWebVtt = outcome.exportWebVtt;
-            let results: Awaited<ReturnType<typeof transcribeBrowserTracks>>;
-            let browserSlotReleased = false;
-            const releaseBrowserSlotOnce = () => {
-              if (browserSlotReleased) return;
-              browserSlotReleased = true;
-              void releaseQueueJobSlot(job.id);
-            };
-            try {
-              results = await transcribeBrowserTracks({
-                whisperModelId: outcome.whisperModelId,
-                tracks: outcome.tracks,
-                language: outcome.language,
-                exportWebVtt,
-                shouldStop: () => stopRequestedRef.current,
-                onProgress: (m) => appendLog(`[browser] ${m}`),
-              });
-            } catch (e) {
-              releaseBrowserSlotOnce();
-              const msg =
-                e instanceof Error
-                  ? e.message
-                  : String(e);
-              appendLog(`[browser-error] ${msg}`);
-              void sessionLogAppendUi(`[browser-error] ${msg}`);
-              throw e;
-            }
-            // Stop may arrive after WASM resolves; never finish/write pairs.
-            if (stopRequestedRef.current) {
-              releaseBrowserSlotOnce();
-              throw new Error("Job cancelled");
-            }
-            try {
-              result = await browserQueueJobFinish({
-                jobId: job.id,
-                tracks: outcome.tracks,
-                results,
-                workDir: outcome.workDir,
-                deleteAudioAfter: outcome.deleteAudioAfter,
-                outputDir: outDir,
-                exportWebVtt,
-                shouldStop: () => stopRequestedRef.current,
-              });
-            } catch (e) {
-              releaseBrowserSlotOnce();
-              throw e;
-            }
-          } else {
-            result = outcome;
-          }
+      const runnerItems = items;
+      const onUpdate = () => setItems([...runnerItems]);
 
-          setJobs((prev) =>
-            prev.map((j) =>
-              j.id === job.id
-                ? {
-                    ...j,
-                    status: "done",
-                    detail: result.summary,
-                    transcriptPath: result.transcriptPath,
-                  }
-                : j,
-            ),
-          );
-        } catch (err) {
-          const detail =
-            err instanceof Error ? err.message : t("error.process_failed");
-          const cancelled =
-            /job cancelled/i.test(detail) || /^cancelled$/i.test(detail);
-          setJobs((prev) =>
-            prev.map((j) =>
-              j.id === job.id
-                ? {
-                    ...j,
-                    status: cancelled ? "cancelled" : "error",
-                    detail: cancelled ? t("error.stopped_by_user") : detail,
-                  }
-                : j,
-            ),
-          );
-          appendLog(
-            cancelled
-              ? t("msg.stopped_label", { label: job.displayLabel })
-              : job.displayLabel !== detail
-                ? t("msg.error_label", { detail, label: job.displayLabel })
-                : t("msg.error_no_label", { detail }),
-          );
-        } finally {
-          currentJobIdRef.current = null;
-        }
-      }
+      const invoke = {
+        acquireMediaItem,
+        transcribeArtifact,
+        browserQueueJobFinish,
+        releaseQueueJobSlot,
+      };
+
+      await Promise.allSettled([
+        runAcquireLoop({
+          items: runnerItems,
+          settings,
+          invoke,
+          shouldStop: () => stopDownloadsRef.current,
+          backpressure,
+          onUpdate,
+        }),
+        runTranscribeLoop({
+          items: runnerItems,
+          settings,
+          invoke,
+          shouldStop: () => stopTranscriptionRef.current,
+          backpressure,
+          onUpdate,
+        }),
+      ]);
     } finally {
       setQueueActive(false);
-      stopRequestedRef.current = false;
+      stopDownloadsRef.current = false;
+      stopTranscriptionRef.current = false;
       appendLog(t("msg.queue_idle"));
     }
   }
 
   function clearDone() {
     let droppedIds: string[] = [];
-    setJobs((prev) => {
-      droppedIds = prev.filter((j) => j.status === "done").map((j) => j.id);
-      return prev.filter((j) => j.status !== "done");
+    setItems((prev) => {
+      droppedIds = prev
+        .filter((j) => j.transcribe.status === "done")
+        .map((j) => j.id);
+      return prev.filter((j) => j.transcribe.status !== "done");
     });
     if (droppedIds.length) {
-      setJobProgress((prev) => {
+      setItemProgress((prev) => {
         const next = { ...prev };
         for (const id of droppedIds) delete next[id];
         return next;
@@ -612,10 +612,18 @@ export function QueuePanel({
     appendLog(t("msg.cleared_done"));
   }
 
-  function clearAll() {
-    if (runningRef.current) return;
-    setJobs([]);
-    setJobProgress({});
+  async function clearAll() {
+    if (queueRunning) return;
+
+    const toDiscard =
+      items.filter((it) => it.artifact && it.transcribe.status !== "done");
+    for (const it of toDiscard) {
+      if (!it.artifact) continue;
+      await discardArtifact(it.artifact);
+    }
+
+    setItems([]);
+    setItemProgress({});
     appendLog(t("msg.cleared_all"));
   }
 
@@ -664,35 +672,54 @@ export function QueuePanel({
     [appendLog, t],
   );
 
-  const retrySubtask = useCallback(
-    (subtask: SubtaskState) => {
-      const cleanUrl = stripPlaylistParams(subtask.originalUrl);
-      addJobs([
-        {
-          kind: "url" as const,
-          source: cleanUrl,
-          displayLabel: shortLabel(`Retry: ${subtask.title}`),
-        },
-      ]);
-      appendLog(t("msg.retry_enqueued", { title: subtask.title }));
+  const retryAcquireStage = useCallback(
+    (item: QueueItem) => {
+      setItems((prev) => {
+        const it = prev.find((x) => x.id === item.id);
+        if (!it) return prev;
+
+        it.acquire.status = "pending";
+        it.acquire.detail = undefined;
+        it.acquire.failureKind = undefined;
+        // Spec: retry for acquire resets attempts.
+        it.acquire.attempts = 0;
+
+        // Restart stage B from scratch after a successful re-acquire.
+        it.transcribe.status = "pending";
+        it.transcribe.detail = undefined;
+        it.transcriptPath = null;
+        it.artifact = undefined;
+        it.browserPrepared = undefined;
+        return [...prev];
+      });
+      appendLog(t("msg.retry_enqueued", { title: item.displayLabel }));
     },
-    [addJobs, appendLog, t],
+    [appendLog, t],
   );
 
-  const retryJob = useCallback(
-    (job: QueueJob) => {
-      if (job.kind !== "url") return;
-      const cleanUrl = stripPlaylistParams(job.source);
-      addJobs([
-        {
-          kind: "url" as const,
-          source: cleanUrl,
-          displayLabel: shortLabel(`Retry: ${job.displayLabel}`),
-        },
-      ]);
-      appendLog(t("msg.retry_enqueued", { title: job.displayLabel }));
+  const retryTranscribeStage = useCallback(
+    (item: QueueItem) => {
+      setItems((prev) => {
+        const it = prev.find((x) => x.id === item.id);
+        if (!it) return prev;
+
+        it.transcribe.status = "pending";
+        it.transcribe.detail = undefined;
+        it.transcriptPath = null;
+
+        if (it.subtasks) {
+          it.subtasks = it.subtasks.map((s) => ({
+            ...s,
+            status: "pending",
+            reason: undefined,
+          }));
+        }
+
+        return [...prev];
+      });
+      appendLog(t("msg.retry_enqueued", { title: item.displayLabel }));
     },
-    [addJobs, appendLog, t],
+    [appendLog, t],
   );
 
   const visibleLogLines = useMemo(() => {
@@ -709,15 +736,21 @@ export function QueuePanel({
     [urlDraft],
   );
 
-  const failedUrlJobs = useMemo(
-    () => jobs.filter((j) => j.status === "error" && j.kind === "url"),
-    [jobs],
+  const failedUrlItems = useMemo(
+    () =>
+      items.filter(
+        (it) => it.acquire.status === "error" && it.kind === "url",
+      ),
+    [items],
   );
-  const failedUrlCount = failedUrlJobs.length;
+  const failedUrlCount = failedUrlItems.length;
 
-  const unsupportedUrlJobs = useMemo(
-    () => jobs.filter((j) => j.status === "unsupported" && j.kind === "url"),
-    [jobs],
+  const unsupportedUrlItems = useMemo(
+    () =>
+      items.filter(
+        (it) => it.acquire.status === "unsupported" && it.kind === "url",
+      ),
+    [items],
   );
 
   const saveBrokenLinks = useCallback(async () => {
@@ -726,11 +759,11 @@ export function QueuePanel({
       appendLog(t("error.output_dir_required"));
       return;
     }
-    if (failedUrlJobs.length === 0) return;
+    if (failedUrlItems.length === 0) return;
 
     // Keep order as in the queue; backend will de-dupe and normalize.
-    const failedUrls = failedUrlJobs.map((j) => j.source);
-    const unsupportedUrls = unsupportedUrlJobs.map((j) => j.source);
+    const failedUrls = failedUrlItems.map((j) => j.source);
+    const unsupportedUrls = unsupportedUrlItems.map((j) => j.source);
 
     const defaultLinksFile = joinPaths(outDir, "broken_links.txt");
     const linksFilePath = brokenLinksPath.trim() || defaultLinksFile;
@@ -747,11 +780,11 @@ export function QueuePanel({
   }, [
     appendLog,
     brokenLinksPath,
-    failedUrlJobs,
+    failedUrlItems,
     saveFailedLinks,
     settings.outputDir,
     t,
-    unsupportedUrlJobs,
+    unsupportedUrlItems,
   ]);
 
   const addUrlsLabel =
@@ -1004,112 +1037,217 @@ export function QueuePanel({
       )}
 
       <section className="batch-workspace">
-      <div className="batch-workspace-head">
-        <div>
-          <h3>
-            {t("steps.queue.title")}
-            {jobs.length > 0 ? (
-              <span className="batch-count"> · {jobs.length}</span>
-            ) : null}
-          </h3>
-          <p>
-            {jobs.length === 0
-              ? t("steps.start.empty")
-              : t("steps.start.count", { count: jobs.length })}
-          </p>
-        </div>
-        <div className="queue-run-row">
-        <button
-          type="button"
-          className="primary motion-button motion-button--start"
-          data-testid="start-queue"
-          disabled={!readinessComplete || queueRunning || jobs.length === 0}
-          onClick={() => void startQueue()}
-        >
-          {t("btn.start")}
-        </button>
-        {queueRunning ? (
-          <button type="button" data-testid="stop-queue" onClick={stopQueue}>
-            {t("btn.stop")}
-          </button>
-        ) : null}
-        {failedUrlCount > 0 ? (
-          <div className="broken-links-save">
-            <input
-              className="broken-links-input"
-              type="text"
-              value={brokenLinksPath}
-              placeholder={t("broken_links.path_placeholder")}
-              onChange={(e) => setBrokenLinksPath(e.target.value)}
-              aria-label={t("broken_links.path_label")}
-            />
+        <div className="batch-workspace-head">
+          <div>
+            <h3>
+              {t("steps.queue.title")}
+              {items.length > 0 ? (
+                <span className="batch-count"> · {items.length}</span>
+              ) : null}
+            </h3>
+            <p>
+              {items.length === 0
+                ? t("steps.start.empty")
+                : t("steps.start.count", { count: items.length })}
+            </p>
+          </div>
+          <div className="queue-run-row">
             <button
               type="button"
-              className="quiet-action"
-              data-testid="save-broken-links"
-              onClick={() => void saveBrokenLinks()}
+              className="primary motion-button motion-button--start"
+              data-testid="start-queue"
+              disabled={
+                !readinessComplete ||
+                queueRunning ||
+                items.filter(
+                  (it) =>
+                    it.acquire.status === "pending" ||
+                    it.acquire.status === "waiting",
+                ).length === 0
+              }
+              onClick={() => void startQueue()}
             >
-              {t("btn.save_broken_links")}
+              {t("btn.start")}
             </button>
-          </div>
-        ) : null}
-        {jobs.some((job) =>
-          ["done", "error", "cancelled"].includes(job.status),
-        ) ? (
-          <button type="button" className="quiet-action" onClick={clearDone}>
-            {t("btn.clear_done")}
-          </button>
-        ) : null}
-        {jobs.length > 0 ? (
-          <button type="button" className="quiet-action" onClick={clearAll}>
-            {t("btn.clear_all")}
-          </button>
-        ) : null}
-      </div>
-      </div>
 
-      {jobs.length > 0 ? (
-      <div className="queue-table-wrap">
-        <table className="queue-table">
-          <thead>
-            <tr>
-              <th>{t("table.label_header")}</th>
-              <th>{t("table.kind_header")}</th>
-              <th>{t("table.language_header", { defaultValue: "Language" })}</th>
-              <th>{t("table.status_header")}</th>
-              <th className="queue-table-actions-head" aria-label={t("table.actions_header")} />
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.map((j) => {
-                const outPath = j.transcriptPath;
-                const canOpenResult = j.status === "done" && Boolean(outPath?.trim());
-                const progress =
-                  j.status === "running" ? jobProgress[j.id] : undefined;
-                return (
-                  <FragmentRow
-                    key={j.id}
-                    job={j}
-                    progress={progress}
-                    canOpenResult={canOpenResult}
-                    outPath={outPath}
-                    onReveal={revealTranscriptInFolder}
-                    onOpen={openTranscriptFile}
-                    onLanguageChange={changeJobLanguage}
-                    onOpenSubtaskLink={openSubtaskLink}
-                    onRetrySubtask={retrySubtask}
-                    onRetryJob={retryJob}
-                  />
-                );
-              })}
-          </tbody>
-        </table>
-      </div>
-      ) : (
-        <div className="batch-empty-state">
-          <span>{t("steps.queue.empty")}</span>
+            {queueRunning ? (
+              <>
+                <button
+                  type="button"
+                  data-testid="stop-downloads"
+                  onClick={stopDownloads}
+                >
+                  {t("btn.stop_downloads")}
+                </button>
+                <button
+                  type="button"
+                  data-testid="stop-transcription"
+                  onClick={stopTranscription}
+                >
+                  {t("btn.stop_transcription")}
+                </button>
+                <button type="button" data-testid="stop-all" onClick={stopAll}>
+                  {t("btn.stop_all")}
+                </button>
+              </>
+            ) : null}
+
+            {failedUrlCount > 0 ? (
+              <div className="broken-links-save">
+                <input
+                  className="broken-links-input"
+                  type="text"
+                  value={brokenLinksPath}
+                  placeholder={t("broken_links.path_placeholder")}
+                  onChange={(e) => setBrokenLinksPath(e.target.value)}
+                  aria-label={t("broken_links.path_label")}
+                />
+                <button
+                  type="button"
+                  className="quiet-action"
+                  data-testid="save-broken-links"
+                  onClick={() => void saveBrokenLinks()}
+                >
+                  {t("btn.save_broken_links")}
+                </button>
+              </div>
+            ) : null}
+
+            {items.some((it) => ["done", "error", "cancelled"].includes(itemStatus(it))) ? (
+              <button type="button" className="quiet-action" onClick={clearDone}>
+                {t("btn.clear_done")}
+              </button>
+            ) : null}
+
+            {items.length > 0 ? (
+              <button
+                type="button"
+                className="quiet-action"
+                onClick={() => void clearAll()}
+              >
+                {t("btn.clear_all")}
+              </button>
+            ) : null}
+          </div>
         </div>
-      )}
+
+        {items.length > 0 ? (
+          <div className="queue-lanes">
+            <div className="queue-lane queue-lane--downloads">
+              <h4>{t("queue_lanes.download_title")}</h4>
+              {items.some((it) => it.acquire.status !== "done") ? (
+                <div className="queue-table-wrap">
+                  <table className="queue-table">
+                    <thead>
+                      <tr>
+                        <th>{t("table.label_header")}</th>
+                        <th>{t("table.kind_header")}</th>
+                        <th>
+                          {t("table.language_header", { defaultValue: "Language" })}
+                        </th>
+                        <th>{t("table.status_header")}</th>
+                        <th
+                          className="queue-table-actions-head"
+                          aria-label={t("table.actions_header")}
+                        />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items
+                        .filter((it) => it.acquire.status !== "done")
+                        .map((it) => (
+                          <QueueItemRow
+                            key={it.id}
+                            item={it}
+                            lane="download"
+                            progress={
+                              it.acquire.status === "running"
+                                ? itemProgress[it.id]
+                                : undefined
+                            }
+                            canOpenResult={false}
+                            outPath={it.transcriptPath}
+                            onReveal={revealTranscriptInFolder}
+                            onOpen={openTranscriptFile}
+                            onLanguageChange={changeItemLanguage}
+                            onOpenSubtaskLink={openSubtaskLink}
+                            onRetryStage={retryAcquireStage}
+                            onRetrySubtask={() => retryTranscribeStage(it)}
+                          />
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="batch-empty-state">
+                  <span>{t("steps.queue.empty")}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="queue-lane queue-lane--transcribe">
+              <h4>{t("queue_lanes.transcription_title")}</h4>
+              {items.some((it) => it.acquire.status === "done") ? (
+                <div className="queue-table-wrap">
+                  <table className="queue-table">
+                    <thead>
+                      <tr>
+                        <th>{t("table.label_header")}</th>
+                        <th>{t("table.kind_header")}</th>
+                        <th>
+                          {t("table.language_header", { defaultValue: "Language" })}
+                        </th>
+                        <th>{t("table.status_header")}</th>
+                        <th
+                          className="queue-table-actions-head"
+                          aria-label={t("table.actions_header")}
+                        />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items
+                        .filter((it) => it.acquire.status === "done")
+                        .map((it) => {
+                          const outPath = it.transcriptPath;
+                          const canOpenResult =
+                            it.transcribe.status === "done" &&
+                            Boolean(outPath?.trim());
+                          return (
+                            <QueueItemRow
+                              key={it.id}
+                              item={it}
+                              lane="transcribe"
+                              progress={
+                                it.transcribe.status === "running"
+                                  ? itemProgress[it.id]
+                                  : undefined
+                              }
+                              canOpenResult={canOpenResult}
+                              outPath={outPath}
+                              onReveal={revealTranscriptInFolder}
+                              onOpen={openTranscriptFile}
+                              onLanguageChange={changeItemLanguage}
+                              onOpenSubtaskLink={openSubtaskLink}
+                              onRetryStage={retryTranscribeStage}
+                              onRetrySubtask={() => retryTranscribeStage(it)}
+                            />
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="batch-empty-state">
+                  <span>{t("steps.queue.empty")}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="batch-empty-state">
+            <span>{t("steps.queue.empty")}</span>
+          </div>
+        )}
       </section>
 
       <div className="log-panel">
@@ -1154,21 +1292,23 @@ export function QueuePanel({
   );
 }
 
-type FragmentRowProps = {
-  job: QueueJob;
+type QueueItemRowProps = {
+  item: QueueItem;
+  lane: "download" | "transcribe";
   progress: JobProgressSnapshot | undefined;
   canOpenResult: boolean;
   outPath: string | null | undefined;
   onReveal: (p: string) => void;
   onOpen: (p: string) => void;
-  onLanguageChange: (jobId: string, language: string | null) => void;
+  onLanguageChange: (itemId: string, language: string | null) => void;
   onOpenSubtaskLink: (url: string) => void;
-  onRetrySubtask: (subtask: SubtaskState) => void;
-  onRetryJob: (job: QueueJob) => void;
+  onRetryStage: (item: QueueItem) => void;
+  onRetrySubtask: () => void;
 };
 
-function FragmentRow({
-  job,
+function QueueItemRow({
+  item,
+  lane,
   progress,
   canOpenResult,
   outPath,
@@ -1176,28 +1316,50 @@ function FragmentRow({
   onOpen,
   onLanguageChange,
   onOpenSubtaskLink,
+  onRetryStage,
   onRetrySubtask,
-  onRetryJob,
-}: FragmentRowProps) {
+}: QueueItemRowProps) {
   const { t: tQueue } = useTranslation("queue");
-  const showProgress = job.status === "running" && progress != null;
-  const subtasks = job.subtasks;
+
+  const status = itemStatus(item);
+  const showDoneCheck = status === "done";
+
+  const showProgress =
+    lane === "download"
+      ? item.acquire.status === "running" && progress != null
+      : item.transcribe.status === "running" && progress != null;
+
+  const subtasks = item.subtasks;
   const showSubtasks =
+    lane === "transcribe" &&
     Array.isArray(subtasks) &&
     subtasks.length > 0 &&
-    (job.status === "running" || job.status === "error");
+    (item.transcribe.status === "running" || item.transcribe.status === "error");
+
   const headerLabel =
     subtasks && subtasks.length > 0
       ? tQueue("table.playlist_header", {
-          title: job.playlistTitle?.trim() || job.displayLabel,
+          title: item.playlistTitle?.trim() || item.displayLabel,
           count: subtasks.length,
         })
-      : job.displayLabel;
+      : item.displayLabel;
+
+  const retryThisStage =
+    lane === "download"
+      ? item.acquire.status === "error"
+      : item.transcribe.status === "error";
+
+  const disableLanguageSelect =
+    item.acquire.status === "running" ||
+    item.transcribe.status === "running" ||
+    item.transcribe.status === "done" ||
+    item.acquire.status === "unsupported";
+
   return (
     <>
       <tr data-testid="queue-row">
-        <td title={job.source}>{headerLabel}</td>
-        <td>{job.kind}</td>
+        <td title={item.source}>{headerLabel}</td>
+        <td>{item.kind}</td>
         <td>
           <select
             className="queue-language-select"
@@ -1205,14 +1367,10 @@ function FragmentRow({
               title: headerLabel,
               defaultValue: `Video language for ${headerLabel}`,
             })}
-            value={job.language ?? ""}
-            disabled={
-              job.status === "running" ||
-              job.status === "done" ||
-              job.status === "unsupported"
-            }
+            value={item.language ?? ""}
+            disabled={disableLanguageSelect}
             onChange={(event) =>
-              onLanguageChange(job.id, event.target.value || null)
+              onLanguageChange(item.id, event.target.value || null)
             }
           >
             {SPEECH_LANGUAGE_OPTIONS.map(({ value, key, defaultLabel }) => (
@@ -1226,12 +1384,12 @@ function FragmentRow({
         </td>
         <td>
           <div className="queue-status-cell">
-            {job.status === "done" ? (
+            {showDoneCheck ? (
               <span className="queue-status-check" aria-hidden>
                 ✓
               </span>
             ) : null}
-            <span data-testid={`job-status-${job.id}`}>{job.status}</span>
+            <span data-testid={`job-status-${item.id}`}>{status}</span>
           </div>
         </td>
         <td className="queue-table-actions-cell">
@@ -1257,14 +1415,15 @@ function FragmentRow({
               </button>
             </div>
           ) : null}
-          {job.status === "error" && job.kind === "url" ? (
+
+          {retryThisStage ? (
             <div className="queue-table-actions-inner">
               <button
                 type="button"
                 className="queue-table-action-btn queue-table-action-btn--icon"
                 title={tQueue("subtask.retry_title")}
                 aria-label={tQueue("subtask.retry_aria")}
-                onClick={() => onRetryJob(job)}
+                onClick={() => onRetryStage(item)}
               >
                 ↻
               </button>
@@ -1272,6 +1431,7 @@ function FragmentRow({
           ) : null}
         </td>
       </tr>
+
       {showProgress && progress ? (
         <tr className="queue-progress-row" data-testid="queue-progress-row">
           <td colSpan={5}>
@@ -1279,6 +1439,7 @@ function FragmentRow({
           </td>
         </tr>
       ) : null}
+
       {showSubtasks && subtasks ? (
         <tr className="queue-progress-row" data-testid="queue-subtasks-row">
           <td colSpan={5}>
@@ -1286,7 +1447,7 @@ function FragmentRow({
               subtasks={subtasks}
               activeIndex={progress?.subtaskIndex}
               onOpen={onOpenSubtaskLink}
-              onRetry={onRetrySubtask}
+              onRetry={() => onRetrySubtask()}
             />
           </td>
         </tr>

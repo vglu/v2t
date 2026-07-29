@@ -94,9 +94,16 @@
     "add_items": "Add {{count}} items",
     "start": "Start batch",
     "stop": "Stop batch",
+    "stop_all": "Stop all",
+    "stop_downloads": "Stop downloads",
+    "stop_transcription": "Stop transcription",
     "clear_done": "Clear done",
     "clear_all": "Clear all",
     "save_broken_links": "Save broken links"
+  },
+  "queue_lanes": {
+    "download_title": "Download queue",
+    "transcription_title": "Transcription queue"
   },
   "url_field": {
     "label": "URLs (one per line)",

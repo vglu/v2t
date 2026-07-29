@@ -75,6 +75,9 @@ coverage/
 *.temp
 .cache/
 
+# Local ML spikes (scratch scripts/experiments — not for commits/PRs)
+spikes/
+
 # Local ML spikes (venvs + models; scripts may be committed selectively)
 spikes/**/.venv/
 spikes/**/out/

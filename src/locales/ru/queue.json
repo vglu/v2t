@@ -94,9 +94,16 @@
     "add_items": "Добавить {{count}}",
     "start": "Запустить пакет",
     "stop": "Остановить пакет",
+    "stop_all": "Остановить всё",
+    "stop_downloads": "Остановить загрузки",
+    "stop_transcription": "Остановить расшифровку",
     "clear_done": "Очистить выполненные",
     "clear_all": "Очистить все",
     "save_broken_links": "Сохранить битые ссылки"
+  },
+  "queue_lanes": {
+    "download_title": "Очередь загрузок",
+    "transcription_title": "Очередь расшифровки"
   },
   "url_field": {
     "label": "URLs (один на строку)",
