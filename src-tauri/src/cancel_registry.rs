@@ -37,6 +37,18 @@ impl JobCancelRegistry {
         }
     }
 
+    /// Cancel a job and both its named stages (`<job_id>:acquire`, `<job_id>:transcribe`).
+    /// This is what `cancel_queue_job` should call so that two-stage items are fully stopped.
+    pub fn cancel_job_and_stages(&self, job_id: &str) {
+        let g = self.inner.lock().unwrap();
+        for suffix in &["", ":acquire", ":transcribe"] {
+            let key = format!("{job_id}{suffix}");
+            if let Some(t) = g.get(key.as_str()) {
+                t.cancel();
+            }
+        }
+    }
+
     /// Cancel every active job (e.g. app exit).
     pub fn cancel_all(&self) {
         let g = self.inner.lock().unwrap();

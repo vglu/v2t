@@ -55,7 +55,7 @@ pub struct LocalMediaFacts {
     pub modified_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteMediaFacts {
     #[serde(skip_serializing_if = "Option::is_none")]

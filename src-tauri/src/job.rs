@@ -64,6 +64,83 @@ pub struct ProcessQueueItemResult {
     pub summary: String,
 }
 
+/// All data produced by the Acquire stage that the Transcribe stage needs.
+/// Serializes to camelCase so it can travel over Tauri IPC when using the
+/// two-stage commands (`acquire_media_item` / `transcribe_artifact`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcquiredArtifact {
+    pub work_dir: String,
+    pub wav_paths: Vec<String>,
+    /// Absolute paths to the source media files produced by yt-dlp / ffmpeg.
+    pub source_media_files: Vec<String>,
+    pub source_media_files_are_audio: bool,
+    /// Remote enrichment fetched during Acquire; used by the info-sidecar writer.
+    pub remote_media_info: Option<media_info::RemoteMediaFacts>,
+    /// UTC date string (YYYY-MM-DD) used in output file names.
+    pub date: String,
+    pub display_label: String,
+    pub n_tracks: u32,
+    /// Approximate size of all wav files, for backpressure accounting (bytes).
+    pub bytes_on_disk: u64,
+}
+
+/// Result of the Acquire stage (stage A).
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum AcquireOutcome {
+    /// Normal path: wav produced, Transcribe stage (B) should follow.
+    #[serde(rename = "ready")]
+    Ready(AcquiredArtifact),
+    /// Transcript already written (subtitle fast-path or vision OCR) — skip stage B.
+    #[serde(rename = "completed")]
+    Completed {
+        transcript_path: String,
+        summary: String,
+    },
+    /// BrowserWhisper mode: WASM transcription in JS, then `browser_queue_job_finish`.
+    #[serde(rename = "browserPrepared")]
+    BrowserPrepared {
+        tracks: Vec<BrowserTrackInfo>,
+        #[serde(rename = "workDir")]
+        work_dir: String,
+        #[serde(rename = "deleteAudioAfter")]
+        delete_audio_after: bool,
+        language: Option<String>,
+        #[serde(rename = "whisperModelId")]
+        whisper_model_id: String,
+        #[serde(rename = "exportWebVtt")]
+        export_webvtt: bool,
+    },
+}
+
+fn outcome_to_acquire(outcome: ProcessQueueItemOutcome) -> AcquireOutcome {
+    match outcome {
+        ProcessQueueItemOutcome::Done {
+            transcript_path,
+            summary,
+        } => AcquireOutcome::Completed {
+            transcript_path,
+            summary,
+        },
+        ProcessQueueItemOutcome::BrowserPrepared {
+            tracks,
+            work_dir,
+            delete_audio_after,
+            language,
+            whisper_model_id,
+            export_webvtt,
+        } => AcquireOutcome::BrowserPrepared {
+            tracks,
+            work_dir,
+            delete_audio_after,
+            language,
+            whisper_model_id,
+            export_webvtt,
+        },
+    }
+}
+
 fn emit_progress(sink: &SinkHandle, job_id: &str, phase: &str, message: &str) {
     sink.emit(JobEvent::QueueJobProgress(QueueJobProgressEvent {
         job_id: job_id.to_string(),
@@ -276,8 +353,10 @@ pub fn finish_browser_queue_job_timed(
     })
 }
 
+/// Stage A: source URL/file → normalized wav artifact (or Completed / BrowserPrepared).
+/// Does not perform any transcription.
 #[allow(clippy::too_many_arguments)]
-pub async fn run_process_queue_item(
+pub async fn run_acquire_stage(
     app: tauri::AppHandle,
     sink: SinkHandle,
     job_id: String,
@@ -291,12 +370,12 @@ pub async fn run_process_queue_item(
     cancel: CancellationToken,
     gate: Option<&HostGate>,
     pacing: Option<&PacingConfig>,
-) -> Result<ProcessQueueItemOutcome, String> {
+) -> Result<AcquireOutcome, String> {
     let out_dir = require_output_dir(&settings)?;
 
     // Vision fast-path: route image/document files before the audio pipeline.
     if crate::vision::is_vision_input(&source) {
-        return crate::vision::run_vision_job(
+        let outcome = crate::vision::run_vision_job(
             &app,
             &sink,
             &job_id,
@@ -306,10 +385,11 @@ pub async fn run_process_queue_item(
             &settings,
             &cancel,
         )
-        .await;
+        .await?;
+        return Ok(outcome_to_acquire(outcome));
     }
 
-    let ffmpeg_pb = deps::resolve_tool_path(ffmpeg_path_override.as_deref(), "ffmpeg")
+    let _ffmpeg_pb = deps::resolve_tool_path(ffmpeg_path_override.as_deref(), "ffmpeg")
         .ok_or_else(|| "ffmpeg not found (settings or folder next to app)".to_string())?;
 
     let date = Utc::now().format("%Y-%m-%d").to_string();
@@ -430,7 +510,7 @@ pub async fn run_process_queue_item(
             )
             .await
             {
-                Ok(Some(outcome)) => return Ok(outcome),
+                Ok(Some(outcome)) => return Ok(outcome_to_acquire(outcome)),
                 Ok(None) => {
                     // No manual subs / malformed timed SRT — fall through to normal pipeline.
                 }
@@ -500,8 +580,6 @@ pub async fn run_process_queue_item(
         .parent()
         .map(Path::to_path_buf)
         .ok_or("WAV path has no parent")?;
-
-    let lang = settings.language.as_deref();
 
     // Optional remote enrichment for *.info.json (single URL only; best-effort).
     // When pre-resolve already fetched metadata for this URL (single-video case),
@@ -635,7 +713,7 @@ pub async fn run_process_queue_item(
             "Prepared for in-app (WASM) transcription…",
         );
 
-        return Ok(ProcessQueueItemOutcome::BrowserPrepared {
+        return Ok(AcquireOutcome::BrowserPrepared {
             tracks,
             work_dir: work_dir.to_string_lossy().into_owned(),
             delete_audio_after: settings.delete_audio_after,
@@ -645,9 +723,58 @@ pub async fn run_process_queue_item(
         });
     }
 
+    let bytes_on_disk: u64 = prep
+        .wav_paths
+        .iter()
+        .filter_map(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len())
+        .sum();
+
+    Ok(AcquireOutcome::Ready(AcquiredArtifact {
+        work_dir: work_dir.to_string_lossy().into_owned(),
+        wav_paths: prep.wav_paths,
+        source_media_files: prep
+            .source_media_files
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect(),
+        source_media_files_are_audio: prep.source_media_files_are_audio,
+        remote_media_info,
+        date,
+        display_label,
+        n_tracks,
+        bytes_on_disk,
+    }))
+}
+
+/// Stage B: wav artifact → txt/vtt/info.json. Does not call yt-dlp.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_transcribe_stage(
+    app: tauri::AppHandle,
+    sink: SinkHandle,
+    job_id: String,
+    job_index: u32,
+    source: String,
+    source_kind: String,
+    artifact: AcquiredArtifact,
+    settings: AppSettings,
+    ffmpeg_path_override: Option<String>,
+    cancel: CancellationToken,
+) -> Result<ProcessQueueItemResult, String> {
+    let out_dir = require_output_dir(&settings)?;
+    let ffmpeg_pb = deps::resolve_tool_path(ffmpeg_path_override.as_deref(), "ffmpeg")
+        .ok_or_else(|| "ffmpeg not found (settings or folder next to app)".to_string())?;
+
+    let work_dir = PathBuf::from(&artifact.work_dir);
+    let lang = settings.language.as_deref();
+    let n_tracks = artifact.n_tracks;
+    let date = &artifact.date;
+    let display_label = &artifact.display_label;
+    let remote_media_info = artifact.remote_media_info.clone();
+
     let mut last_transcript: Option<PathBuf> = None;
 
-    for (ti, wav_s) in prep.wav_paths.iter().enumerate() {
+    for (ti, wav_s) in artifact.wav_paths.iter().enumerate() {
         if cancel.is_cancelled() {
             return Err(pipeline::JOB_CANCELLED_MSG.to_string());
         }
@@ -656,8 +783,8 @@ pub async fn run_process_queue_item(
 
         let filename = output_template::format_job_output_filename(
             &settings.filename_template,
-            &display_label,
-            &date,
+            display_label,
+            date,
             job_index,
             track,
             n_tracks,
@@ -822,7 +949,7 @@ pub async fn run_process_queue_item(
                     .await
                 }
                 TranscriptionMode::BrowserWhisper => {
-                    Err("Browser Whisper handled earlier".to_string())
+                    Err("BrowserWhisper cannot be used in the Transcribe stage directly".to_string())
                 }
             };
 
@@ -882,11 +1009,10 @@ pub async fn run_process_queue_item(
         }
 
         if settings.keep_media_info {
-            let local = prep
+            let local = artifact
                 .source_media_files
                 .get(ti)
-                .map(|p| media_info::local_media_facts(p));
-            // Prefer remote original title when enrichment succeeded.
+                .map(|p| media_info::local_media_facts(Path::new(p)));
             let title_for_info = remote_media_info
                 .as_ref()
                 .and_then(|r| r.original_title.as_deref())
@@ -896,7 +1022,7 @@ pub async fn run_process_queue_item(
                 title_for_info,
                 &source,
                 &source_kind,
-                &date,
+                date,
                 lang,
                 &job_id,
                 track,
@@ -952,10 +1078,90 @@ pub async fn run_process_queue_item(
     };
     emit_progress(&sink, &job_id, "done", &summary);
 
-    Ok(ProcessQueueItemOutcome::Done {
-        transcript_path: transcript_path.clone(),
+    Ok(ProcessQueueItemResult {
+        transcript_path,
         summary,
     })
+}
+
+/// Thin composition of Acquire + Transcribe stages. Kept for REST API and
+/// call-sites that do not need the two-stage split (e.g. `process_queue_item`).
+#[allow(clippy::too_many_arguments)]
+pub async fn run_process_queue_item(
+    app: tauri::AppHandle,
+    sink: SinkHandle,
+    job_id: String,
+    job_index: u32,
+    source: String,
+    source_kind: String,
+    display_label: String,
+    settings: AppSettings,
+    ffmpeg_path_override: Option<String>,
+    yt_dlp_path_override: Option<String>,
+    cancel: CancellationToken,
+    gate: Option<&HostGate>,
+    pacing: Option<&PacingConfig>,
+) -> Result<ProcessQueueItemOutcome, String> {
+    let acquire_outcome = run_acquire_stage(
+        app.clone(),
+        sink.clone(),
+        job_id.clone(),
+        job_index,
+        source.clone(),
+        source_kind.clone(),
+        display_label.clone(),
+        settings.clone(),
+        ffmpeg_path_override.clone(),
+        yt_dlp_path_override,
+        cancel.clone(),
+        gate,
+        pacing,
+    )
+    .await?;
+
+    match acquire_outcome {
+        AcquireOutcome::Ready(artifact) => {
+            let result = run_transcribe_stage(
+                app,
+                sink,
+                job_id,
+                job_index,
+                source,
+                source_kind,
+                artifact,
+                settings,
+                ffmpeg_path_override,
+                cancel,
+            )
+            .await?;
+            Ok(ProcessQueueItemOutcome::Done {
+                transcript_path: result.transcript_path,
+                summary: result.summary,
+            })
+        }
+        AcquireOutcome::Completed {
+            transcript_path,
+            summary,
+        } => Ok(ProcessQueueItemOutcome::Done {
+            transcript_path,
+            summary,
+        }),
+        AcquireOutcome::BrowserPrepared {
+            tracks,
+            work_dir,
+            delete_audio_after,
+            language,
+            whisper_model_id,
+            export_webvtt,
+        } => Ok(ProcessQueueItemOutcome::BrowserPrepared {
+            tracks,
+            work_dir,
+            delete_audio_after,
+            language,
+            whisper_model_id,
+            export_webvtt,
+        }),
+    }
 }
 
 /// Save extracted audio for each source track into `out_dir`. URL jobs usually copy

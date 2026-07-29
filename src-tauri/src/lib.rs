@@ -41,7 +41,7 @@ mod yt_dlp_progress;
 use api_server::ApiServerSupervisor;
 use cancel_registry::JobCancelRegistry;
 use net_pacing::HostGate;
-use job::{BrowserTrackInfo, ProcessQueueItemOutcome, ProcessQueueItemResult};
+use job::{AcquiredArtifact, AcquireOutcome, BrowserTrackInfo, ProcessQueueItemOutcome, ProcessQueueItemResult};
 use progress::{SinkHandle, TauriSink};
 use serde::Serialize;
 use session_log::SessionLog;
@@ -215,8 +215,99 @@ fn cancel_queue_job(
     registry: tauri::State<'_, JobCancelRegistry>,
     job_id: String,
 ) -> Result<(), String> {
-    registry.cancel_job(&job_id);
+    registry.cancel_job_and_stages(&job_id);
     Ok(())
+}
+
+/// Stage A command: source URL/file → AcquireOutcome (wav artifact or fast-path result).
+/// Registers a cancellation token under `<job_id>:acquire`.
+#[tauri::command]
+async fn acquire_media_item(
+    app: tauri::AppHandle,
+    registry: tauri::State<'_, JobCancelRegistry>,
+    gate: tauri::State<'_, HostGate>,
+    job_id: String,
+    job_index: u32,
+    source: String,
+    source_kind: String,
+    display_label: String,
+    settings: AppSettings,
+) -> Result<AcquireOutcome, String> {
+    let stage_key = format!("{job_id}:acquire");
+    let cancel = registry.register_job(&stage_key);
+    let sink: SinkHandle = TauriSink::handle(app.clone());
+    let pacing_cfg = net_pacing::PacingConfig::from_settings(&settings);
+    let result = job::run_acquire_stage(
+        app,
+        sink,
+        job_id,
+        job_index,
+        source,
+        source_kind,
+        display_label,
+        settings.clone(),
+        settings.ffmpeg_path.clone(),
+        settings.yt_dlp_path.clone(),
+        cancel,
+        Some(&gate),
+        Some(&pacing_cfg),
+    )
+    .await;
+    registry.finish_job(&stage_key);
+    result
+}
+
+/// Stage B command: artifact → transcript. Registers a token under `<job_id>:transcribe`.
+#[tauri::command]
+async fn transcribe_artifact(
+    app: tauri::AppHandle,
+    registry: tauri::State<'_, JobCancelRegistry>,
+    job_id: String,
+    job_index: u32,
+    source: String,
+    source_kind: String,
+    artifact: AcquiredArtifact,
+    settings: AppSettings,
+) -> Result<ProcessQueueItemResult, String> {
+    let stage_key = format!("{job_id}:transcribe");
+    let cancel = registry.register_job(&stage_key);
+    let sink: SinkHandle = TauriSink::handle(app.clone());
+    let result = job::run_transcribe_stage(
+        app,
+        sink,
+        job_id,
+        job_index,
+        source,
+        source_kind,
+        artifact,
+        settings.clone(),
+        settings.ffmpeg_path.clone(),
+        cancel,
+    )
+    .await;
+    registry.finish_job(&stage_key);
+    result
+}
+
+/// Delete a temp artifact's work_dir. Refuses to delete paths outside system temp.
+#[tauri::command]
+fn discard_artifact(artifact: AcquiredArtifact) -> Result<(), String> {
+    let work_dir = std::path::Path::new(&artifact.work_dir);
+    if !work_dir.exists() {
+        return Ok(());
+    }
+    let work_canon = work_dir
+        .canonicalize()
+        .map_err(|e| format!("canonicalize work_dir: {e}"))?;
+    let temp_canon = std::env::temp_dir()
+        .canonicalize()
+        .map_err(|e| format!("canonicalize temp_dir: {e}"))?;
+    if !work_canon.starts_with(&temp_canon) {
+        return Err(
+            "artifact work_dir is not inside system temp — refusing to delete".to_string(),
+        );
+    }
+    std::fs::remove_dir_all(work_dir).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -430,7 +521,10 @@ pub fn run() {
             validate_gemini_model,
             estimate_ocr_batch,
             yt_dlp_version,
-            save_failed_links
+            save_failed_links,
+            acquire_media_item,
+            transcribe_artifact,
+            discard_artifact
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
