@@ -146,7 +146,7 @@
   },
   "broken_links": {
     "path_label": "Файл со ссылками",
-    "path_placeholder": "например D:\\\\Downloads\\\\doramahime_tiktok_links.txt"
+    "path_placeholder": "например C:\\\\temp\\\\err_link.txt"
   },
   "error": {
     "open_folder": "Не удалось открыть папку: {{message}}",
