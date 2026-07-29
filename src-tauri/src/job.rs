@@ -338,7 +338,18 @@ pub async fn run_process_queue_item(
     // per-video subtask list (titles + clickable links) up-front. Best-effort:
     // any failure (private playlist, single video, no internet, yt-dlp version
     // mismatch) is logged and silently ignored — pipeline continues unchanged.
-    if (source_kind == "url" || pipeline::is_http_url(&source)) && !cancel.is_cancelled() {
+    //
+    // Skipped for single-item URLs (TikTok /video/, youtu.be/, youtube.com/watch
+    // without list=) because pre-resolve would waste a network round-trip that
+    // returns no useful subtask list.
+    //
+    // When pre-resolve succeeds on a single-video URL (no entries), the raw JSON
+    // is stashed for reuse by the media-info step below.
+    let mut pre_resolve_single_json: Option<String> = None;
+    if (source_kind == "url" || pipeline::is_http_url(&source))
+        && !yt_dlp_metadata::is_single_item_url(&source)
+        && !cancel.is_cancelled()
+    {
         if let Some(yt_dlp) = deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp") {
             match yt_dlp_metadata::resolve_playlist_metadata(
                 &yt_dlp,
@@ -349,15 +360,16 @@ pub async fn run_process_queue_item(
             )
             .await
             {
-                Ok(info) => {
-                    let subtasks = yt_dlp_metadata::entries_to_subtasks(&info);
+                Ok(result) => {
+                    let subtasks = yt_dlp_metadata::entries_to_subtasks(&result.info);
                     if !subtasks.is_empty() {
                         let payload = yt_dlp_metadata::PlaylistResolvedPayload {
                             job_id: job_id.clone(),
-                            playlist_title: info.title.clone(),
+                            playlist_title: result.info.title.clone(),
                             subtasks,
                         };
-                        let title_str = info
+                        let title_str = result
+                            .info
                             .title
                             .as_deref()
                             .map(|t| format!(" \"{t}\""))
@@ -370,6 +382,9 @@ pub async fn run_process_queue_item(
                             "playlist",
                             &format!("Resolved playlist{title_str} ({n_subtasks} videos)",),
                         );
+                    } else {
+                        // Single-video URL: stash raw JSON for media-info reuse.
+                        pre_resolve_single_json = Some(result.raw_json);
                     }
                 }
                 Err(e) => {
@@ -480,12 +495,49 @@ pub async fn run_process_queue_item(
     let lang = settings.language.as_deref();
 
     // Optional remote enrichment for *.info.json (single URL only; best-effort).
+    // When pre-resolve already fetched metadata for this URL (single-video case),
+    // reuse that JSON to avoid a redundant --dump-json round-trip.
     let remote_media_info: Option<media_info::RemoteMediaFacts> = if settings.keep_media_info
         && (source_kind == "url" || pipeline::is_http_url(&source))
         && !subs::is_pure_playlist_url(&source)
         && !cancel.is_cancelled()
     {
-        if let Some(yt_dlp) = deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp") {
+        if let Some(ref json) = pre_resolve_single_json {
+            match media_info::parse_remote_facts_from_json(json) {
+                Ok(facts) => Some(facts),
+                Err(_) => {
+                    // Fallback: pre-resolve JSON lacked the expected fields; fetch separately.
+                    if let Some(yt_dlp) =
+                        deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp")
+                    {
+                        match media_info::fetch_remote_facts(
+                            &yt_dlp,
+                            &source,
+                            settings.cookies_from_browser.yt_dlp_arg(),
+                            settings.yt_dlp_js_runtimes.as_deref(),
+                            &cancel,
+                        )
+                        .await
+                        {
+                            Ok(facts) => Some(facts),
+                            Err(e) => {
+                                pipeline::emit_pipeline_text(
+                                    &sink,
+                                    &job_id,
+                                    "info",
+                                    &format!("Media info: yt-dlp enrichment skipped ({e}). Writing local fields only."),
+                                );
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    }
+                }
+            }
+        } else if let Some(yt_dlp) =
+            deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp")
+        {
             match media_info::fetch_remote_facts(
                 &yt_dlp,
                 &source,

@@ -1099,35 +1099,78 @@ pub async fn prepare_media_audio(
         if keep_downloaded_video {
             if let Some(ref vp) = video_output_template {
                 if is_http_url(&source) {
-                    match download_best_video_mp4(
-                        maybe_log,
-                        &yt_dlp,
-                        source.as_str(),
-                        vp,
-                        cancel,
-                        js,
-                        cookies,
-                    )
-                    .await
-                    {
-                        Ok(()) => {
-                            if let Some((sink, jid)) = maybe_log.as_ref() {
-                                emit_pipeline_text(
-                                    sink,
-                                    jid,
-                                    "yt-dlp-video",
-                                    "Saved video file(s) to the output folder.",
-                                );
+                    // When the first pass already produced a video file (TikTok: -f h264,
+                    // no -x), copy it to the output folder instead of downloading a second
+                    // time.  The template contains `%(` only for playlist URLs, where each
+                    // entry would need its own yt-dlp call anyway — so the copy path is
+                    // single-video only.
+                    if !source_media_files_are_audio && !vp.contains("%(") && !media.is_empty() {
+                        let src_file = &media[0];
+                        let src_ext = src_file
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("mp4");
+                        let dest_path = Path::new(vp).with_extension(src_ext);
+                        if let Some(parent) = dest_path.parent() {
+                            let _ = fs::create_dir_all(parent);
+                        }
+                        match fs::copy(src_file, &dest_path) {
+                            Ok(_) => {
+                                if let Some((sink, jid)) = maybe_log.as_ref() {
+                                    emit_pipeline_text(
+                                        sink,
+                                        jid,
+                                        "yt-dlp-video",
+                                        "Reused downloaded video (no second request).",
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                if let Some((sink, jid)) = maybe_log.as_ref() {
+                                    emit_pipeline_text(
+                                        sink,
+                                        jid,
+                                        "yt-dlp-video",
+                                        &format!(
+                                            "Could not copy video (continuing with transcript): {e}"
+                                        ),
+                                    );
+                                }
                             }
                         }
-                        Err(e) => {
-                            if let Some((sink, jid)) = maybe_log.as_ref() {
-                                emit_pipeline_text(
-                                    sink,
-                                    jid,
-                                    "yt-dlp-video",
-                                    &format!("Could not save video (continuing with transcript): {e}"),
-                                );
+                    } else {
+                        match download_best_video_mp4(
+                            maybe_log,
+                            &yt_dlp,
+                            source.as_str(),
+                            vp,
+                            cancel,
+                            js,
+                            cookies,
+                        )
+                        .await
+                        {
+                            Ok(()) => {
+                                if let Some((sink, jid)) = maybe_log.as_ref() {
+                                    emit_pipeline_text(
+                                        sink,
+                                        jid,
+                                        "yt-dlp-video",
+                                        "Saved video file(s) to the output folder.",
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                if let Some((sink, jid)) = maybe_log.as_ref() {
+                                    emit_pipeline_text(
+                                        sink,
+                                        jid,
+                                        "yt-dlp-video",
+                                        &format!(
+                                            "Could not save video (continuing with transcript): {e}"
+                                        ),
+                                    );
+                                }
                             }
                         }
                     }

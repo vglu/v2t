@@ -20,6 +20,25 @@ use tokio_util::sync::CancellationToken;
 
 use crate::pipeline::{run_yt_dlp_streaming, tail_stderr};
 
+/// True when the URL cannot be a playlist, so pre-resolve would waste a request.
+///
+/// Rules:
+/// - TikTok individual item: contains `/video/` or `/photo/` in path
+/// - `youtu.be/` short link without `list=`
+/// - `youtube.com/watch` without `list=`
+pub fn is_single_item_url(url: &str) -> bool {
+    if url.contains("tiktok.com/") && (url.contains("/video/") || url.contains("/photo/")) {
+        return true;
+    }
+    if url.contains("youtu.be/") && !url.contains("list=") {
+        return true;
+    }
+    if url.contains("youtube.com/watch") && !url.contains("list=") {
+        return true;
+    }
+    false
+}
+
 /// `--dump-single-json` only does one network round-trip; 60 s is generous.
 const META_HEARTBEAT: Duration = Duration::from_secs(60);
 
@@ -59,16 +78,26 @@ pub struct PlaylistResolvedPayload {
     pub subtasks: Vec<ResolvedSubtask>,
 }
 
+/// Combined result of `resolve_playlist_metadata`.
+#[derive(Debug)]
+pub struct PlaylistMetadataResult {
+    pub info: PlaylistInfo,
+    /// Raw yt-dlp JSON. For single-video responses (`entries` is `None`), this
+    /// can be parsed as `RemoteMediaFacts` to skip a redundant `--dump-json` call.
+    pub raw_json: String,
+}
+
 /// Run `yt-dlp --flat-playlist --dump-single-json --encoding utf-8 -- <url>` and
-/// return the parsed JSON. Stdout carries the JSON; stderr is only used for an
-/// error tail on non-zero exit. Heartbeat 60 s — single one-shot operation.
+/// return the parsed JSON together with the raw JSON string.
+/// Stdout carries the JSON; stderr is only used for an error tail on non-zero exit.
+/// Heartbeat 60 s — single one-shot operation.
 pub async fn resolve_playlist_metadata(
     yt_dlp: &Path,
     url: &str,
     cookies_from_browser: Option<&str>,
     yt_dlp_js_runtimes: Option<&str>,
     cancel: &CancellationToken,
-) -> Result<PlaylistInfo, String> {
+) -> Result<PlaylistMetadataResult, String> {
     let mut args: Vec<String> = Vec::new();
     if let Some(b) = cookies_from_browser
         .map(str::trim)
@@ -113,7 +142,11 @@ pub async fn resolve_playlist_metadata(
 
     let json = std::str::from_utf8(&out.stdout)
         .map_err(|e| format!("yt-dlp metadata not UTF-8: {e}"))?;
-    parse_playlist_info(json)
+    let info = parse_playlist_info(json)?;
+    Ok(PlaylistMetadataResult {
+        info,
+        raw_json: json.to_string(),
+    })
 }
 
 pub fn parse_playlist_info(json: &str) -> Result<PlaylistInfo, String> {
@@ -238,5 +271,66 @@ mod tests {
     fn invalid_json_returns_err() {
         let r = parse_playlist_info("not json");
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn single_item_url_tiktok_video() {
+        assert!(is_single_item_url(
+            "https://www.tiktok.com/@user/video/7123456789012345678"
+        ));
+    }
+
+    #[test]
+    fn single_item_url_tiktok_photo() {
+        assert!(is_single_item_url(
+            "https://www.tiktok.com/@user/photo/7123456789012345678"
+        ));
+    }
+
+    #[test]
+    fn single_item_url_youtu_be_no_list() {
+        assert!(is_single_item_url("https://youtu.be/dQw4w9WgXcQ"));
+    }
+
+    #[test]
+    fn single_item_url_youtu_be_with_list_is_not_single() {
+        assert!(!is_single_item_url(
+            "https://youtu.be/dQw4w9WgXcQ?list=PLxxx"
+        ));
+    }
+
+    #[test]
+    fn single_item_url_youtube_watch_no_list() {
+        assert!(is_single_item_url(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ));
+    }
+
+    #[test]
+    fn single_item_url_youtube_watch_with_list_is_not_single() {
+        assert!(!is_single_item_url(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLxxx"
+        ));
+    }
+
+    #[test]
+    fn single_item_url_youtube_playlist_is_not_single() {
+        assert!(!is_single_item_url(
+            "https://www.youtube.com/playlist?list=PLxxx"
+        ));
+    }
+
+    #[test]
+    fn single_item_url_tiktok_profile_is_not_single() {
+        assert!(!is_single_item_url("https://www.tiktok.com/@user"));
+    }
+
+    #[test]
+    fn single_item_url_youtube_shorts_no_list_is_not_single() {
+        // Shorts without list= are not matched by current rules — pre-resolve
+        // will run but return a single-video JSON (no entries), which is fine.
+        assert!(!is_single_item_url(
+            "https://www.youtube.com/shorts/dQw4w9WgXcQ"
+        ));
     }
 }

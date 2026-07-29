@@ -245,11 +245,18 @@ pub async fn fetch_remote_facts(
     }
     let json = std::str::from_utf8(&out.stdout)
         .map_err(|e| format!("yt-dlp info stdout not UTF-8: {e}"))?;
+    parse_remote_facts_from_json(json)
+}
+
+/// Parse `RemoteMediaFacts` from a raw yt-dlp JSON string (output of `--dump-json`
+/// or `--flat-playlist --dump-single-json` for a single-video URL).
+/// The first non-empty line is used to allow multi-line yt-dlp stdout.
+pub fn parse_remote_facts_from_json(json: &str) -> Result<RemoteMediaFacts, String> {
     let first = json
         .lines()
         .map(str::trim)
         .find(|l| !l.is_empty())
-        .ok_or_else(|| "yt-dlp info dump produced no JSON".to_string())?;
+        .ok_or_else(|| "yt-dlp JSON is empty".to_string())?;
     let dump: YtDump =
         serde_json::from_str(first).map_err(|e| format!("parse yt-dlp info JSON: {e}"))?;
     Ok(RemoteMediaFacts::from(dump))
