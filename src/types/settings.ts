@@ -52,6 +52,8 @@ export type AppSettings = {
   keepDownloadedVideo: boolean;
   /** URL jobs + local video: also save the extracted audio file to the output folder. */
   keepDownloadedAudio: boolean;
+  /** Also write `{stem}.info.json` next to the transcript (title, URL, dates, …). */
+  keepMediaInfo: boolean;
   /** Format for saved audio; "original" keeps bestaudio from yt-dlp / copies local video's audio stream without re-encoding. */
   downloadedAudioFormat: DownloadedAudioFormat;
   apiBaseUrl: string;
@@ -124,6 +126,7 @@ export const defaultAppSettings: AppSettings = {
   deleteAudioAfter: true,
   keepDownloadedVideo: false,
   keepDownloadedAudio: false,
+  keepMediaInfo: false,
   downloadedAudioFormat: "original",
   apiBaseUrl: "https://api.openai.com/v1",
   apiModel: "whisper-1",

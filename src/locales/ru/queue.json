@@ -40,6 +40,11 @@
     "files": "Файлы",
     "output": "Формат",
     "change": "Изменить…",
+    "chip_txt_always": "Обычный .txt сохраняется всегда",
+    "chip_vtt": "Также сохранить WebVTT с таймкодами (.vtt)",
+    "chip_video": "Также сохранить скачанное видео (.mp4)",
+    "chip_audio": "Также сохранить извлечённое аудио",
+    "chip_info": "Также сохранить медиа-инфо (.info.json): название, URL, даты, канал…",
     "mode": {
       "online": "Онлайн-сервис",
       "computer": "На этом компьютере",
@@ -90,7 +95,8 @@
     "start": "Запустить пакет",
     "stop": "Остановить пакет",
     "clear_done": "Очистить выполненные",
-    "clear_all": "Очистить все"
+    "clear_all": "Очистить все",
+    "save_broken_links": "Сохранить битые ссылки"
   },
   "url_field": {
     "label": "URLs (один на строку)",
@@ -134,7 +140,13 @@
     "error_label": "Ошибка: {{detail}} — {{label}}",
     "error_no_label": "Ошибка: {{detail}}",
     "retry_enqueued": "Повторить в очереди: {{title}}",
+    "broken_links_saving": "Сохраняем битые ссылки → {{file}}",
+    "broken_links_saved": "Битые ссылки обновлены: оставлено {{count}} записей → {{file}}",
     "session_log_unavailable": "Не удалось открыть файл журнала сессии (запустите внутри приложения или журнал недоступен)"
+  },
+  "broken_links": {
+    "path_label": "Файл со ссылками",
+    "path_placeholder": "например D:\\\\Downloads\\\\doramahime_tiktok_links.txt"
   },
   "error": {
     "open_folder": "Не удалось открыть папку: {{message}}",

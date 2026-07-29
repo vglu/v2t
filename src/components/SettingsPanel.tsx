@@ -542,6 +542,17 @@ export function SettingsPanel({
             />
             <span>{t("keep_audio")}</span>
           </label>
+          <label className="field checkbox">
+            <input
+              type="checkbox"
+              checked={settings.keepMediaInfo}
+              onChange={(e) =>
+                onChange({ ...settings, keepMediaInfo: e.target.checked })
+              }
+            />
+            <span>{t("keep_media_info")}</span>
+          </label>
+          <p className="hint">{t("keep_media_info_hint")}</p>
           {settings.keepDownloadedAudio ? (
             <label className="field">
               <span>{t("audio_format.label")}</span>

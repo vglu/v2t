@@ -176,6 +176,8 @@
   "delete_audio_after": "Delete temp audio after success",
   "keep_video": "Save downloaded video to output folder (URL jobs — second yt-dlp pass, ≤720p mp4; playlists → one subfolder per playlist, every video)",
   "keep_audio": "Save downloaded audio to output folder (URL jobs + local video — extracted via ffmpeg)",
+  "keep_media_info": "Save media info next to transcript (.info.json)",
+  "keep_media_info_hint": "Writes title, source URL/path, transcription time, and when possible channel, upload date, duration, views (via yt-dlp).",
   "audio_format": {
     "label": "Audio format",
     "original": "Original (bestaudio / stream copy, no re-encode)",

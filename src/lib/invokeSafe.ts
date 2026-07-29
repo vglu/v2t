@@ -128,6 +128,24 @@ export async function cancelQueueJob(jobId: string | null): Promise<void> {
   }
 }
 
+export async function saveFailedLinks(args: {
+  linksFilePath: string;
+  failedUrls: string[];
+  copyToDir?: string | null;
+}): Promise<number | null> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { linksFilePath, failedUrls, copyToDir } = args;
+    return await invoke<number>("save_failed_links", {
+      linksFilePath,
+      failedUrls,
+      copyToDir: copyToDir ?? null,
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function listWhisperModels(): Promise<WhisperModelMeta[] | null> {
   try {
     const { invoke } = await import("@tauri-apps/api/core");

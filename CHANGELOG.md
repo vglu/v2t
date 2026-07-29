@@ -2,6 +2,13 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.15] - 2026-07-29
+
+### Added
+- Queue: retry failed URL jobs directly from the error row.
+- Queue: “Save broken links” helper — rewrites the links file to keep only URLs that are still missing after the batch (and saves a copy into the output folder).
+- Queue/Exports: optional media info sidecar next to the transcript (`*.info.json`) controlled by the “Info” chip / “Save media info”.
+
 ## [2.0.14] - 2026-07-25
 
 ### Added

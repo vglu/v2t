@@ -17,6 +17,7 @@ export type PresetSlice = Pick<
   | "keepSrt"
   | "keepDownloadedVideo"
   | "keepDownloadedAudio"
+  | "keepMediaInfo"
   | "deleteAudioAfter"
   | "downloadedAudioFormat"
   | "whisperModel"
@@ -37,6 +38,7 @@ function sliceFrom(s: AppSettings): PresetSlice {
     keepSrt: s.keepSrt,
     keepDownloadedVideo: s.keepDownloadedVideo,
     keepDownloadedAudio: s.keepDownloadedAudio,
+    keepMediaInfo: s.keepMediaInfo,
     deleteAudioAfter: s.deleteAudioAfter,
     downloadedAudioFormat: s.downloadedAudioFormat,
     whisperModel: s.whisperModel,
@@ -58,6 +60,7 @@ const PRESETS: Record<Exclude<ProfileId, "custom">, PresetSlice> = {
     keepSrt: false,
     keepDownloadedVideo: false,
     keepDownloadedAudio: false,
+    keepMediaInfo: false,
     deleteAudioAfter: true,
     downloadedAudioFormat: "original",
     whisperModel: "base",
@@ -76,6 +79,7 @@ const PRESETS: Record<Exclude<ProfileId, "custom">, PresetSlice> = {
     keepSrt: false,
     keepDownloadedVideo: false,
     keepDownloadedAudio: true,
+    keepMediaInfo: false,
     deleteAudioAfter: false,
     downloadedAudioFormat: "m4a",
     whisperModel: "large-v3",
@@ -94,6 +98,7 @@ const PRESETS: Record<Exclude<ProfileId, "custom">, PresetSlice> = {
     keepSrt: true,
     keepDownloadedVideo: true,
     keepDownloadedAudio: true,
+    keepMediaInfo: false,
     deleteAudioAfter: false,
     downloadedAudioFormat: "m4a",
     whisperModel: "large-v3",

@@ -8,6 +8,7 @@ use crate::audio_save;
 use crate::cancel_registry::JobCancelRegistry;
 use crate::deps;
 use crate::diarize;
+use crate::media_info;
 use crate::model_download;
 use crate::output_template;
 use crate::pipeline;
@@ -432,7 +433,7 @@ pub async fn run_process_queue_item(
         source.clone(),
         source_kind.clone(),
         ffmpeg_path_override.clone(),
-        yt_dlp_path_override,
+        yt_dlp_path_override.clone(),
         settings.yt_dlp_js_runtimes.clone(),
         settings
             .cookies_from_browser
@@ -477,6 +478,40 @@ pub async fn run_process_queue_item(
         .ok_or("WAV path has no parent")?;
 
     let lang = settings.language.as_deref();
+
+    // Optional remote enrichment for *.info.json (single URL only; best-effort).
+    let remote_media_info: Option<media_info::RemoteMediaFacts> = if settings.keep_media_info
+        && (source_kind == "url" || pipeline::is_http_url(&source))
+        && !subs::is_pure_playlist_url(&source)
+        && !cancel.is_cancelled()
+    {
+        if let Some(yt_dlp) = deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp") {
+            match media_info::fetch_remote_facts(
+                &yt_dlp,
+                &source,
+                settings.cookies_from_browser.yt_dlp_arg(),
+                settings.yt_dlp_js_runtimes.as_deref(),
+                &cancel,
+            )
+            .await
+            {
+                Ok(facts) => Some(facts),
+                Err(e) => {
+                    pipeline::emit_pipeline_text(
+                        &sink,
+                        &job_id,
+                        "info",
+                        &format!("Media info: yt-dlp enrichment skipped ({e}). Writing local fields only."),
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     if matches!(
         settings.transcription_mode,
@@ -779,6 +814,41 @@ pub async fn run_process_queue_item(
             let msg = format!("Failed to write transcript pair: {e}");
             emit_subtask_status(&sink, &job_id, track, "error", Some(msg.clone()));
             return Err(msg);
+        }
+
+        if settings.keep_media_info {
+            let local = prep
+                .source_media_files
+                .get(ti)
+                .map(|p| media_info::local_media_facts(p));
+            // Prefer remote original title when enrichment succeeded.
+            let title_for_info = remote_media_info
+                .as_ref()
+                .and_then(|r| r.original_title.as_deref())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(display_label.as_str());
+            let doc = media_info::build_document(
+                title_for_info,
+                &source,
+                &source_kind,
+                &date,
+                lang,
+                &job_id,
+                track,
+                n_tracks,
+                &dest_path,
+                settings.export_webvtt,
+                local,
+                remote_media_info.clone(),
+            );
+            if let Err(e) = media_info::write_media_info(&dest_path, &doc) {
+                pipeline::emit_pipeline_text(
+                    &sink,
+                    &job_id,
+                    "info",
+                    &format!("Could not save media info sidecar: {e}"),
+                );
+            }
         }
 
         // Cleanup stable checkpoints only after the required output pair is saved.
@@ -1103,6 +1173,42 @@ async fn try_subs_fast_path(
                 job_id,
                 "subs",
                 &format!("Could not save .srt next to transcript: {e}"),
+            );
+        }
+    }
+
+    if settings.keep_media_info {
+        let title_for_info = probe
+            .title
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(display_label);
+        let remote = Some(media_info::RemoteMediaFacts {
+            id: probe.id.clone(),
+            original_title: probe.title.clone(),
+            webpage_url: Some(source.to_string()),
+            ..Default::default()
+        });
+        let doc = media_info::build_document(
+            title_for_info,
+            source,
+            "url",
+            date,
+            Some(lang.as_str()),
+            job_id,
+            track,
+            1,
+            &dest_path,
+            settings.export_webvtt,
+            None,
+            remote,
+        );
+        if let Err(e) = media_info::write_media_info(&dest_path, &doc) {
+            pipeline::emit_pipeline_text(
+                sink,
+                job_id,
+                "info",
+                &format!("Could not save media info sidecar: {e}"),
             );
         }
     }

@@ -8,6 +8,7 @@ import {
   openSessionLog,
   processQueueItem,
   releaseQueueJobSlot,
+  saveFailedLinks,
   scanMediaFolder,
   sessionLogAppendUi,
 } from "../lib/invokeSafe";
@@ -19,6 +20,7 @@ import {
   shortLabel,
 } from "../lib/queueUtils";
 import { SPEECH_LANGUAGE_OPTIONS } from "../lib/speechLanguages";
+import { reconcileProfileId } from "../lib/profiles";
 import type {
   JobProgressSnapshot,
   QueueJob,
@@ -34,6 +36,8 @@ type Props = {
   /** Derived in App from deps + output folder + API key */
   readinessComplete: boolean;
   onOpenOutputSettings?: () => void;
+  /** Persist quick Defaults toggles (VTT / video / audio) immediately. */
+  onPersistSettings?: (next: AppSettings) => void | Promise<void>;
 };
 
 const MAX_LOG = 200;
@@ -45,6 +49,12 @@ function shortOutputFolder(path: string | null | undefined, fallback: string): s
   if (parts.length === 0) return fallback;
   if (parts.length === 1) return parts[0];
   return parts.slice(-2).join("\\");
+}
+
+function joinPaths(a: string, b: string): string {
+  const left = a.trim().replace(/[\\\/]+$/, "");
+  const right = b.trim().replace(/^[\\\/]+/, "");
+  return `${left}\\${right}`;
 }
 
 /** Match a log line emitted from the queue-job-progress listener that carries
@@ -101,6 +111,7 @@ export function QueuePanel({
   settings,
   readinessComplete,
   onOpenOutputSettings,
+  onPersistSettings,
 }: Props) {
   const { t } = useTranslation("queue");
   const { recursiveFolderScan } = settings;
@@ -121,6 +132,7 @@ export function QueuePanel({
   const currentJobIdRef = useRef<string | null>(null);
   const [queueRunning, setQueueRunning] = useState(false);
   const [ocrEstimate, setOcrEstimate] = useState<CostEstimate | null>(null);
+  const [brokenLinksPath, setBrokenLinksPath] = useState("");
 
   const setQueueActive = useCallback((active: boolean) => {
     runningRef.current = active;
@@ -663,6 +675,22 @@ export function QueuePanel({
     [addJobs, appendLog, t],
   );
 
+  const retryJob = useCallback(
+    (job: QueueJob) => {
+      if (job.kind !== "url") return;
+      const cleanUrl = stripPlaylistParams(job.source);
+      addJobs([
+        {
+          kind: "url" as const,
+          source: cleanUrl,
+          displayLabel: shortLabel(`Retry: ${job.displayLabel}`),
+        },
+      ]);
+      appendLog(t("msg.retry_enqueued", { title: job.displayLabel }));
+    },
+    [addJobs, appendLog, t],
+  );
+
   const visibleLogLines = useMemo(() => {
     if (showDownloadPercents) return logLines;
     return logLines.filter((l) => !YT_DLP_PERCENT_LINE_RE.test(l));
@@ -677,6 +705,36 @@ export function QueuePanel({
     [urlDraft],
   );
 
+  const failedUrlJobs = useMemo(
+    () => jobs.filter((j) => j.status === "error" && j.kind === "url"),
+    [jobs],
+  );
+  const failedUrlCount = failedUrlJobs.length;
+
+  const saveBrokenLinks = useCallback(async () => {
+    const outDir = settings.outputDir?.trim();
+    if (!outDir) {
+      appendLog(t("error.output_dir_required"));
+      return;
+    }
+    if (failedUrlJobs.length === 0) return;
+
+    // Keep order as in the queue; backend will de-dupe and normalize.
+    const failedUrls = failedUrlJobs.map((j) => j.source);
+
+    const defaultLinksFile = joinPaths(outDir, "broken_links.txt");
+    const linksFilePath = brokenLinksPath.trim() || defaultLinksFile;
+
+    appendLog(t("msg.broken_links_saving", { file: linksFilePath }));
+    const savedCount = await saveFailedLinks({
+      linksFilePath,
+      failedUrls,
+      copyToDir: outDir,
+    });
+    const n = typeof savedCount === "number" ? savedCount : 0;
+    appendLog(t("msg.broken_links_saved", { count: n, file: linksFilePath }));
+  }, [appendLog, brokenLinksPath, failedUrlJobs, saveFailedLinks, settings.outputDir, t]);
+
   const addUrlsLabel =
     pendingUrlCount <= 0
       ? t("btn.add_urls")
@@ -685,14 +743,69 @@ export function QueuePanel({
         : t("btn.add_items", { count: pendingUrlCount });
 
   const outputFormatChips = [
-    { id: "txt", label: "TXT", kind: "txt" as const },
-    settings.exportWebVtt
-      ? { id: "vtt", label: "VTT", kind: "vtt" as const }
-      : null,
-    settings.keepSrt ? { id: "srt", label: "SRT", kind: "srt" as const } : null,
-  ].filter(
-    (chip): chip is { id: string; label: string; kind: "txt" | "vtt" | "srt" } =>
-      chip !== null,
+    {
+      id: "txt",
+      label: "TXT",
+      kind: "txt" as const,
+      pressed: true,
+      disabled: true,
+      title: t("profile.chip_txt_always"),
+    },
+    {
+      id: "vtt",
+      label: "VTT",
+      kind: "vtt" as const,
+      pressed: settings.exportWebVtt,
+      disabled: !onPersistSettings,
+      title: t("profile.chip_vtt"),
+    },
+    {
+      id: "video",
+      label: "Video",
+      kind: "video" as const,
+      pressed: settings.keepDownloadedVideo,
+      disabled: !onPersistSettings,
+      title: t("profile.chip_video"),
+    },
+    {
+      id: "audio",
+      label: "Audio",
+      kind: "audio" as const,
+      pressed: settings.keepDownloadedAudio,
+      disabled: !onPersistSettings,
+      title: t("profile.chip_audio"),
+    },
+    {
+      id: "info",
+      label: "Info",
+      kind: "info" as const,
+      pressed: settings.keepMediaInfo,
+      disabled: !onPersistSettings,
+      title: t("profile.chip_info"),
+    },
+  ];
+
+  const toggleOutputChip = useCallback(
+    (id: "vtt" | "video" | "audio" | "info") => {
+      if (!onPersistSettings) return;
+      const next: AppSettings = { ...settings };
+      if (id === "vtt") {
+        next.exportWebVtt = !settings.exportWebVtt;
+        // Diarize needs WebVTT timings — drop the flag when VTT is off.
+        if (!next.exportWebVtt) {
+          next.diarizeSpeakers = false;
+          next.labelSpeakers = false;
+        }
+      } else if (id === "video") {
+        next.keepDownloadedVideo = !settings.keepDownloadedVideo;
+      } else if (id === "audio") {
+        next.keepDownloadedAudio = !settings.keepDownloadedAudio;
+      } else {
+        next.keepMediaInfo = !settings.keepMediaInfo;
+      }
+      void onPersistSettings(reconcileProfileId(next));
+    },
+    [onPersistSettings, settings],
   );
 
   const outputFolderLabel = shortOutputFolder(
@@ -820,14 +933,31 @@ export function QueuePanel({
           </div>
           <div className="batch-profile-fact batch-profile-fact--formats">
             <span>{t("profile.output")}</span>
-            <div className="format-plaques" aria-label={t("profile.output")}>
+            <div
+              className="format-plaques"
+              role="group"
+              aria-label={t("profile.output")}
+            >
               {outputFormatChips.map((chip) => (
-                <span
+                <button
                   key={chip.id}
-                  className={`format-plaque format-plaque--${chip.kind}`}
+                  type="button"
+                  className={[
+                    "format-plaque",
+                    `format-plaque--${chip.kind}`,
+                    chip.pressed ? "format-plaque--on" : "format-plaque--off",
+                  ].join(" ")}
+                  aria-pressed={chip.pressed}
+                  disabled={chip.disabled}
+                  title={chip.title}
+                  data-testid={`output-chip-${chip.id}`}
+                  onClick={() => {
+                    if (chip.id === "txt") return;
+                    toggleOutputChip(chip.id as "vtt" | "video" | "audio" | "info");
+                  }}
                 >
                   {chip.label}
-                </span>
+                </button>
               ))}
             </div>
           </div>
@@ -884,6 +1014,26 @@ export function QueuePanel({
             {t("btn.stop")}
           </button>
         ) : null}
+        {failedUrlCount > 0 ? (
+          <div className="broken-links-save">
+            <input
+              className="broken-links-input"
+              type="text"
+              value={brokenLinksPath}
+              placeholder={t("broken_links.path_placeholder")}
+              onChange={(e) => setBrokenLinksPath(e.target.value)}
+              aria-label={t("broken_links.path_label")}
+            />
+            <button
+              type="button"
+              className="quiet-action"
+              data-testid="save-broken-links"
+              onClick={() => void saveBrokenLinks()}
+            >
+              {t("btn.save_broken_links")}
+            </button>
+          </div>
+        ) : null}
         {jobs.some((job) =>
           ["done", "error", "cancelled"].includes(job.status),
         ) ? (
@@ -929,6 +1079,7 @@ export function QueuePanel({
                     onLanguageChange={changeJobLanguage}
                     onOpenSubtaskLink={openSubtaskLink}
                     onRetrySubtask={retrySubtask}
+                    onRetryJob={retryJob}
                   />
                 );
               })}
@@ -994,6 +1145,7 @@ type FragmentRowProps = {
   onLanguageChange: (jobId: string, language: string | null) => void;
   onOpenSubtaskLink: (url: string) => void;
   onRetrySubtask: (subtask: SubtaskState) => void;
+  onRetryJob: (job: QueueJob) => void;
 };
 
 function FragmentRow({
@@ -1006,6 +1158,7 @@ function FragmentRow({
   onLanguageChange,
   onOpenSubtaskLink,
   onRetrySubtask,
+  onRetryJob,
 }: FragmentRowProps) {
   const { t: tQueue } = useTranslation("queue");
   const showProgress = job.status === "running" && progress != null;
@@ -1078,6 +1231,19 @@ function FragmentRow({
                 onClick={() => onOpen(outPath)}
               >
                 <IconOpenFile className="queue-action-icon" />
+              </button>
+            </div>
+          ) : null}
+          {job.status === "error" && job.kind === "url" ? (
+            <div className="queue-table-actions-inner">
+              <button
+                type="button"
+                className="queue-table-action-btn queue-table-action-btn--icon"
+                title={tQueue("subtask.retry_title")}
+                aria-label={tQueue("subtask.retry_aria")}
+                onClick={() => onRetryJob(job)}
+              >
+                ↻
               </button>
             </div>
           ) : null}

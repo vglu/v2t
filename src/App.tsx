@@ -357,6 +357,10 @@ export default function App() {
           onOpenOutputSettings={() =>
             openPreferences({ depth: "essentials", focus: "output-dir" })
           }
+          onPersistSettings={(next) => {
+            setPrefsDraft(next);
+            return persistSettings(next);
+          }}
         />
       </main>
 

@@ -40,6 +40,11 @@
     "files": "Files",
     "output": "Output",
     "change": "Change…",
+    "chip_txt_always": "Plain .txt is always saved",
+    "chip_vtt": "Also save timed WebVTT (.vtt)",
+    "chip_video": "Also save downloaded video (.mp4)",
+    "chip_audio": "Also save extracted audio",
+    "chip_info": "Also save media info (.info.json): title, URL, dates, channel…",
     "mode": {
       "online": "Online service",
       "computer": "On this computer",
@@ -90,7 +95,8 @@
     "start": "Start batch",
     "stop": "Stop batch",
     "clear_done": "Clear done",
-    "clear_all": "Clear all"
+    "clear_all": "Clear all",
+    "save_broken_links": "Save broken links"
   },
   "url_field": {
     "label": "URLs (one per line)",
@@ -134,7 +140,13 @@
     "error_label": "Error: {{detail}} — {{label}}",
     "error_no_label": "Error: {{detail}}",
     "retry_enqueued": "Retry enqueued: {{title}}",
+    "broken_links_saving": "Saving broken links → {{file}}",
+    "broken_links_saved": "Broken links updated: {{count}} entries kept → {{file}}",
     "session_log_unavailable": "Could not open session log file (run inside the app or log unavailable)"
+  },
+  "broken_links": {
+    "path_label": "Links file path",
+    "path_placeholder": "e.g. D:\\\\Downloads\\\\doramahime_tiktok_links.txt"
   },
   "error": {
     "open_folder": "Could not open folder: {{message}}",

@@ -187,6 +187,9 @@ pub struct AppSettings {
     /// Also save extracted audio (URL: copy from yt-dlp output; local video: ffmpeg extract).
     #[serde(default)]
     pub keep_downloaded_audio: bool,
+    /// Also write `{stem}.info.json` next to the transcript (title, URL, dates, yt-dlp fields).
+    #[serde(default)]
+    pub keep_media_info: bool,
     /// Format for saved audio. `Original` keeps bestaudio / copies the source audio stream without re-encoding.
     #[serde(default)]
     pub downloaded_audio_format: DownloadedAudioFormat,
@@ -319,6 +322,7 @@ impl Default for AppSettings {
             delete_audio_after: true,
             keep_downloaded_video: false,
             keep_downloaded_audio: false,
+            keep_media_info: false,
             downloaded_audio_format: DownloadedAudioFormat::Original,
             api_base_url: "https://api.openai.com/v1".to_string(),
             api_model: "whisper-1".to_string(),

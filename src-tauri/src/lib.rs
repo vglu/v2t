@@ -6,10 +6,12 @@ mod cancel_registry;
 mod deps;
 mod diarize;
 mod doc_extract;
+mod failed_links;
 mod gemini_key_store;
 mod hf_token_store;
 mod gpu_detect;
 mod job;
+mod media_info;
 mod model_download;
 mod output_template;
 mod pipeline;
@@ -82,6 +84,20 @@ fn check_dependencies(
 fn scan_media_folder(path: String, recursive: bool) -> Result<Vec<String>, String> {
     let p = std::path::PathBuf::from(path.trim());
     scan::scan_media_folder(&p, recursive)
+}
+
+#[tauri::command]
+fn save_failed_links(
+    links_file_path: String,
+    failed_urls: Vec<String>,
+    copy_to_dir: Option<String>,
+) -> Result<u32, String> {
+    let p = std::path::PathBuf::from(links_file_path.trim());
+    let copy = copy_to_dir
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(|s| std::path::PathBuf::from(s));
+    failed_links::save_failed_links_sidecar(&p, &failed_urls, copy.as_deref())
 }
 
 #[tauri::command]
@@ -400,7 +416,8 @@ pub fn run() {
             api_server_apply,
             api_server_regenerate_token,
             validate_gemini_model,
-            estimate_ocr_batch
+            estimate_ocr_batch,
+            save_failed_links
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

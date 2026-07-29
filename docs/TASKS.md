@@ -51,7 +51,7 @@ WhisperX/pyannote, Python sidecar, UI rename Person.
 **Приоритет:** средний  
 **Статус:** ✅ done (2026-07-25)  
 **Сделано:** `tools/diarize/*`, `diarize.rs`, `hf_token_store`, settings + UI (HF token / Python / fail policy), job post-ASR merge; tinydiarize skipped when diarize on.  
-**Релиз:** готово к **v2.0.14** вместе с Phase 0 (OQ7).
+**Релиз:** готово к **v2.0.15** вместе с Phase 0 (OQ7).
 
 ---
 

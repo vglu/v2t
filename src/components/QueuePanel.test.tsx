@@ -38,6 +38,7 @@ vi.mock("../lib/invokeSafe", () => ({
     transcriptPath: "/out/transcript.txt",
     summary: "Saved: /out/transcript.txt",
   }),
+  saveFailedLinks: vi.fn().mockResolvedValue(0),
 }));
 
 import { transcribeBrowserTracks } from "../lib/browserWhisper";
@@ -84,6 +85,54 @@ describe("QueuePanel", () => {
     expect(screen.getByRole("heading", { name: "Transcribe media" })).toBeVisible();
     expect(screen.getByTestId("batch-profile-bar")).toHaveTextContent("Defaults");
     expect(screen.getByRole("heading", { name: /Current batch/ })).toBeVisible();
+  });
+
+  it("toggles VTT / Video / Audio chips and persists settings", async () => {
+    const user = userEvent.setup();
+    const onPersistSettings = vi.fn().mockResolvedValue(undefined);
+    render(
+      <QueuePanel
+        settings={{
+          ...settingsFixture,
+          exportWebVtt: false,
+          keepDownloadedVideo: false,
+          keepDownloadedAudio: false,
+          keepMediaInfo: false,
+        }}
+        readinessComplete={true}
+        onPersistSettings={onPersistSettings}
+      />,
+    );
+
+    expect(screen.getByTestId("output-chip-txt")).toBeDisabled();
+    expect(screen.getByTestId("output-chip-txt")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByTestId("output-chip-vtt")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    await user.click(screen.getByTestId("output-chip-vtt"));
+    expect(onPersistSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ exportWebVtt: true }),
+    );
+
+    await user.click(screen.getByTestId("output-chip-video"));
+    expect(onPersistSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ keepDownloadedVideo: true }),
+    );
+
+    await user.click(screen.getByTestId("output-chip-audio"));
+    expect(onPersistSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ keepDownloadedAudio: true }),
+    );
+
+    await user.click(screen.getByTestId("output-chip-info"));
+    expect(onPersistSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ keepMediaInfo: true }),
+    );
   });
 
   it("keeps start disabled when setup is incomplete", () => {
