@@ -169,6 +169,12 @@
       "none": "Disabled — do not use browser cookies"
     },
     "cookies_hint": "Passes <code>--cookies-from-browser</code> to yt-dlp. The browser must be installed and you must be logged in to YouTube / TikTok in it. <strong>Chrome, Brave and Edge have two known issues on Windows:</strong> (1) their cookie database is locked while the browser is running — close it first; (2) since Chrome 127+ cookies are encrypted with app-bound encryption (DPAPI) that yt-dlp cannot decrypt even when the browser is closed (<a>issue #10927</a>). <strong>Firefox is the most reliable option</strong> — log in there and select Firefox.",
+    "download_interval_label": "Download min interval (seconds)",
+    "download_interval_aria": "Minimum seconds between yt-dlp starts for the same host",
+    "download_interval_hint": "Minimum pause between yt-dlp starts on one host (e.g. tiktok.com). <strong>15–30 s</strong> recommended for TikTok bulk queues — values around 1–2 s often trigger IP blocks.",
+    "download_jitter_label": "Download jitter (seconds)",
+    "download_jitter_aria": "Random extra seconds added to the download interval",
+    "download_jitter_hint": "Random extra wait (0…N seconds) on top of the min interval so requests look less robotic.",
     "ytdlp_version_line": "yt-dlp version: {{version}}",
     "ytdlp_outdated_hint": "Your yt-dlp is older than 60 days. Update it via <a>Download tools</a>.",
     "tools_msg_done": "ffmpeg and yt-dlp saved to app data and paths updated."

@@ -1515,7 +1515,50 @@ export function SettingsPanel({
                 ),
               }}
             />
-          </p>        </div>
+          </p>
+          <label className="field" data-prefs-focus="download-interval">
+            <span>{t("media_tools.download_interval_label")}</span>
+            <input
+              type="number"
+              min={1}
+              max={300}
+              step={1}
+              aria-label={t("media_tools.download_interval_aria")}
+              value={Math.max(1, Math.round(settings.downloadMinIntervalMs / 1000))}
+              onChange={(e) => {
+                const secs = Number(e.target.value);
+                if (!Number.isFinite(secs)) return;
+                const clamped = Math.min(300, Math.max(1, Math.round(secs)));
+                onChange({
+                  ...settings,
+                  downloadMinIntervalMs: clamped * 1000,
+                });
+              }}
+            />
+          </label>
+          <p className="hint">{t("media_tools.download_interval_hint")}</p>
+          <label className="field">
+            <span>{t("media_tools.download_jitter_label")}</span>
+            <input
+              type="number"
+              min={0}
+              max={120}
+              step={1}
+              aria-label={t("media_tools.download_jitter_aria")}
+              value={Math.max(0, Math.round(settings.downloadJitterMs / 1000))}
+              onChange={(e) => {
+                const secs = Number(e.target.value);
+                if (!Number.isFinite(secs)) return;
+                const clamped = Math.min(120, Math.max(0, Math.round(secs)));
+                onChange({
+                  ...settings,
+                  downloadJitterMs: clamped * 1000,
+                });
+              }}
+            />
+          </label>
+          <p className="hint">{t("media_tools.download_jitter_hint")}</p>
+        </div>
       </details>
 
       {showPowerAdvanced ? (

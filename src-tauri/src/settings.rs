@@ -34,11 +34,12 @@ fn default_gemini_free_tier() -> bool {
 }
 
 fn default_download_min_interval_ms() -> u32 {
-    1500
+    // TikTok IP-blocks aggressive clients; 1.5s was far too low for bulk queues.
+    20_000
 }
 
 fn default_download_jitter_ms() -> u32 {
-    750
+    5_000
 }
 
 fn default_download_max_attempts() -> u8 {
@@ -494,6 +495,14 @@ pub fn load(app: &tauri::AppHandle) -> Result<AppSettings, String> {
             }
         }
         Err(_) => {}
+    }
+
+    // One-shot bump of the pre-2.0.17 pacing default (1.5s) that burned TikTok IPs.
+    if s.download_min_interval_ms <= 1_500 {
+        s.download_min_interval_ms = default_download_min_interval_ms();
+        if s.download_jitter_ms <= 750 {
+            s.download_jitter_ms = default_download_jitter_ms();
+        }
     }
 
     Ok(s)

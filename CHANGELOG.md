@@ -2,6 +2,13 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.17] - 2026-07-31
+
+### Changed
+
+- **Download min interval** default raised to **20 s** (+ 5 s jitter) to reduce TikTok IP blocks on bulk queues (was 1.5 s).
+- Preferences → Media tools: editable **Download min interval** and **jitter** (seconds). Existing installs still on ≤1.5 s are migrated on load.
+
 ## [2.0.16] - 2026-07-31
 
 ### Added
@@ -415,6 +422,7 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.17]: https://github.com/vglu/v2t/releases/tag/v2.0.17
 [2.0.16]: https://github.com/vglu/v2t/releases/tag/v2.0.16
 [2.0.15]: https://github.com/vglu/v2t/releases/tag/v2.0.15
 [2.0.14]: https://github.com/vglu/v2t/releases/tag/v2.0.14
