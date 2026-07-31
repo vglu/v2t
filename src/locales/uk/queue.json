@@ -75,5 +75,8 @@
     "show_in_folder": "Показати у папці",
     "open_file": "Відкрити файл"
   },
-  "progress_aria": "{{фаза}} прогрес"
+  "progress_aria": "{{phase}} прогрес",
+  "progress": {
+    "waiting_transcription": "Очікування транскрипції…"
+  }
 }

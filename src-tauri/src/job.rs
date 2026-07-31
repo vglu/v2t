@@ -333,11 +333,13 @@ pub fn finish_browser_queue_job_timed(
         .ok_or("Transcript path UTF-8")?
         .to_string();
 
-    if delete_audio_after {
-        let wd = Path::new(work_dir);
-        if wd.is_dir() {
-            let _ = fs::remove_dir_all(wd);
-        }
+    // Always remove the temp work dir after success. Kept media belongs in the
+    // output folder (`keep_downloaded_audio` / `keep_downloaded_video`); leaving
+    // `v2t-work-*` when `delete_audio_after` was false filled %TEMP%.
+    let _ = delete_audio_after; // retained on BrowserPrepared for API compat
+    let wd = Path::new(work_dir);
+    if wd.is_dir() {
+        let _ = fs::remove_dir_all(wd);
     }
 
     let summary = if n_tracks == 1 {
@@ -1067,9 +1069,8 @@ pub async fn run_transcribe_stage(
         .ok_or("Transcript path UTF-8")?
         .to_string();
 
-    if settings.delete_audio_after {
-        let _ = fs::remove_dir_all(&work_dir);
-    }
+    // Always remove the temp work dir after success (see browser_queue_job_finish).
+    let _ = fs::remove_dir_all(&work_dir);
 
     let summary = if n_tracks == 1 {
         format!("Saved: {}", transcript_path)

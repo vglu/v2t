@@ -553,13 +553,23 @@ export function QueuePanel({
     setQueueActive(true);
     appendLog(t("msg.starting_queue", { count: pendingAcquire.length }));
 
+    // Same array reference the runners mutate; must be visible in `finally`
+    // so Stop/cancel can discard leftover temp work dirs.
+    const runnerItems = items;
+
     try {
       const { runAcquireLoop, runTranscribeLoop, PendingArtifactsBackpressure } =
         await import("../lib/queueRunners");
       const backpressure = PendingArtifactsBackpressure.fromSettings(settings);
 
-      const runnerItems = items;
       const onUpdate = () => setItems([...runnerItems]);
+      const onStageError = (
+        item: QueueItem,
+        stage: "acquire" | "transcribe",
+        message: string,
+      ) => {
+        appendLog(`Error [${stage}]: ${message} — ${item.displayLabel}`);
+      };
 
       const invoke = {
         acquireMediaItem,
@@ -576,6 +586,7 @@ export function QueuePanel({
           shouldStop: () => stopDownloadsRef.current,
           backpressure,
           onUpdate,
+          onStageError,
         }),
         runTranscribeLoop({
           items: runnerItems,
@@ -584,9 +595,33 @@ export function QueuePanel({
           shouldStop: () => stopTranscriptionRef.current,
           backpressure,
           onUpdate,
+          onStageError,
         }),
       ]);
     } finally {
+      // Drop temp work dirs for items that will not be transcribed (Stop /
+      // cancel). Successful jobs already delete work_dir in Rust; clearAll also
+      // discards. Without this, Stop left pending acquire→transcribe artifacts.
+      const leftovers = runnerItems.filter(
+        (it) =>
+          !!it.artifact &&
+          (it.transcribe.status === "cancelled" ||
+            it.acquire.status === "cancelled" ||
+            it.acquire.status === "error"),
+      );
+      for (const it of leftovers) {
+        if (!it.artifact) continue;
+        try {
+          await discardArtifact(it.artifact);
+        } catch {
+          // Best-effort: do not block queue idle on a stuck temp lock.
+        }
+        it.artifact = undefined;
+      }
+      if (leftovers.length) {
+        setItems([...runnerItems]);
+      }
+
       setQueueActive(false);
       stopDownloadsRef.current = false;
       stopTranscriptionRef.current = false;
@@ -674,6 +709,13 @@ export function QueuePanel({
 
   const retryAcquireStage = useCallback(
     (item: QueueItem) => {
+      const staleArtifact = item.artifact;
+      if (staleArtifact) {
+        void discardArtifact(staleArtifact).catch(() => {
+          // Best-effort: temp may already be gone.
+        });
+      }
+
       setItems((prev) => {
         const it = prev.find((x) => x.id === item.id);
         if (!it) return prev;
@@ -1212,16 +1254,27 @@ export function QueuePanel({
                           const canOpenResult =
                             it.transcribe.status === "done" &&
                             Boolean(outPath?.trim());
+                          const rawProgress =
+                            it.transcribe.status === "running"
+                              ? itemProgress[it.id]
+                              : undefined;
+                          // Ignore leftover download-phase snapshots so the bar
+                          // does not stick at yt-dlp 100% while whisper starts.
+                          const progress =
+                            rawProgress &&
+                            rawProgress.phase !== "yt-dlp" &&
+                            rawProgress.phase !== "yt-dlp-video" &&
+                            rawProgress.phase !== "ffmpeg" &&
+                            rawProgress.phase !== "audio-save" &&
+                            rawProgress.phase !== "prepare"
+                              ? rawProgress
+                              : undefined;
                           return (
                             <QueueItemRow
                               key={it.id}
                               item={it}
                               lane="transcribe"
-                              progress={
-                                it.transcribe.status === "running"
-                                  ? itemProgress[it.id]
-                                  : undefined
-                              }
+                              progress={progress}
                               canOpenResult={canOpenResult}
                               outPath={outPath}
                               onReveal={revealTranscriptInFolder}
@@ -1324,10 +1377,25 @@ function QueueItemRow({
   const status = itemStatus(item);
   const showDoneCheck = status === "done";
 
+  const showWaitingForTranscription =
+    lane === "transcribe" &&
+    item.acquire.status === "done" &&
+    item.transcribe.status === "pending";
+
   const showProgress =
-    lane === "download"
+    showWaitingForTranscription ||
+    (lane === "download"
       ? item.acquire.status === "running" && progress != null
-      : item.transcribe.status === "running" && progress != null;
+      : item.transcribe.status === "running" && progress != null);
+
+  const displayProgress: JobProgressSnapshot | undefined = showWaitingForTranscription
+    ? {
+        phase: "queue",
+        message: tQueue("progress.waiting_transcription", {
+          defaultValue: "Waiting for transcription…",
+        }),
+      }
+    : progress;
 
   const subtasks = item.subtasks;
   const showSubtasks =
@@ -1432,10 +1500,10 @@ function QueueItemRow({
         </td>
       </tr>
 
-      {showProgress && progress ? (
+      {showProgress && displayProgress ? (
         <tr className="queue-progress-row" data-testid="queue-progress-row">
           <td colSpan={5}>
-            <JobProgressBar progress={progress} />
+            <JobProgressBar progress={displayProgress} />
           </td>
         </tr>
       ) : null}

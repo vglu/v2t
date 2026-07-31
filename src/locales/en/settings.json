@@ -175,7 +175,7 @@
   },
   "filename_template_label": "Filename template",
   "filename_template_placeholder": "{title}_{date}_{index}_t{track}.txt",
-  "delete_audio_after": "Delete temp audio after success",
+  "delete_audio_after": "Delete temp files after success (kept media uses Keep downloaded audio/video)",
   "keep_video": "Save downloaded video to output folder (URL jobs — second yt-dlp pass, ≤720p mp4; playlists → one subfolder per playlist, every video)",
   "keep_audio": "Save downloaded audio to output folder (URL jobs + local video — extracted via ffmpeg)",
   "keep_media_info": "Save media info next to transcript (.info.json)",

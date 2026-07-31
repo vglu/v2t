@@ -72,10 +72,10 @@ pub(crate) fn yt_dlp_cookie_db_failure(stderr: &[u8]) -> bool {
 }
 
 fn format_yt_dlp_fail(exit: i32, stderr: &[u8]) -> String {
-    let tail = tail_stderr(stderr);
+    let detail = yt_dlp_fail_detail(stderr);
     let kind = yt_dlp_error::classify(stderr);
     let label = kind.label();
-    let mut msg = format!("yt-dlp failed (exit {exit}) [{label}]: {tail}");
+    let mut msg = format!("yt-dlp failed (exit {exit}) [{label}]: {detail}");
     match kind {
         DownloadFailureKind::CookieStore => {
             msg.push_str(
@@ -87,9 +87,49 @@ app-bound encryption). In Preferences → Tools set cookies to Firefox \
         DownloadFailureKind::ExtractorStale => {
             msg.push_str("\n\nyt-dlp is outdated — update it in Preferences → Tools.");
         }
+        DownloadFailureKind::RateLimited => {
+            let lower = String::from_utf8_lossy(stderr).to_ascii_lowercase();
+            if lower.contains("ip address is blocked") || lower.contains("blocked from accessing")
+            {
+                msg.push_str(
+                    "\n\nTikTok blocked this IP (bulk download / bot detection). \
+Stop the queue for several hours, raise Download min interval (e.g. 15–30s), \
+update yt-dlp, or retry later via VPN / another network. Do not hammer retries.",
+                );
+            }
+        }
         _ => {}
     }
     msg
+}
+
+/// Prefer real `ERROR:` / `HTTP Error` lines over the trailing "yt-dlp version
+/// older than 90 days" WARNING that often lands at the end of stderr and used
+/// to become the only visible failure text.
+fn yt_dlp_fail_detail(stderr: &[u8]) -> String {
+    let full = String::from_utf8_lossy(stderr);
+    let mut errors: Vec<&str> = Vec::new();
+    for line in full.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let lower = t.to_ascii_lowercase();
+        if lower.starts_with("error:")
+            || lower.contains("http error ")
+            || lower.contains("unable to extract")
+            || lower.contains("unsupported url")
+            || lower.contains("ip address is blocked")
+            || lower.contains("blocked from accessing")
+        {
+            errors.push(t);
+        }
+    }
+    if !errors.is_empty() {
+        let joined = errors.join(" | ");
+        return tail_with_ellipsis(joined.trim(), STDERR_TAIL);
+    }
+    tail_stderr(stderr)
 }
 
 /// yt-dlp format when `-x` postprocessing fails: best audio stream, else best single file.
@@ -1088,6 +1128,9 @@ pub async fn prepare_media_audio(
                     continue 'http_retry;
                 }
                 let _ = fs::remove_dir_all(&work_dir);
+                if let Some((sink, jid)) = maybe_log.as_ref() {
+                    emit_pipeline_log(sink, jid, "yt-dlp", &out.stderr);
+                }
                 return Err(format_yt_dlp_fail(out.status.code().unwrap_or(-1), &out.stderr));
             }
 
@@ -1284,6 +1327,17 @@ pub async fn prepare_media_audio(
 
     let ffmpeg_override_ref = ffmpeg_override.as_deref();
     let mut wav_paths: Vec<String> = Vec::new();
+    // Clear the stuck yt-dlp 100% progress bar before long ffmpeg work.
+    if let Some((sink, jid)) = maybe_log.as_ref() {
+        sink.emit(JobEvent::QueueJobProgress(QueueJobProgressEvent {
+            job_id: (*jid).to_string(),
+            phase: "ffmpeg".into(),
+            message: "Normalizing audio…".into(),
+            subtask_index: None,
+            subtask_total: None,
+            subtask_percent: None,
+        }));
+    }
     for (i, input_media) in input_files.iter().enumerate() {
         if cancel.is_cancelled() {
             let _ = fs::remove_dir_all(&work_dir);
@@ -1391,6 +1445,24 @@ mod tests {
     fn tail_with_ellipsis_passthrough_when_short() {
         let s = "short";
         assert_eq!(tail_with_ellipsis(s, 100), "short");
+    }
+
+    #[test]
+    fn yt_dlp_fail_detail_prefers_error_over_version_warning() {
+        let stderr = b"ERROR: [TikTok] 123: Unable to download webpage: HTTP Error 403: Forbidden\n\
+WARNING: Your yt-dlp version (2026.03.17) is older than 90 days!\n\
+It is strongly recommended to always use the latest version.\n";
+        let detail = yt_dlp_fail_detail(stderr);
+        assert!(
+            detail.contains("HTTP Error 403") || detail.contains("ERROR:"),
+            "detail={detail}"
+        );
+        assert!(
+            !detail.contains("older than 90 days"),
+            "version warning must not bury the real error: {detail}"
+        );
+        let msg = format_yt_dlp_fail(1, stderr);
+        assert!(msg.contains("forbidden"), "msg={msg}");
     }
 
     #[test]

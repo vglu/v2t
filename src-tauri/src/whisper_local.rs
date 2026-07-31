@@ -369,7 +369,7 @@ async fn transcribe_one_wav(
 
     if export_webvtt {
         let json_path = out_base.with_extension("json");
-        let json = match std::fs::read_to_string(&json_path) {
+        let json = match read_text_file_lossy(&json_path) {
             Ok(body) => body,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 return Err(format!(
@@ -385,7 +385,7 @@ async fn transcribe_one_wav(
         Ok(transcript)
     } else {
         let read_path = out_base.with_extension("txt");
-        let text = match std::fs::read_to_string(&read_path) {
+        let text = match read_text_file_lossy(&read_path) {
             Ok(body) => body,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 return Err(format!(
@@ -399,6 +399,18 @@ async fn transcribe_one_wav(
         let _ = std::fs::remove_file(&read_path);
         Ok(transcript)
     }
+}
+
+/// Read a whisper-cli output file. Some builds emit non-UTF-8 bytes inside
+/// otherwise-valid JSON/text (speaker labels, metadata). `read_to_string`
+/// fails with "stream did not contain valid UTF-8"; lossy decode keeps the
+/// transcript usable instead of failing the whole job (and forcing re-download).
+fn read_text_file_lossy(path: &Path) -> std::io::Result<String> {
+    let bytes = std::fs::read(path)?;
+    Ok(match String::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(e) => String::from_utf8_lossy(&e.into_bytes()).into_owned(),
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -1039,7 +1051,7 @@ fn whisper_chunk_checkpoint_path(checkpoint_dir: &Path, i: u32, timed: bool) -> 
 }
 
 fn read_plain_whisper_checkpoint(path: &Path) -> Result<Option<String>, String> {
-    match std::fs::read_to_string(path) {
+    match read_text_file_lossy(path) {
         Ok(saved) if !saved.trim().is_empty() => Ok(Some(saved)),
         Ok(_) => Ok(None),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -1064,6 +1076,28 @@ pub fn cleanup_whisper_chunk_checkpoints(checkpoint_dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_text_file_lossy_accepts_invalid_utf8() {
+        let dir = std::env::temp_dir().join(format!(
+            "v2t-whisper-utf8-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("out.json");
+        // Valid JSON prefix + invalid UTF-8 byte + rest — must not error.
+        let mut bytes = br#"{"text":""#.to_vec();
+        bytes.push(0xff);
+        bytes.extend_from_slice(br#"hello"}"#);
+        std::fs::write(&path, &bytes).unwrap();
+        let body = read_text_file_lossy(&path).unwrap();
+        assert!(body.contains("hello"));
+        assert!(std::str::from_utf8(body.as_bytes()).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn parses_percent_from_whisper_style_line() {

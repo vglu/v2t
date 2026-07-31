@@ -172,5 +172,8 @@
     "show_in_folder": "Show in folder",
     "open_file": "Open file"
   },
-  "progress_aria": "{{phase}} progress"
+  "progress_aria": "{{phase}} progress",
+  "progress": {
+    "waiting_transcription": "Waiting for transcription…"
+  }
 }

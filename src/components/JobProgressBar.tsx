@@ -10,6 +10,7 @@ export function JobProgressBar({ progress }: Props) {
   const { t } = useTranslation("queue");
   const { phase, message, subtaskIndex, subtaskTotal, subtaskPercent } = progress;
   const hasSubtask = subtaskIndex != null && subtaskTotal != null;
+  const hasPercent = subtaskPercent != null;
   const percent = subtaskPercent ?? 0;
   // yt-dlp short_message: "5% of 45.67MiB at 1.50MiB/s ETA 00:30" — strip the
   // leading "N% " so we don't repeat the percent we already render separately.
@@ -24,17 +25,25 @@ export function JobProgressBar({ progress }: Props) {
             {subtaskIndex}/{subtaskTotal}
           </span>
         ) : null}
-        {subtaskPercent != null ? (
+        {hasPercent ? (
           <span className="job-progress-percent">{percent}%</span>
         ) : null}
         {tail ? <span className="job-progress-tail">{tail}</span> : null}
       </div>
-      <progress
-        className="job-progress-bar"
-        max={100}
-        value={percent}
-        aria-label={t("progress_aria", { phase })}
-      />
+      {hasPercent ? (
+        <progress
+          className="job-progress-bar"
+          max={100}
+          value={percent}
+          aria-label={t("progress_aria", { phase })}
+        />
+      ) : (
+        <progress
+          className="job-progress-bar"
+          max={100}
+          aria-label={t("progress_aria", { phase })}
+        />
+      )}
     </div>
   );
 }

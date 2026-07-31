@@ -1,14 +1,18 @@
-//! Sweep orphaned `v2t-work-*` directories from the system temp dir.
+//! Sweep orphaned `v2t-work-*` / `v2t-subs-*` directories from the system temp dir.
 //!
 //! `pipeline::prepare_media_audio` creates `temp_dir().join("v2t-work-{nanos}")`
-//! per call; cleanup happens only on certain success/error paths. Hard kills,
-//! panics, and `delete_audio_after = false` jobs leave the directory behind.
-//! This module scans on app startup and removes anything older than `max_age`.
+//! per call; acquire→transcribe holds it until the job finishes. Hard kills,
+//! panics, Stop without discard, and older builds with `delete_audio_after =
+//! false` left directories behind. This module scans on app startup and removes
+//! anything older than `max_age` (default: 2 hours).
 
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-const WORK_DIR_PREFIX: &str = "v2t-work-";
+const WORK_DIR_PREFIXES: &[&str] = &["v2t-work-", "v2t-subs-"];
+
+/// Default orphan age before startup sweep removes a temp work dir.
+pub const DEFAULT_MAX_AGE: Duration = Duration::from_secs(2 * 3600);
 
 #[derive(Debug, Default, Clone)]
 pub struct CleanupReport {
@@ -17,7 +21,7 @@ pub struct CleanupReport {
     pub errors: u32,
 }
 
-/// Scan the system temp dir and remove `v2t-work-*` directories older than `max_age`.
+/// Scan the system temp dir and remove orphaned v2t temp directories older than `max_age`.
 pub fn run_cleanup(max_age: Duration) -> CleanupReport {
     run_cleanup_at(max_age, SystemTime::now(), &std::env::temp_dir())
 }
@@ -37,7 +41,10 @@ pub(crate) fn run_cleanup_at(max_age: Duration, now: SystemTime, root: &Path) ->
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        if !name.starts_with(WORK_DIR_PREFIX) {
+        if !WORK_DIR_PREFIXES
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
+        {
             continue;
         }
         let modified = match entry.metadata().and_then(|m| m.modified()) {
@@ -99,29 +106,32 @@ mod tests {
         let root = fresh_dir();
         let work_a = root.join("v2t-work-aaa");
         let work_b = root.join("v2t-work-bbb");
+        let subs = root.join("v2t-subs-ccc");
         let other = root.join("not-ours-ccc");
         let work_file = root.join("v2t-work-not-a-dir.txt");
         fs::create_dir_all(&work_a).unwrap();
         fs::create_dir_all(&work_b).unwrap();
+        fs::create_dir_all(&subs).unwrap();
         fs::create_dir_all(&other).unwrap();
         fs::write(work_a.join("payload.bin"), vec![0u8; 4096]).unwrap();
         fs::write(work_b.join("payload.bin"), vec![0u8; 8192]).unwrap();
+        fs::write(subs.join("payload.bin"), vec![0u8; 2048]).unwrap();
         fs::write(other.join("payload.bin"), vec![0u8; 1024]).unwrap();
         fs::write(&work_file, b"unrelated").unwrap();
 
         // Force "now" 48h in the future → all dirs appear ancient.
         let future = SystemTime::now() + Duration::from_secs(48 * 3600);
-        let report = run_cleanup_at(Duration::from_secs(24 * 3600), future, &root);
+        let report = run_cleanup_at(Duration::from_secs(2 * 3600), future, &root);
 
-        assert_eq!(report.removed, 2);
-        assert!(report.bytes_freed >= 4096 + 8192);
+        assert_eq!(report.removed, 3);
+        assert!(report.bytes_freed >= 4096 + 8192 + 2048);
         assert_eq!(report.errors, 0);
         assert!(!work_a.exists());
         assert!(!work_b.exists());
+        assert!(!subs.exists());
         assert!(other.exists(), "non-prefixed dirs should be untouched");
         assert!(work_file.exists(), "regular files should be untouched");
 
-        // Cleanup
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -132,8 +142,7 @@ mod tests {
         fs::create_dir_all(&work).unwrap();
         fs::write(work.join("data"), vec![0u8; 100]).unwrap();
 
-        // "Now" is right now → freshly-created dir is younger than max_age.
-        let report = run_cleanup_at(Duration::from_secs(24 * 3600), SystemTime::now(), &root);
+        let report = run_cleanup_at(Duration::from_secs(2 * 3600), SystemTime::now(), &root);
 
         assert_eq!(report.removed, 0);
         assert!(work.exists());

@@ -158,8 +158,10 @@ export async function runAcquireLoop(args: {
   shouldStop: QueueRunnersShouldStop;
   backpressure: PendingArtifactsBackpressure;
   onUpdate: () => void;
+  /** Optional: log stage failures (errors are otherwise only on the row status). */
+  onStageError?: (item: QueueItem, stage: "acquire" | "transcribe", message: string) => void;
 }) {
-  const { items, settings, invoke, shouldStop, backpressure, onUpdate } = args;
+  const { items, settings, invoke, shouldStop, backpressure, onUpdate, onStageError } = args;
 
   type InFlight = { itemId: string; promise: Promise<void> };
   const inFlight = new Set<InFlight>();
@@ -233,7 +235,7 @@ export async function runAcquireLoop(args: {
                 bytesOnDisk: outcome.bytesOnDisk,
               };
               next.transcribe.status = "pending";
-              next.transcribe.detail = undefined;
+              next.transcribe.detail = "Waiting for transcription…";
               backpressure.addPendingReady(next.id, outcome.bytesOnDisk);
               onUpdate();
               break;
@@ -258,7 +260,7 @@ export async function runAcquireLoop(args: {
               };
               next.transcriptPath = null;
               next.transcribe.status = "pending";
-              next.transcribe.detail = undefined;
+              next.transcribe.detail = "Waiting for transcription…";
               backpressure.addPendingBrowserPrepared(next.id);
               onUpdate();
               break;
@@ -268,7 +270,9 @@ export async function runAcquireLoop(args: {
           if (shouldStop() || isCancelledError(e)) {
             markAcquireStatus(next, "cancelled", "Cancelled");
           } else {
-            markAcquireStatus(next, "error", e instanceof Error ? e.message : String(e));
+            const msg = e instanceof Error ? e.message : String(e);
+            markAcquireStatus(next, "error", msg);
+            onStageError?.(next, "acquire", msg);
           }
           // Any error releases reserved capacity because it doesn't create a pending artifact.
           backpressure.releaseAcquireReservation();
@@ -304,8 +308,9 @@ export async function runTranscribeLoop(args: {
   shouldStop: QueueRunnersShouldStop;
   backpressure: PendingArtifactsBackpressure;
   onUpdate: () => void;
+  onStageError?: (item: QueueItem, stage: "acquire" | "transcribe", message: string) => void;
 }) {
-  const { items, settings, invoke, shouldStop, backpressure, onUpdate } = args;
+  const { items, settings, invoke, shouldStop, backpressure, onUpdate, onStageError } = args;
   const outDir = settings.outputDir?.trim();
   if (!outDir) throw new Error("Output folder is not set");
 
@@ -408,6 +413,7 @@ export async function runTranscribeLoop(args: {
             markTranscribeStatus(next, "cancelled", "Cancelled");
           } else {
             markTranscribeStatus(next, "error", msg);
+            onStageError?.(next, "transcribe", msg);
           }
           onUpdate();
         }

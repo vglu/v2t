@@ -172,5 +172,8 @@
     "show_in_folder": "Показать в папке",
     "open_file": "Открыть файл"
   },
-  "progress_aria": "{{phase}} прогресс"
+  "progress_aria": "{{phase}} прогресс",
+  "progress": {
+    "waiting_transcription": "Ожидание транскрипции…"
+  }
 }

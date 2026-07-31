@@ -468,10 +468,10 @@ pub fn run() {
             if let Some(log) = SessionLog::try_init(app.handle()) {
                 app.manage(log);
             }
-            // Sweep orphaned v2t-work-* dirs older than 24 h. Off the main thread —
-            // the scan touches the temp dir but does not block UI startup.
+            // Sweep orphaned v2t-work-* / v2t-subs-* dirs older than 2 h. Off the
+            // main thread — the scan touches the temp dir but does not block UI.
             std::thread::spawn(|| {
-                let report = temp_cleanup::run_cleanup(std::time::Duration::from_secs(24 * 3600));
+                let report = temp_cleanup::run_cleanup(temp_cleanup::DEFAULT_MAX_AGE);
                 if report.removed > 0 || report.errors > 0 {
                     eprintln!(
                         "[v2t] temp cleanup: removed={} bytes_freed={} errors={}",

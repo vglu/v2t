@@ -48,7 +48,11 @@ pub fn classify(stderr: &[u8]) -> DownloadFailureKind {
 
     let text = String::from_utf8_lossy(stderr).to_ascii_lowercase();
 
-    if text.contains("http error 429") {
+    if text.contains("http error 429")
+        || text.contains("ip address is blocked")
+        || text.contains("your ip address is blocked")
+        || text.contains("blocked from accessing this post")
+    {
         return DownloadFailureKind::RateLimited;
     }
     if text.contains("http error 503")
@@ -144,6 +148,15 @@ mod tests {
     #[test]
     fn classify_rate_limited() {
         let kind = classify(b"ERROR: HTTP Error 429: Too Many Requests");
+        assert_eq!(kind, DownloadFailureKind::RateLimited);
+        assert!(kind.is_retryable());
+    }
+
+    #[test]
+    fn classify_tiktok_ip_blocked_as_rate_limited() {
+        let kind = classify(
+            b"ERROR: [TikTok] 7624508884811582728: Your IP address is blocked from accessing this post",
+        );
         assert_eq!(kind, DownloadFailureKind::RateLimited);
         assert!(kind.is_retryable());
     }

@@ -125,6 +125,10 @@ export function itemStatus(item: QueueItem): QueueItemStatus {
   if (item.acquire.status === "cancelled") return "cancelled";
   if (item.transcribe.status === "cancelled") return "cancelled";
   if (item.acquire.status === "waiting") return "waiting";
+  // Downloaded, waiting for a transcription slot (or queue start).
+  if (item.acquire.status === "done" && item.transcribe.status === "pending") {
+    return "waiting";
+  }
   if (item.acquire.status === "running" || item.transcribe.status === "running")
     return "running";
   if (item.acquire.status === "pending" || item.transcribe.status === "pending")

@@ -2,6 +2,27 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.16] - 2026-07-31
+
+### Added
+
+- **Dual queues:** separate Download and Transcription panels with independent Stop, concurrency limits, and backpressure so temp WAVs do not fill the disk unbounded.
+- **yt-dlp pacing / retry:** min interval, jitter, backoff on 403/429/503, TikTok IP-block classified as rate-limit with a clear hint.
+- TikTok `/photo/` and bare profile URLs marked **unsupported** (no wasted yt-dlp calls).
+- Queue progress: after download, show **Waiting for transcription…** instead of a stuck yt-dlp 100% bar; indeterminate bar when percent is unknown.
+- Stage errors (`acquire` / `transcribe`) are written to the session log.
+
+### Fixed
+
+- TikTok + “keep downloaded video”: reuse the already-downloaded file instead of a second yt-dlp pass (request amplification 3→1 for single-item URLs).
+- Local Whisper: read JSON/txt with **lossy UTF-8** so non-UTF-8 whisper-cli output no longer fails the job (and forces a full re-download on retry).
+- **Temp leak:** always delete `v2t-work-*` after a successful job; discard artifacts on Stop / retry acquire; startup sweep of orphans older than **2 hours** (also `v2t-subs-*`).
+- yt-dlp failure text prefers real `ERROR:` / HTTP lines over the trailing “version older than 90 days” WARNING.
+
+### Changed
+
+- Quality / Power profiles set **Delete temp after success** on (kept media still uses Keep downloaded audio/video).
+
 ## [2.0.15] - 2026-07-29
 
 ### Added
@@ -394,6 +415,8 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.16]: https://github.com/vglu/v2t/releases/tag/v2.0.16
+[2.0.15]: https://github.com/vglu/v2t/releases/tag/v2.0.15
 [2.0.14]: https://github.com/vglu/v2t/releases/tag/v2.0.14
 [2.0.13]: https://github.com/vglu/v2t/releases/tag/v2.0.13
 [2.0.12]: https://github.com/vglu/v2t/releases/tag/v2.0.12
