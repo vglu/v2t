@@ -22,6 +22,7 @@ export type StageStatus =
 /** Same labels as Rust `DownloadFailureKind::label()`. */
 export type DownloadFailureKind =
   | "rateLimited"
+  | "ipBlocked"
   | "serviceUnavailable"
   | "forbidden"
   | "unsupported"

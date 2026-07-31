@@ -87,16 +87,18 @@ app-bound encryption). In Preferences → Tools set cookies to Firefox \
         DownloadFailureKind::ExtractorStale => {
             msg.push_str("\n\nyt-dlp is outdated — update it in Preferences → Tools.");
         }
+        DownloadFailureKind::IpBlocked => {
+            msg.push_str(
+                "\n\nThis IP is blocked for this post (bulk download / bot detection). \
+Further retries will not help. Stop the queue for several hours, raise Download min \
+interval (e.g. 15–30s), update yt-dlp, or try later via VPN / another network.",
+            );
+        }
         DownloadFailureKind::RateLimited => {
-            let lower = String::from_utf8_lossy(stderr).to_ascii_lowercase();
-            if lower.contains("ip address is blocked") || lower.contains("blocked from accessing")
-            {
-                msg.push_str(
-                    "\n\nTikTok blocked this IP (bulk download / bot detection). \
-Stop the queue for several hours, raise Download min interval (e.g. 15–30s), \
-update yt-dlp, or retry later via VPN / another network. Do not hammer retries.",
-                );
-            }
+            msg.push_str(
+                "\n\nRate limited by the site. Waiting between retries; if this keeps \
+happening, raise Download min interval or pause the queue.",
+            );
         }
         _ => {}
     }
@@ -800,7 +802,9 @@ pub(crate) async fn run_yt_dlp_paced(
     let outcome = match &result {
         Ok(out) if out.status.success() => PacingOutcome::Ok,
         Ok(out) => match yt_dlp_error::classify(&out.stderr) {
-            DownloadFailureKind::RateLimited => PacingOutcome::RateLimited,
+            DownloadFailureKind::RateLimited | DownloadFailureKind::IpBlocked => {
+                PacingOutcome::RateLimited
+            }
             DownloadFailureKind::ServiceUnavailable | DownloadFailureKind::Forbidden => {
                 PacingOutcome::ServerBusy
             }

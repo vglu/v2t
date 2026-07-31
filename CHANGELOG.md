@@ -2,6 +2,12 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.18] - 2026-07-31
+
+### Fixed
+
+- TikTok **IP blocked** is no longer treated like a soft 429: no download retries after subtitle probe already got the ban; job fails immediately with a clear hint.
+
 ## [2.0.17] - 2026-07-31
 
 ### Changed
@@ -422,6 +428,7 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.18]: https://github.com/vglu/v2t/releases/tag/v2.0.18
 [2.0.17]: https://github.com/vglu/v2t/releases/tag/v2.0.17
 [2.0.16]: https://github.com/vglu/v2t/releases/tag/v2.0.16
 [2.0.15]: https://github.com/vglu/v2t/releases/tag/v2.0.15

@@ -22,6 +22,8 @@ pub fn yt_dlp_cookie_db_failure(stderr: &[u8]) -> bool {
 pub enum DownloadFailureKind {
     /// HTTP 429 — explicit rate limit.
     RateLimited,
+    /// Site rejected this client IP for the post (e.g. TikTok). Not worth retrying.
+    IpBlocked,
     /// HTTP 502 / 503 / 504 — server overloaded.
     ServiceUnavailable,
     /// HTTP 403 — session/shield rejection; often clears after a pause.
@@ -48,11 +50,14 @@ pub fn classify(stderr: &[u8]) -> DownloadFailureKind {
 
     let text = String::from_utf8_lossy(stderr).to_ascii_lowercase();
 
-    if text.contains("http error 429")
-        || text.contains("ip address is blocked")
+    // TikTok (and similar) IP bans: further attempts on the same post are pointless.
+    if text.contains("ip address is blocked")
         || text.contains("your ip address is blocked")
         || text.contains("blocked from accessing this post")
     {
+        return DownloadFailureKind::IpBlocked;
+    }
+    if text.contains("http error 429") {
         return DownloadFailureKind::RateLimited;
     }
     if text.contains("http error 503")
@@ -104,6 +109,16 @@ impl DownloadFailureKind {
         )
     }
 
+    /// Permanent for this URL right now — do not fall through to another yt-dlp stage.
+    pub fn is_fatal_for_url(self) -> bool {
+        matches!(
+            self,
+            DownloadFailureKind::IpBlocked
+                | DownloadFailureKind::Unsupported
+                | DownloadFailureKind::Unavailable
+        )
+    }
+
     /// Exponential backoff duration before retry attempt `attempt` (1-based).
     /// Formula: `backoff_base * 2^(attempt-1)`, capped at `backoff_max`.
     pub fn backoff(self, attempt: u32, cfg: &PacingConfig) -> Duration {
@@ -118,6 +133,7 @@ impl DownloadFailureKind {
     pub fn label(self) -> &'static str {
         match self {
             DownloadFailureKind::RateLimited => "rateLimited",
+            DownloadFailureKind::IpBlocked => "ipBlocked",
             DownloadFailureKind::ServiceUnavailable => "serviceUnavailable",
             DownloadFailureKind::Forbidden => "forbidden",
             DownloadFailureKind::Unsupported => "unsupported",
@@ -153,12 +169,13 @@ mod tests {
     }
 
     #[test]
-    fn classify_tiktok_ip_blocked_as_rate_limited() {
+    fn classify_tiktok_ip_blocked_is_fatal_not_retryable() {
         let kind = classify(
             b"ERROR: [TikTok] 7624508884811582728: Your IP address is blocked from accessing this post",
         );
-        assert_eq!(kind, DownloadFailureKind::RateLimited);
-        assert!(kind.is_retryable());
+        assert_eq!(kind, DownloadFailureKind::IpBlocked);
+        assert!(!kind.is_retryable());
+        assert!(kind.is_fatal_for_url());
     }
 
     #[test]
@@ -250,6 +267,7 @@ mod tests {
     #[test]
     fn labels_are_camel_case() {
         assert_eq!(DownloadFailureKind::RateLimited.label(), "rateLimited");
+        assert_eq!(DownloadFailureKind::IpBlocked.label(), "ipBlocked");
         assert_eq!(DownloadFailureKind::ServiceUnavailable.label(), "serviceUnavailable");
         assert_eq!(DownloadFailureKind::ExtractorStale.label(), "extractorStale");
         assert_eq!(DownloadFailureKind::CookieStore.label(), "cookieStore");

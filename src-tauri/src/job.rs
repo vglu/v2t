@@ -22,6 +22,7 @@ use crate::timed_transcript::{
 use crate::transcribe;
 use crate::whisper_catalog;
 use crate::whisper_local;
+use crate::yt_dlp_error;
 use crate::yt_dlp_metadata;
 use tauri::Manager;
 
@@ -1324,6 +1325,19 @@ async fn try_subs_fast_path(
         Err(e) => {
             if e == pipeline::JOB_CANCELLED_MSG {
                 return Err(e);
+            }
+            // TikTok IP ban (etc.): probe already proved the URL is dead for this IP —
+            // do not fall through to download + retries.
+            let kind = yt_dlp_error::classify(e.as_bytes());
+            if kind.is_fatal_for_url() {
+                let mut msg = format!("[{}] {e}", kind.label());
+                if kind == yt_dlp_error::DownloadFailureKind::IpBlocked {
+                    msg.push_str(
+                        "\n\nThis IP is blocked for this post. Further retries will not help — \
+stop the queue for several hours, or try VPN / another network.",
+                    );
+                }
+                return Err(msg);
             }
             pipeline::emit_pipeline_text(
                 sink,
