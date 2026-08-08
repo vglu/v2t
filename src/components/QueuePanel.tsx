@@ -10,12 +10,14 @@ import {
   estimateOcrBatch,
   openSessionLog,
   releaseQueueJobSlot,
+  resolveCastboxChannel,
   saveFailedLinks,
   scanMediaFolder,
   sessionLogAppendUi,
 } from "../lib/invokeSafe";
 import {
   fileBasenameNoExt,
+  isCastboxChannelUrl,
   isUnsupportedMediaUrl,
   newJobId,
   parseInputLines,
@@ -384,17 +386,50 @@ export function QueuePanel({
     };
   }, [appendLog]);
 
-  function addUrlsFromDraft() {
+  async function addUrlsFromDraft() {
     const lines = parseInputLines(urlDraft);
     if (lines.length === 0) return;
-    addItems(
-      lines.map((source) => ({
-        kind: "url" as const,
+
+    const toAdd: Array<{
+      kind: "url";
+      source: string;
+      displayLabel: string;
+    }> = [];
+
+    for (const source of lines) {
+      if (isCastboxChannelUrl(source)) {
+        appendLog(t("msg.expanding_castbox", { url: shortLabel(source, 64) }));
+        try {
+          const ch = await resolveCastboxChannel(source);
+          for (const ep of ch.episodes) {
+            toAdd.push({
+              kind: "url",
+              source: ep.url,
+              displayLabel: ep.title.trim() || shortLabel(ep.url),
+            });
+          }
+          appendLog(
+            t("msg.expanded_castbox", {
+              title: ch.title,
+              count: ch.episodes.length,
+            }),
+          );
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          appendLog(t("msg.expand_castbox_failed", { error: msg }));
+        }
+        continue;
+      }
+      toAdd.push({
+        kind: "url",
         source,
         displayLabel: shortLabel(source),
-      })),
-    );
-    appendLog(t("msg.added_urls", { count: lines.length }));
+      });
+    }
+
+    if (toAdd.length === 0) return;
+    addItems(toAdd);
+    appendLog(t("msg.added_urls", { count: toAdd.length }));
     setUrlDraft("");
   }
 

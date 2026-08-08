@@ -107,7 +107,7 @@
   },
   "url_field": {
     "label": "URLs (one per line)",
-    "placeholder": "https://www.youtube.com/watch?v=…"
+    "placeholder": "YouTube / Castbox channel / episode URLs (one per line)"
   },
   "table": {
     "label_header": "Label",
@@ -129,6 +129,9 @@
   "msg": {
     "added_paths_drop": "Added {{count}} path(s) from drop",
     "added_urls": "Added {{count}} URL(s)",
+    "expanding_castbox": "Expanding Castbox channel: {{url}}",
+    "expanded_castbox": "Expanded \"{{title}}\" → {{count}} episode(s)",
+    "expand_castbox_failed": "Castbox expand failed: {{error}}",
     "added_files_picker": "Added {{count}} file(s) from picker",
     "queue_already_running": "Queue is already running",
     "nothing_to_run": "Nothing to run (no pending jobs)",

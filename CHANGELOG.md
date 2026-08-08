@@ -2,6 +2,12 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.19] - 2026-08-08
+
+### Added
+
+- **Castbox channel expand:** paste a Castbox podcast channel URL in Links → Add URLs — expands into one queue job per episode (titles + direct media URLs), similar in spirit to feeding a YouTube playlist.
+
 ## [2.0.18] - 2026-07-31
 
 ### Fixed
@@ -428,6 +434,7 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.19]: https://github.com/vglu/v2t/releases/tag/v2.0.19
 [2.0.18]: https://github.com/vglu/v2t/releases/tag/v2.0.18
 [2.0.17]: https://github.com/vglu/v2t/releases/tag/v2.0.17
 [2.0.16]: https://github.com/vglu/v2t/releases/tag/v2.0.16

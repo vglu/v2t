@@ -31,6 +31,14 @@ export function newJobId(): string {
   return `job-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+/** Castbox podcast channel page (not a single episode) — expand via Everest API. */
+export function isCastboxChannelUrl(url: string): boolean {
+  const lower = url.trim().toLowerCase();
+  if (!lower.includes("castbox.fm")) return false;
+  if (lower.includes("/episode/")) return false;
+  return lower.includes("/channel/") || lower.includes("/ch/");
+}
+
 /** TikTok photo posts and other non-media links yt-dlp cannot fetch. */
 export function isUnsupportedMediaUrl(url: string): boolean {
   const trimmed = url.trim();

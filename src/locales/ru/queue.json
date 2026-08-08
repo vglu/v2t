@@ -107,7 +107,7 @@
   },
   "url_field": {
     "label": "URLs (один на строку)",
-    "placeholder": "Ссылка на видео / аудио"
+    "placeholder": "YouTube / канал Castbox / выпуск (по одной ссылке на строку)"
   },
   "table": {
     "label_header": "Заголовок",
@@ -129,6 +129,9 @@
   "msg": {
     "added_paths_drop": "Добавлено {{count}} путь(а/ов) из перетаскивания",
     "added_urls": "Добавлено {{count}} URL(а)",
+    "expanding_castbox": "Разворот канала Castbox: {{url}}",
+    "expanded_castbox": "Развернуто «{{title}}» → {{count}} выпуск(ов)",
+    "expand_castbox_failed": "Не удалось развернуть Castbox: {{error}}",
     "added_files_picker": "Добавлено {{count}} файл(ов) из пикера",
     "queue_already_running": "Очередь уже запущена",
     "nothing_to_run": "Нет задач для выполнения (нет ожидающих заданий)",

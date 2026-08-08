@@ -440,3 +440,22 @@ export async function estimateOcrBatch(
     return null;
   }
 }
+
+export type CastboxEpisode = {
+  eid: number;
+  title: string;
+  url: string;
+  releaseDate?: string | null;
+};
+
+export type CastboxChannel = {
+  cid: number;
+  title: string;
+  episodes: CastboxEpisode[];
+};
+
+/** Expand Castbox channel URL → episode media URLs (throws on failure). */
+export async function resolveCastboxChannel(url: string): Promise<CastboxChannel> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return await invoke<CastboxChannel>("resolve_castbox_channel", { url });
+}

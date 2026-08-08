@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   fileBasenameNoExt,
+  isCastboxChannelUrl,
   isUnsupportedMediaUrl,
   parseInputLines,
   shortLabel,
@@ -13,6 +14,25 @@ describe("parseInputLines", () => {
 
   it("returns empty for whitespace", () => {
     expect(parseInputLines("  \n  ")).toEqual([]);
+  });
+});
+
+describe("isCastboxChannelUrl", () => {
+  it("detects channel pages", () => {
+    expect(
+      isCastboxChannelUrl(
+        "https://castbox.fm/channel/%D0%A5%D0%BE%D1%87%D1%83-id2374602?country=us",
+      ),
+    ).toBe(true);
+    expect(isCastboxChannelUrl("https://castbox.fm/channel/id2374602")).toBe(
+      true,
+    );
+  });
+
+  it("rejects episode pages", () => {
+    expect(
+      isCastboxChannelUrl("https://castbox.fm/episode/id2374602-id653290517"),
+    ).toBe(false);
   });
 });
 

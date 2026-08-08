@@ -17,7 +17,7 @@
   },
   "url_field": {
     "label": "URLs (один на рядок)",
-    "placeholder": "Вставте URL відео або аудіо"
+    "placeholder": "YouTube / канал Castbox / випуск (один URL на рядок)"
   },
   "table": {
     "label_header": "Мітка",
@@ -38,6 +38,9 @@
   "msg": {
     "added_paths_drop": "Додано {{count}} шлях(и) з перетягування",
     "added_urls": "Додано {{count}} URL(ів)",
+    "expanding_castbox": "Розгортання каналу Castbox: {{url}}",
+    "expanded_castbox": "Розгорнуто «{{title}}» → {{count}} випуск(ів)",
+    "expand_castbox_failed": "Не вдалося розгорнути Castbox: {{error}}",
     "added_files_picker": "Додано {{count}} файл(ів) з вибору",
     "queue_already_running": "Очередь вже запущена",
     "nothing_to_run": "Нічого не запускати (немає очікуваних завдань)",

@@ -3,6 +3,7 @@ mod api_key_store;
 mod api_server;
 mod audio_save;
 mod cancel_registry;
+mod castbox;
 mod deps;
 mod diarize;
 mod doc_extract;
@@ -310,6 +311,12 @@ fn discard_artifact(artifact: AcquiredArtifact) -> Result<(), String> {
     std::fs::remove_dir_all(work_dir).map_err(|e| e.to_string())
 }
 
+/// Expand a Castbox channel URL into episode media URLs (playlist-like ingest).
+#[tauri::command]
+async fn resolve_castbox_channel(url: String) -> Result<castbox::CastboxChannel, String> {
+    castbox::resolve_channel(&url).await
+}
+
 #[tauri::command]
 fn list_whisper_models() -> Vec<whisper_catalog::WhisperModelListItem> {
     whisper_catalog::list_models_for_ui()
@@ -524,7 +531,8 @@ pub fn run() {
             save_failed_links,
             acquire_media_item,
             transcribe_artifact,
-            discard_artifact
+            discard_artifact,
+            resolve_castbox_channel
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

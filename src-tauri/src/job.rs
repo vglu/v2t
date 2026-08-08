@@ -6,6 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::audio_save;
 use crate::cancel_registry::JobCancelRegistry;
+use crate::castbox;
 use crate::deps;
 use crate::diarize;
 use crate::media_info;
@@ -532,6 +533,14 @@ pub async fn run_acquire_stage(
     } else {
         None
     };
+
+    if castbox::is_castbox_channel_url(&source) {
+        return Err(
+            "Castbox channel URLs must be expanded in the Links box (Add URLs) — \
+they cannot be downloaded as a single yt-dlp playlist"
+                .to_string(),
+        );
+    }
 
     let prep = pipeline::prepare_media_audio(
         Some((&sink, job_id.as_str())),
