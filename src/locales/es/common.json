@@ -6,6 +6,9 @@
   },
   "header": {
     "lang_aria": "Idioma de la interfaz",
+    "help_label": "Ayuda",
+    "help_title": "Cómo usar Video to Text",
+    "help_aria": "Abrir ayuda",
     "setup_guide_label": "Guía de configuración",
     "setup_guide_title": "Guía rápida de configuración",
     "setup_guide_aria": "Abrir guía de configuración"

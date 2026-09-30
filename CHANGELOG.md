@@ -2,6 +2,14 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.20] - 2026-09-30
+
+### Added
+
+- **In-app Help** (header → Help / Справка): overview, common cases, speaker labels (Person 1/2 + why tags may be missing), transcription modes, outputs, YouTube/TikTok cookies, Preferences map, and limits. Full **en / ru / uk**; other UI locales fall back to English help text.
+- Shortcuts from Help to open **Preferences** or the **Setup guide**.
+- README user reference: common cases and “what each control does” (aligned with the in-app Help).
+
 ## [2.0.19] - 2026-08-08
 
 ### Added
@@ -434,6 +442,7 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.20]: https://github.com/vglu/v2t/releases/tag/v2.0.20
 [2.0.19]: https://github.com/vglu/v2t/releases/tag/v2.0.19
 [2.0.18]: https://github.com/vglu/v2t/releases/tag/v2.0.18
 [2.0.17]: https://github.com/vglu/v2t/releases/tag/v2.0.17

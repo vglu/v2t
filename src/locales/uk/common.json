@@ -27,6 +27,9 @@
   },
   "header": {
     "lang_aria": "Мова користувача",
+    "help_label": "Довідка",
+    "help_title": "Як користуватися Video to Text",
+    "help_aria": "Відкрити довідку",
     "setup_guide_label": "Встановлювач гідності",
     "setup_guide_title": "Короткий посібник за налаштування",
     "setup_guide_aria": "Відкрийте пояснення до налаштувань"

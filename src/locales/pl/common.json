@@ -6,6 +6,9 @@
   },
   "header": {
     "lang_aria": "Język aplikacji",
+    "help_label": "Pomoc",
+    "help_title": "Jak korzystać z Video to Text",
+    "help_aria": "Otwórz pomoc",
     "setup_guide_label": "Instrukcja instalacji",
     "setup_guide_title": "Szybkie przewodnik przez ustawienia",
     "setup_guide_aria": "Otwórz przewodnik ustawień"

@@ -16,6 +16,7 @@ import type onboardingEn from "../locales/en/onboarding.json";
 import type settingsEn from "../locales/en/settings.json";
 import type queueEn from "../locales/en/queue.json";
 import type readinessEn from "../locales/en/readiness.json";
+import type helpEn from "../locales/en/help.json";
 
 declare module "i18next" {
   interface CustomTypeOptions {
@@ -26,6 +27,7 @@ declare module "i18next" {
       settings: typeof settingsEn;
       queue: typeof queueEn;
       readiness: typeof readinessEn;
+      help: typeof helpEn;
     };
   }
 }

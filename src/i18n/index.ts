@@ -31,6 +31,7 @@ export const I18N_NAMESPACES = [
   "settings",
   "queue",
   "readiness",
+  "help",
 ] as const;
 
 const detector = new LanguageDetector();

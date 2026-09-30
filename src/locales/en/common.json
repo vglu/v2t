@@ -58,6 +58,9 @@
   },
   "header": {
     "lang_aria": "UI language",
+    "help_label": "Help",
+    "help_title": "How to use Video to Text",
+    "help_aria": "Open help",
     "setup_guide_label": "Setup guide",
     "setup_guide_title": "Short setup walkthrough",
     "setup_guide_aria": "Open setup guide"

@@ -2,6 +2,7 @@ import i18next from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { OnboardingWizard } from "./components/OnboardingWizard";
+import { HelpSheet } from "./components/HelpSheet";
 import { PreferencesSheet } from "./components/PreferencesSheet";
 import { QueuePanel } from "./components/QueuePanel";
 import { ReadinessPanel } from "./components/ReadinessPanel";
@@ -64,6 +65,7 @@ export default function App() {
   const [prefsDepth, setPrefsDepth] = useState<PrefsDepth>("essentials");
   const [prefsFocus, setPrefsFocus] = useState<PrefsFocus>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [documentsPath, setDocumentsPath] = useState<string | null>(null);
@@ -255,6 +257,13 @@ export default function App() {
     setPrefsFocus(target?.focus ?? null);
     setPrefsOpen(true);
     setWizardOpen(false);
+    setHelpOpen(false);
+  }, []);
+
+  const openHelp = useCallback(() => {
+    setHelpOpen(true);
+    setPrefsOpen(false);
+    setWizardOpen(false);
   }, []);
 
   const closePreferences = useCallback(() => {
@@ -320,8 +329,21 @@ export default function App() {
           <button
             type="button"
             className="ghost"
+            data-testid="open-help"
+            onClick={() => openHelp()}
+            title={t("header.help_title")}
+            aria-label={t("header.help_aria")}
+          >
+            {t("header.help_label")}
+          </button>
+          <button
+            type="button"
+            className="ghost"
             data-testid="open-setup-guide"
-            onClick={() => setWizardOpen(true)}
+            onClick={() => {
+              setHelpOpen(false);
+              setWizardOpen(true);
+            }}
             title={t("header.setup_guide_title")}
             aria-label={t("header.setup_guide_aria")}
           >
@@ -387,6 +409,16 @@ export default function App() {
           setPrefsDraft((current) => ({ ...current, uiLanguage: lang }))
         }
         saving={saving}
+      />
+
+      <HelpSheet
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        onOpenPreferences={(target) => openPreferences(target)}
+        onOpenSetup={() => {
+          setHelpOpen(false);
+          setWizardOpen(true);
+        }}
       />
 
       <OnboardingWizard

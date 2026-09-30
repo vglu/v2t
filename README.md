@@ -2,7 +2,7 @@
 
 Portable desktop app (**Tauri 2**) that turns **video / audio / links** into text transcripts (`.txt`, optional `.vtt` / `.srt`).
 
-**Current release: [v2.0.13](https://github.com/vglu/v2t/releases/tag/v2.0.13)** (2026-07-22)
+**Current release: [v2.0.20](https://github.com/vglu/v2t/releases/tag/v2.0.20)** (2026-09-30)
 
 [Demo video](https://youtu.be/cInVpU3ErlQ) · [Changelog](CHANGELOG.md) · [Releases](https://github.com/vglu/v2t/releases)
 
@@ -15,11 +15,17 @@ Portable desktop app (**Tauri 2**) that turns **video / audio / links** into tex
 | Queue: files, folders, YouTube / TikTok / playlists | ✅ |
 | ffmpeg + yt-dlp (download from Preferences, or next to the app) | ✅ |
 | Profiles **Simple / Quality / Power** (+ Custom) | ✅ |
+| In-app **Help** (cases, speakers, modes, Preferences map) | ✅ |
 | Light **Preferences** sheet + **Setup guide** (profile-branched) | ✅ |
 | Cloud HTTP Whisper API / local whisper.cpp / in-app WASM | ✅ |
-| Timed **WebVTT**, optional speakers (local tinydiarize) | ✅ |
-| yt-dlp cookie DB failure → **auto-retry without cookies** | ✅ (v2.0.12) |
-| Keep video for playlists → **all entries**, ≤720p, per-playlist folder | ✅ (v2.0.13) |
+| Timed **WebVTT** next to every `.txt` | ✅ |
+| Speaker turns **Person 1 / Person 2** (English tinydiarize, or pyannote for any language) | ✅ opt-in |
+| YouTube **manual** captions → skip Whisper, optional `.srt` | ✅ |
+| Keep video / audio / `.info.json`; playlist videos in their own folder, ≤720p | ✅ |
+| Castbox channel URL → one job per episode | ✅ |
+| Images / documents via **Gemini Vision** | ✅ opt-in |
+| Local **REST API** (`127.0.0.1`) for another app on this machine | ✅ opt-in, [docs/API.md](docs/API.md) |
+| yt-dlp cookie DB failure → **auto-retry without cookies** | ✅ |
 | In-app WASM **large-v3** | ❌ Not supported in webview — use **On this computer** |
 | Dependabot auto-PRs | ❌ Disabled (manual updates only) |
 
@@ -41,6 +47,47 @@ First launch: **Setup guide** (or reopen from the header). Profiles gate how lon
 | **Power** | Quality + keep media, folders, SRT, Deno/cookies | Full advanced tools |
 
 API keys, output folder, and tool paths are **never overwritten** when you switch profiles.
+
+In-app **Help** (header) covers common cases, speakers, modes, outputs, cookies, and a Preferences map. The **Setup guide** is the first-run walkthrough. The sections below mirror that help for the repository / GitHub.
+
+---
+
+## Common cases
+
+| You want | Do this |
+|----------|---------|
+| A TikTok or YouTube link as plain text | Profile **Simple**. Paste the link, **Start batch**. If the video has manual captions in a priority language, Whisper is skipped. |
+| A meeting as timed subtitles | Profile **Quality**. **General → Also save… → Export timed transcript as WebVTT**. Mode **On this computer**, model **`large-v3`**. You get `.txt` and `.vtt`. |
+| English meeting, who spoke when | Same as timed subtitles, then **Default video language = English** (not Auto). **Tools & advanced → Speaker labels → Label speakers**. The queue row for that file must also say **English**. Re-run; the old file is not rewritten. Cues look like `<v Person 1>…</v>`. Real names are not available. |
+| Russian, Ukrainian, or any other language, who spoke when | WebVTT on. **Tools & advanced → Speakers (pyannote diarize)**: Hugging Face token, Python with pyannote, then **Diarize speakers after transcription**. Whisper language stays as you set it. Setup: [tools/diarize/README.md](tools/diarize/README.md). |
+| A whole playlist or a Castbox show | Paste the playlist or channel URL. One transcript per video or episode. With **Video** kept, playlist files go to `output/<playlist title>/` at ≤720p. |
+| A folder of recordings | **Files & folders**. **Power** (or Custom) can scan subfolders. |
+| Another program on this PC should submit jobs | **Tools & advanced → REST API**. Only `127.0.0.1`. Reference: [docs/API.md](docs/API.md), Swagger at `http://127.0.0.1:8788/v1/docs`. |
+| Slides, screenshots, or PDFs to text | **Tools & advanced → Vision / OCR → Gemini Vision** plus a Google API key. Dropped images otherwise error. |
+
+Language on a row already in the queue does **not** follow **Default video language**. Change that row’s language before you start it. **Save** in Preferences, or the run uses the previous settings.
+
+---
+
+## What each control does
+
+| Capability | Where |
+|------------|--------|
+| Output folder, filename `{title}` `{date}` `{index}` `{track}` `{source}` `{ext}` | **General** |
+| WebVTT, keep video, keep audio, `.info.json` | **General → Also save…**, or the chips on the queue |
+| Default video language | **General**. Auto detects; speaker labels need an explicit language (**English** for tinydiarize) |
+| Online API / On this computer / Inside the app | **Transcription** |
+| whisper-cli path, model, GPU build | **Transcription** (engine) |
+| Manual YouTube captions, priority languages, keep `.srt` | **Tools & advanced → Subtitles**. Auto-generated captions are ignored. Playlists still go through Whisper |
+| ffmpeg, yt-dlp, Deno, browser cookies, download pause | **Tools & advanced → Media tools** |
+| Person 1 / Person 2, English only | **Tools & advanced → Speaker labels**. Needs WebVTT + English + model `ggml-small.en-tdrz` (downloaded with Whisper models) |
+| Person 1 / Person 2, any language | **Tools & advanced → Speakers (pyannote diarize)** |
+| Gemini OCR | **Tools & advanced → Vision / OCR**. Hidden on profile **Simple** |
+| REST server, token, port | **Tools & advanced**. Hidden on profile **Simple** |
+| Retry a failed link, save the list of links that still failed | Queue error row |
+| Two speeds: download queue and transcription queue | Always on. Transcription lag shows **Waiting for transcription…** |
+
+**Simple** hides Vision, speakers, REST, and recursive folder scan. Switch to **Quality**, **Power**, or **Custom** to see them.
 
 ---
 

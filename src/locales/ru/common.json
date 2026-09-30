@@ -58,6 +58,9 @@
   },
   "header": {
     "lang_aria": "Язык приложения",
+    "help_label": "Справка",
+    "help_title": "Как пользоваться Video to Text",
+    "help_aria": "Открыть справку",
     "setup_guide_label": "Руководство по настройке",
     "setup_guide_title": "Краткий руководство по настройке",
     "setup_guide_aria": "Открыть руководство по настройке"

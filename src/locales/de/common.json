@@ -27,6 +27,9 @@
   },
   "header": {
     "lang_aria": "Sprach des Benutzens",
+    "help_label": "Hilfe",
+    "help_title": "Video to Text verwenden",
+    "help_aria": "Hilfe öffnen",
     "setup_guide_label": "Einrichtungshandbuch",
     "setup_guide_title": "Kurze Setup-Anleitung",
     "setup_guide_aria": "Öffne Setup-Anleitung"

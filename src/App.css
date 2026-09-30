@@ -3281,3 +3281,94 @@ button.preferences-depth-tab--active:hover {
   color: #66776d;
   font-size: 0.75rem;
 }
+
+/* —— Help sheet (reuses Preferences shell) —— */
+
+.help-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.help-body {
+  max-width: 720px;
+}
+
+.help-article h3 {
+  margin: 0 0 0.65rem;
+  color: #20211e;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.help-article h4 {
+  margin: 1.15rem 0 0.4rem;
+  color: #2a2c28;
+  font-size: 0.95rem;
+}
+
+.help-article p {
+  margin: 0 0 0.75rem;
+  color: #3a3d37;
+  line-height: 1.45;
+  font-size: 0.92rem;
+}
+
+.help-steps,
+.help-list {
+  margin: 0 0 0.85rem;
+  padding-left: 1.2rem;
+  color: #3a3d37;
+  line-height: 1.45;
+  font-size: 0.92rem;
+}
+
+.help-steps li + li,
+.help-list li + li {
+  margin-top: 0.35rem;
+}
+
+.help-callout {
+  margin: 1rem 0 0;
+  padding: 0.75rem 0.85rem;
+  color: #315443;
+  border: 1px solid #d4e2d8;
+  border-radius: 10px;
+  background: #f7fbf8;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.help-table-wrap {
+  overflow-x: auto;
+  margin: 0.5rem 0 0;
+}
+
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.help-table th,
+.help-table td {
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #e2e0d8;
+  color: #3a3d37;
+  line-height: 1.4;
+}
+
+.help-table th {
+  color: #234f3b;
+  font-weight: 700;
+  background: #eef3ef;
+}
+
+.help-table td:first-child {
+  width: 38%;
+  font-weight: 600;
+  color: #2a2c28;
+}
+
