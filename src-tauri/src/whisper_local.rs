@@ -475,6 +475,9 @@ struct WhisperJsonRoot {
 ///
 /// When `label_speakers` is true, uses segment-level fallback (so tinydiarize
 /// `speaker_turn_next` turns are preserved) and assigns Person 1 / Person 2.
+///
+/// Word-cue rebuild failures do **not** fail the job: fall back to segment-level
+/// cues, then to plain text without segments (caller writes a VTT-skipped stub).
 pub fn parse_whisper_json(body: &str, label_speakers: bool) -> Result<TimedTranscript, String> {
     let root: WhisperJsonRoot = serde_json::from_str(body)
         .map_err(|e| format!("Local Whisper WebVTT export failed: invalid JSON ({e})"))?;
@@ -485,25 +488,24 @@ pub fn parse_whisper_json(body: &str, label_speakers: bool) -> Result<TimedTrans
         .or(root.segments.as_deref())
         .unwrap_or(&[]);
 
-    let segments = if label_speakers {
-        // Prefer word rebuild with Person labels so cue soft-wrap can avoid
-        // orphan tails ("even a" | "bit more") while keeping speaker turns.
-        let words = words_from_whisper_segments_labeled(raw_segments)?;
-        if !words.is_empty() {
-            build_cues_from_words(&words).map_err(|e| {
-                format!("Local Whisper WebVTT export failed: word cue rebuild ({e})")
-            })?
-        } else {
-            parse_whisper_segments_fallback(raw_segments, true)?
+    let words = if label_speakers {
+        words_from_whisper_segments_labeled(raw_segments)?
+    } else {
+        words_from_whisper_segments(raw_segments)
+    };
+
+    let segments = if !words.is_empty() {
+        match build_cues_from_words(&words) {
+            Ok(cues) => cues,
+            Err(_) => match parse_whisper_segments_fallback(raw_segments, label_speakers) {
+                Ok(fallback) => fallback,
+                Err(_) => Vec::new(),
+            },
         }
     } else {
-        let words = words_from_whisper_segments(raw_segments);
-        if !words.is_empty() {
-            build_cues_from_words(&words).map_err(|e| {
-                format!("Local Whisper WebVTT export failed: word cue rebuild ({e})")
-            })?
-        } else {
-            parse_whisper_segments_fallback(raw_segments, false)?
+        match parse_whisper_segments_fallback(raw_segments, label_speakers) {
+            Ok(fallback) => fallback,
+            Err(_) => Vec::new(),
         }
     };
 
@@ -518,6 +520,29 @@ pub fn parse_whisper_json(body: &str, label_speakers: bool) -> Result<TimedTrans
                 }
             })
             .filter(|value| !value.is_empty())
+            .or_else(|| {
+                let joined = raw_segments
+                    .iter()
+                    .filter_map(|segment| {
+                        let raw = segment.text.as_deref()?.trim();
+                        if raw.is_empty() {
+                            return None;
+                        }
+                        Some(if label_speakers {
+                            strip_speaker_turn_markers(raw)
+                        } else {
+                            raw.to_string()
+                        })
+                    })
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if joined.is_empty() {
+                    None
+                } else {
+                    Some(joined)
+                }
+            })
             .unwrap_or_default()
     } else {
         plain_text_from_segments(&segments)
@@ -1271,6 +1296,48 @@ mod tests {
         assert_eq!(timed.segments[0].text, "Hello world.");
         assert_eq!(timed.segments[0].start_ms, 0);
         assert_eq!(timed.segments[0].end_ms, 2_000);
+    }
+
+    #[test]
+    fn parses_ojf_token_clock_rollback_without_failing() {
+        // Second segment's tokens start before the first segment's last token
+        // (placeholder text only — no client speech).
+        let json = r#"{
+            "transcription": [
+                {
+                    "offsets": {"from": 0, "to": 2000},
+                    "text": " w1 w2",
+                    "tokens": [
+                        {"text": " w1", "offsets": {"from": 1000, "to": 1400}},
+                        {"text": " w2", "offsets": {"from": 1400, "to": 1800}}
+                    ]
+                },
+                {
+                    "offsets": {"from": 900, "to": 1200},
+                    "text": " w3",
+                    "tokens": [
+                        {"text": " w3", "offsets": {"from": 900, "to": 950}}
+                    ]
+                }
+            ]
+        }"#;
+        for label in [false, true] {
+            let timed = parse_whisper_json(json, label).unwrap();
+            assert!(
+                !timed.segments.is_empty(),
+                "label={label}: expected cues after clock rollback"
+            );
+            for (i, seg) in timed.segments.iter().enumerate() {
+                assert!(
+                    seg.end_ms > seg.start_ms,
+                    "label={label} cue {i}: {}..{}",
+                    seg.start_ms,
+                    seg.end_ms
+                );
+            }
+            assert!(timed.text.contains("w1"));
+            assert!(timed.text.contains("w3"));
+        }
     }
 
     #[test]

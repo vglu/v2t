@@ -1014,6 +1014,15 @@ pub async fn run_transcribe_stage(
             &format!("Writing transcript {track}/{n_tracks}…"),
         );
 
+        if settings.export_webvtt && transcript.timed_export_skipped() {
+            pipeline::emit_pipeline_text(
+                &sink,
+                &job_id,
+                "vtt",
+                "VTT skipped: no usable timed cues; writing .txt only (stub .vtt). Transcription text was kept.",
+            );
+        }
+
         if let Err(e) = write_transcript_pair(&dest_path, &transcript, settings.export_webvtt) {
             let msg = format!("Failed to write transcript pair: {e}");
             emit_subtask_status(&sink, &job_id, track, "error", Some(msg.clone()));

@@ -58,6 +58,11 @@ impl TimedTranscript {
         let text = plain_text_from_segments(&segments);
         Self { text, segments }
     }
+
+    /// True when ASR produced text but no timed cues (VTT will be a skipped stub).
+    pub fn timed_export_skipped(&self) -> bool {
+        !self.text.trim().is_empty() && self.segments.is_empty()
+    }
 }
 
 /// Join cue texts into one plain transcript (voice tags stripped).
@@ -217,21 +222,21 @@ pub fn extract_voice_speaker(text: &str) -> (Option<String>, String) {
 }
 
 /// Rebuild cue-sized segments from factual word timings (no invented timestamps).
+///
+/// Whisper token clocks can step backward between tokens; spoken order is kept
+/// and only the clock is repaired so every cue has `end_ms > start_ms`.
 pub fn build_cues_from_words(words: &[TimedWord]) -> Result<Vec<TimedSegment>, String> {
     let mut usable: Vec<TimedWord> = Vec::with_capacity(words.len());
-    for (index, word) in words.iter().enumerate() {
+    for word in words {
         let text = word.text.trim();
         if text.is_empty() {
             continue;
         }
-        if word.end_ms <= word.start_ms {
-            return Err(format!(
-                "Invalid timed word {index}: end_ms must be greater than start_ms"
-            ));
-        }
+        let start_ms = word.start_ms;
+        let end_ms = word.end_ms.max(start_ms.saturating_add(1));
         usable.push(TimedWord {
-            start_ms: word.start_ms,
-            end_ms: word.end_ms,
+            start_ms,
+            end_ms,
             text: text.to_string(),
             speaker: word.speaker.clone(),
         });
@@ -239,6 +244,7 @@ pub fn build_cues_from_words(words: &[TimedWord]) -> Result<Vec<TimedSegment>, S
     if usable.is_empty() {
         return Ok(Vec::new());
     }
+    enforce_monotonic_word_timings(&mut usable);
 
     let mut segments = Vec::new();
     let mut cue_start = 0usize;
@@ -286,6 +292,18 @@ pub fn build_cues_from_words(words: &[TimedWord]) -> Result<Vec<TimedSegment>, S
 
     validate_segments(&segments)?;
     Ok(segments)
+}
+
+/// Keep source (spoken) order; bump start/end so the clock never steps backward.
+fn enforce_monotonic_word_timings(words: &mut [TimedWord]) {
+    let mut prev_start = 0u64;
+    for (i, word) in words.iter_mut().enumerate() {
+        if i > 0 {
+            word.start_ms = word.start_ms.max(prev_start);
+        }
+        word.end_ms = word.end_ms.max(word.start_ms.saturating_add(1));
+        prev_start = word.start_ms;
+    }
 }
 
 fn word_ends_sentence(text: &str) -> bool {
@@ -368,8 +386,19 @@ fn cue_char_len(words: &[TimedWord]) -> usize {
 }
 
 fn cue_from_words(words: &[TimedWord]) -> TimedSegment {
-    let start_ms = words[0].start_ms;
-    let end_ms = words[words.len() - 1].end_ms;
+    // Min/max across the whole group — not first-start/last-end — so a word whose
+    // clock stepped back cannot produce end_ms <= start_ms.
+    let start_ms = words
+        .iter()
+        .map(|word| word.start_ms)
+        .min()
+        .expect("cue_from_words requires a nonempty word slice");
+    let end_ms = words
+        .iter()
+        .map(|word| word.end_ms)
+        .max()
+        .expect("cue_from_words requires a nonempty word slice")
+        .max(start_ms.saturating_add(1));
     let text = words
         .iter()
         .map(|word| word.text.as_str())
@@ -530,9 +559,19 @@ pub fn merge_overlapping_chunk_transcripts(
         segments.extend(offset);
     }
     segments.sort_by_key(|segment| (segment.start_ms, segment.end_ms));
+    clamp_segment_end_after_start(&mut segments);
     validate_segments(&segments)?;
 
     Ok(TimedTranscript::from_segments(segments))
+}
+
+/// After chunk offset/overlap merges, ensure every cue still has end > start.
+fn clamp_segment_end_after_start(segments: &mut [TimedSegment]) {
+    for segment in segments.iter_mut() {
+        if segment.end_ms <= segment.start_ms {
+            segment.end_ms = segment.start_ms.saturating_add(1);
+        }
+    }
 }
 
 fn near_duplicate_segment(a: &TimedSegment, b: &TimedSegment, start_tol_ms: u64) -> bool {
@@ -693,7 +732,7 @@ pub fn outputs_complete_for_resume(output_txt: &Path, export_webvtt: bool) -> Re
         // Empty transcript pair: minimal valid WebVTT header is enough.
         return Ok(vtt.trim_start().starts_with("WEBVTT"));
     }
-    Ok(webvtt_has_cue(&vtt))
+    Ok(webvtt_has_cue(&vtt) || webvtt_is_skipped_stub(&vtt))
 }
 
 fn webvtt_has_cue(contents: &str) -> bool {
@@ -726,12 +765,25 @@ pub fn require_timed_segments_for_export(
         return Ok(());
     }
     if transcript.segments.is_empty() {
-        return Err(format!(
-            "{mode_label} WebVTT export failed: no factual segment timestamps were produced. Disable \"Export WebVTT\" or use a timestamp-capable provider."
-        ));
+        // Soft-skip path: callers write `.txt` + a VTT stub (see
+        // [`write_transcript_pair`] / [`VTT_SKIPPED_NOTE`]) instead of failing the job.
+        return Ok(());
     }
     validate_segments(&transcript.segments)
         .map_err(|error| format!("{mode_label} WebVTT export failed: {error}"))
+}
+
+/// Marker written into a stub `.vtt` when timed cues could not be built but text exists.
+pub const VTT_SKIPPED_NOTE: &str =
+    "VTT skipped: no usable timed cues; transcript text was saved as .txt";
+
+fn format_vtt_skipped_stub() -> String {
+    format!("WEBVTT\n\nNOTE\n{VTT_SKIPPED_NOTE}\n")
+}
+
+fn webvtt_is_skipped_stub(contents: &str) -> bool {
+    let trimmed = contents.trim_start();
+    trimmed.starts_with("WEBVTT") && contents.contains(VTT_SKIPPED_NOTE)
 }
 
 /// Explicit tolerance when comparing provider segment ends to measured WAV/chunk duration.
@@ -916,12 +968,12 @@ pub fn write_transcript_pair(
 
     let vtt_contents = if export_webvtt {
         if !text.trim().is_empty() && segments.is_empty() {
-            return Err(
-                "WebVTT export requires factual timed segments for a nonempty transcript"
-                    .to_string(),
-            );
+            // Prefer keeping `.txt` over failing the whole job when ASR produced
+            // text but no usable timed cues (clock rollback / missing offsets).
+            Some(format_vtt_skipped_stub())
+        } else {
+            Some(format_webvtt(segments)?)
         }
-        Some(format_webvtt(segments)?)
     } else {
         None
     };
@@ -1238,15 +1290,51 @@ mod tests {
     }
 
     #[test]
-    fn refuses_nonempty_vtt_export_without_factual_segments() {
+    fn writes_txt_and_vtt_skipped_stub_without_factual_segments() {
         let txt = test_path("missing-segments.txt");
-        let error =
+        let vtt = txt.with_extension("vtt");
+        let result =
             write_transcript_pair(&txt, &TimedTranscript::plain_text_only("nonempty"), true)
-                .unwrap_err();
+                .unwrap();
 
-        assert!(error.contains("factual timed segments"));
-        assert!(!txt.exists());
-        assert!(!txt.with_extension("vtt").exists());
+        assert_eq!(result.as_deref(), Some(vtt.as_path()));
+        assert_eq!(fs::read_to_string(&txt).unwrap(), "nonempty");
+        let vtt_body = fs::read_to_string(&vtt).unwrap();
+        assert!(vtt_body.contains(VTT_SKIPPED_NOTE));
+        assert!(outputs_complete_for_resume(&txt, true).unwrap());
+        fs::remove_file(txt).unwrap();
+        fs::remove_file(vtt).unwrap();
+    }
+
+    #[test]
+    fn build_cues_repairs_clock_rollback_across_words() {
+        let words = vec![
+            word(1000, 1400, "Hello"),
+            word(1400, 1800, "there"),
+            word(900, 950, "world."), // clock steps back
+        ];
+        let cues = build_cues_from_words(&words).unwrap();
+        assert_eq!(cues.len(), 1);
+        assert_eq!(cues[0].text, "Hello there world.");
+        assert_eq!(cues[0].start_ms, 1000);
+        assert!(cues[0].end_ms > cues[0].start_ms);
+        assert!(cues[0].end_ms >= 1800);
+    }
+
+    #[test]
+    fn clamp_segment_end_repairs_inverted_cues() {
+        let mut segs = vec![
+            segment(0, 100, "a"),
+            TimedSegment {
+                start_ms: 200,
+                end_ms: 150,
+                text: "b".into(),
+                speaker: None,
+            },
+        ];
+        clamp_segment_end_after_start(&mut segs);
+        assert_eq!(segs[1].end_ms, 201);
+        validate_segments(&segs).unwrap();
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 Portable desktop app (**Tauri 2**) that turns **video / audio / links** into text transcripts (`.txt`, optional `.vtt` / `.srt`).
 
-**Current release: [v2.0.20](https://github.com/vglu/v2t/releases/tag/v2.0.20)** (2026-09-30)
+**Current release: [v2.0.21](https://github.com/vglu/v2t/releases/tag/v2.0.21)** (2026-11-14)
 
 [Demo video](https://youtu.be/cInVpU3ErlQ) · [Changelog](CHANGELOG.md) · [Releases](https://github.com/vglu/v2t/releases)
 

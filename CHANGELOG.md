@@ -2,6 +2,14 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.21] - 2026-11-14
+
+### Fixed
+
+- **Local Whisper + WebVTT:** word cue rebuild no longer fails the whole job when whisper.cpp token clocks step backward (`end_ms must be greater than start_ms`). Word timings are made monotonic before grouping; cue bounds use min/max across the group.
+- If timed cues still cannot be built, fall back to segment-level cues, then keep `.txt` with a stub `.vtt` (`VTT skipped` note) instead of discarding the transcript. Pipeline logs a warning; resume treats the stub as complete.
+- Chunk merge clamps inverted cue ends after overlap handling so long-file splits cannot abort on the same class of error.
+
 ## [2.0.20] - 2026-09-30
 
 ### Added
@@ -442,6 +450,7 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.21]: https://github.com/vglu/v2t/releases/tag/v2.0.21
 [2.0.20]: https://github.com/vglu/v2t/releases/tag/v2.0.20
 [2.0.19]: https://github.com/vglu/v2t/releases/tag/v2.0.19
 [2.0.18]: https://github.com/vglu/v2t/releases/tag/v2.0.18
