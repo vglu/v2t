@@ -99,6 +99,11 @@ fn scan_media_folder(path: String, recursive: bool) -> Result<Vec<String>, Strin
 }
 
 #[tauri::command]
+fn expand_media_paths(paths: Vec<String>, recursive: bool) -> scan::ExpandMediaPathsResult {
+    scan::expand_media_paths(&paths, recursive)
+}
+
+#[tauri::command]
 fn save_failed_links(
     links_file_path: String,
     failed_urls: Vec<String>,
@@ -553,6 +558,7 @@ pub fn run() {
             save_settings,
             check_dependencies,
             scan_media_folder,
+            expand_media_paths,
             prepare_media_audio,
             process_queue_item,
             browser_queue_job_finish,

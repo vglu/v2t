@@ -93,7 +93,7 @@
     "finish_setup_first": "<strong>Finish setup first.</strong> Follow the checklist above (green dots). Open <strong>Preferences</strong> if anything is missing, or use <strong>Setup guide</strong> for a short tour."
   },
   "drop_zone_title": "Drop files or a folder here",
-  "drop_zone": "Drop files here, or choose them below.",
+  "drop_zone": "Drop files or a folder here — folders are scanned for media.",
   "btn": {
     "add_files": "Choose files",
     "add_folder": "Choose folder",
@@ -135,7 +135,11 @@
     "empty": "…"
   },
   "msg": {
-    "added_paths_drop": "Added {{count}} path(s) from drop",
+    "added_paths_drop": "Added {{count}} media file(s) from drop",
+    "expanding_drop": "Expanding {{count}} dropped path(s)…",
+    "drop_empty_folder": "No media in folder: {{path}}",
+    "drop_skipped_non_media": "Skipped non-media: {{path}}",
+    "drop_expand_error": "Drop expand error: {{detail}}",
     "added_urls": "Added {{count}} URL(s)",
     "expanding_castbox": "Expanding Castbox channel: {{url}}",
     "expanded_castbox": "Expanded \"{{title}}\" → {{count}} episode(s)",

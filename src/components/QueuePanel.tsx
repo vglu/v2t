@@ -13,6 +13,7 @@ import {
   resolveCastboxChannel,
   runBriefForItem,
   saveFailedLinks,
+  expandMediaPaths,
   scanMediaFolder,
   sessionLogAppendUi,
 } from "../lib/invokeSafe";
@@ -236,15 +237,50 @@ export function QueuePanel({
 
   const onPathsDropped = useCallback(
     (paths: string[]) => {
-      const incoming = paths.map((source) => ({
-        kind: "file" as const,
-        source,
-        displayLabel: fileBasenameNoExt(source),
-      }));
-      addItems(incoming);
-      appendLog(t("msg.added_paths_drop", { count: incoming.length }));
+      void (async () => {
+        appendLog(t("msg.expanding_drop", { count: paths.length }));
+        const expanded = await expandMediaPaths(paths, recursiveFolderScan);
+        if (!expanded) {
+          // Fallback: enqueue paths as files (legacy / non-Tauri).
+          const incoming = paths.map((source) => ({
+            kind: "file" as const,
+            source,
+            displayLabel: fileBasenameNoExt(source),
+          }));
+          addItems(incoming);
+          appendLog(t("msg.added_paths_drop", { count: incoming.length }));
+          return;
+        }
+        for (const folder of expanded.emptyFolders) {
+          appendLog(
+            t("msg.drop_empty_folder", { path: shortLabel(folder, 80) }),
+          );
+        }
+        for (const skipped of expanded.skippedNonMedia) {
+          appendLog(
+            t("msg.drop_skipped_non_media", {
+              path: shortLabel(skipped, 80),
+            }),
+          );
+        }
+        for (const err of expanded.errors) {
+          appendLog(t("msg.drop_expand_error", { detail: err }));
+        }
+        if (expanded.files.length === 0) {
+          appendLog(t("msg.no_media_found"));
+          return;
+        }
+        addItems(
+          expanded.files.map((source) => ({
+            kind: "file" as const,
+            source,
+            displayLabel: fileBasenameNoExt(source),
+          })),
+        );
+        appendLog(t("msg.added_paths_drop", { count: expanded.files.length }));
+      })();
     },
-    [addItems, appendLog],
+    [addItems, appendLog, recursiveFolderScan, t],
   );
 
   useEffect(() => {

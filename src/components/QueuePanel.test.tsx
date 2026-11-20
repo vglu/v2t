@@ -29,6 +29,7 @@ vi.mock("../lib/browserWhisper", () => ({
 vi.mock("../lib/invokeSafe", () => ({
   estimateOcrBatch: vi.fn().mockResolvedValue(null),
   scanMediaFolder: vi.fn().mockResolvedValue(null),
+  expandMediaPaths: vi.fn().mockResolvedValue(null),
   cancelQueueJob: vi.fn().mockResolvedValue(undefined),
   sessionLogAppendUi: vi.fn().mockResolvedValue(undefined),
   openSessionLog: vi.fn().mockResolvedValue(true),

@@ -22,14 +22,26 @@ fn is_media_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+fn resolve_dir(root: &Path) -> Result<std::path::PathBuf, String> {
+    match root.canonicalize() {
+        Ok(p) if p.is_dir() => Ok(p),
+        Ok(_) => Err("Path is not a directory".to_string()),
+        // OneDrive / cloud placeholders often fail canonicalize while still listing.
+        Err(e) => {
+            if root.is_dir() {
+                Ok(root.to_path_buf())
+            } else if root.is_file() {
+                Err("Path is not a directory".to_string())
+            } else {
+                Err(format!("Invalid folder path: {e}"))
+            }
+        }
+    }
+}
+
 /// List media files under `root`. Sorted for stable output. Skips symlinks to dirs for safety.
 pub fn scan_media_folder(root: &Path, recursive: bool) -> Result<Vec<String>, String> {
-    let root = root
-        .canonicalize()
-        .map_err(|e| format!("Invalid folder path: {e}"))?;
-    if !root.is_dir() {
-        return Err("Path is not a directory".to_string());
-    }
+    let root = resolve_dir(root)?;
 
     let mut out: Vec<String> = Vec::new();
 
@@ -72,6 +84,64 @@ fn push_path(out: &mut Vec<String>, p: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Expand a drop/paste mix of files and folders into concrete media file paths.
+///
+/// - Directories → scanned (same rules as [`scan_media_folder`]).
+/// - Media files → included as-is.
+/// - Non-media files → skipped (listed in `skipped_non_media`).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExpandMediaPathsResult {
+    pub files: Vec<String>,
+    pub empty_folders: Vec<String>,
+    pub skipped_non_media: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+pub fn expand_media_paths(paths: &[String], recursive: bool) -> ExpandMediaPathsResult {
+    let mut files: Vec<String> = Vec::new();
+    let mut empty_folders: Vec<String> = Vec::new();
+    let mut skipped_non_media: Vec<String> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+
+    for raw in paths {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let p = std::path::PathBuf::from(trimmed);
+        if p.is_dir() {
+            match scan_media_folder(&p, recursive) {
+                Ok(found) if found.is_empty() => empty_folders.push(trimmed.to_string()),
+                Ok(found) => files.extend(found),
+                Err(e) => errors.push(format!("{trimmed}: {e}")),
+            }
+            continue;
+        }
+        if p.is_file() {
+            if is_media_file(&p) {
+                match push_path(&mut files, &p) {
+                    Ok(()) => {}
+                    Err(e) => errors.push(format!("{trimmed}: {e}")),
+                }
+            } else {
+                skipped_non_media.push(trimmed.to_string());
+            }
+            continue;
+        }
+        errors.push(format!("{trimmed}: path not found"));
+    }
+
+    files.sort();
+    files.dedup();
+    ExpandMediaPathsResult {
+        files,
+        empty_folders,
+        skipped_non_media,
+        errors,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +178,36 @@ mod tests {
         assert_eq!(got.len(), 2);
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn expand_mixes_folder_and_file() {
+        let dir = std::env::temp_dir().join("v2t-scan-test-expand");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let nested = dir.join("clip.mp4");
+        File::create(&nested).unwrap();
+        let loose = std::env::temp_dir().join("v2t-scan-test-expand-loose.mp3");
+        File::create(&loose).unwrap();
+        let txt = dir.join("notes.txt");
+        File::create(&txt).unwrap();
+
+        let result = expand_media_paths(
+            &[
+                dir.to_string_lossy().to_string(),
+                loose.to_string_lossy().to_string(),
+                txt.to_string_lossy().to_string(),
+            ],
+            false,
+        );
+        assert_eq!(result.files.len(), 2);
+        assert!(result.files.iter().any(|p| p.ends_with("clip.mp4")));
+        assert!(result.files.iter().any(|p| p.ends_with("v2t-scan-test-expand-loose.mp3")));
+        assert_eq!(result.skipped_non_media.len(), 1);
+        assert!(result.empty_folders.is_empty());
+        assert!(result.errors.is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_file(&loose);
     }
 }

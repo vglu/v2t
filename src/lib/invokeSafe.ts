@@ -74,6 +74,29 @@ export async function scanMediaFolder(
   }
 }
 
+export type ExpandMediaPathsResult = {
+  files: string[];
+  emptyFolders: string[];
+  skippedNonMedia: string[];
+  errors: string[];
+};
+
+/** Expand a drag-drop mix of files and folders into media file paths. */
+export async function expandMediaPaths(
+  paths: string[],
+  recursive: boolean,
+): Promise<ExpandMediaPathsResult | null> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<ExpandMediaPathsResult>("expand_media_paths", {
+      paths,
+      recursive,
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function prepareMediaAudio(
   source: string,
   sourceKind: "url" | "file",
