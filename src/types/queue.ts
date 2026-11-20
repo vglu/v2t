@@ -68,6 +68,8 @@ export type AcquiredArtifact = {
   displayLabel: string;
   nTracks: number;
   bytesOnDisk: number;
+  /** Path to video kept for Brief frame extraction (populated when generateBrief=true). */
+  videoForBrief?: string | null;
 };
 
 export type BrowserPreparedPayload = {

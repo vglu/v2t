@@ -1729,6 +1729,82 @@ export function SettingsPanel({
         </select>
       </label>
 
+      <p className="settings-section-title">{t("section.brief")}</p>
+      <p className="hint">{t("brief.intro")}</p>
+      <label className="field">
+        <span>{t("brief.mode_label")}</span>
+        <select
+          value={settings.briefDocMode}
+          onChange={(e) =>
+            onChange({
+              ...settings,
+              briefDocMode: e.target.value as "fdd" | "brief",
+            })
+          }
+        >
+          <option value="fdd">{t("brief.mode_fdd")}</option>
+          <option value="brief">{t("brief.mode_brief")}</option>
+        </select>
+        <p className="hint">{t("brief.mode_hint")}</p>
+      </label>
+      <label className="field">
+        <span>{t("brief.profile_label")}</span>
+        <select
+          value={settings.briefModelProfile}
+          onChange={(e) =>
+            onChange({
+              ...settings,
+              briefModelProfile: e.target.value as "fast" | "accurate",
+            })
+          }
+        >
+          <option value="fast">{t("brief.profile_fast")}</option>
+          <option value="accurate">{t("brief.profile_accurate")}</option>
+        </select>
+        {settings.briefModelProfile === "accurate" && settings.briefDocMode === "fdd" && (
+          <p className="hint">{t("brief.profile_accurate_hint")}</p>
+        )}
+      </label>
+      <label className="field">
+        <span>{t("brief.model_label")}</span>
+        <input
+          type="text"
+          value={settings.briefModel}
+          placeholder="gemini-3.1-flash-lite"
+          onChange={(e) => onChange({ ...settings, briefModel: e.target.value })}
+        />
+        <p className="hint">{t("brief.model_hint")}</p>
+      </label>
+      {settings.briefModelProfile === "accurate" && (
+        <label className="field">
+          <span>{t("brief.model_accurate_label")}</span>
+          <input
+            type="text"
+            value={settings.briefModelAccurate}
+            placeholder="gemini-3.1-flash"
+            onChange={(e) => onChange({ ...settings, briefModelAccurate: e.target.value })}
+          />
+          <p className="hint">{t("brief.model_accurate_hint")}</p>
+        </label>
+      )}
+      <label className="field">
+        <span>{t("brief.fail_policy_label")}</span>
+        <select
+          value={settings.briefFailPolicy}
+          onChange={(e) =>
+            onChange({
+              ...settings,
+              briefFailPolicy: e.target.value as "keepTranscript" | "failJob",
+            })
+          }
+        >
+          <option value="keepTranscript">{t("brief.fail_keep")}</option>
+          <option value="failJob">{t("brief.fail_job")}</option>
+        </select>
+      </label>
+      <p className="hint">{t("brief.cost_hint")}</p>
+      <p className="hint">{t("brief.privacy_note")}</p>
+
       <p className="settings-section-title">{t("section.other")}</p>
       <label className="field checkbox">
         <input

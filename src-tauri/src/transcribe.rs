@@ -20,7 +20,12 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(600);
 pub(crate) const FFMPEG_CHUNK_TIMEOUT: Duration = Duration::from_secs(600);
 /// Stay under typical 25 MB API limits (PCM 16 kHz mono ≈ 32kB/s).
 pub(crate) const MAX_UPLOAD_BYTES: u64 = 22 * 1024 * 1024;
-pub(crate) const CHUNK_SECS: f64 = 480.0;
+/// Media window length for split transcription (seconds).
+///
+/// Kept at 5 minutes so a single Local Whisper pass usually covers the whole
+/// window. Empirically, 8-minute windows often lose the last ~2–3 minutes of
+/// speech even when the audio is intact (see meeting-batch gap analysis).
+pub(crate) const CHUNK_SECS: f64 = 300.0;
 const WAV_HEADER_SKIP: u64 = 64;
 pub(crate) const PCM_BYTES_PER_SEC: u64 = 32000;
 
@@ -524,7 +529,10 @@ pub async fn transcribe_wav_maybe_split(
     cancel: &CancellationToken,
 ) -> Result<TimedTranscribeOutcome, String> {
     let payload = pcm_payload_bytes(wav_path)?;
-    if payload <= MAX_UPLOAD_BYTES {
+    let duration_sec = (payload as f64 / PCM_BYTES_PER_SEC as f64).max(1.0);
+    let must_split =
+        payload > MAX_UPLOAD_BYTES || (export_webvtt && duration_sec > CHUNK_SECS + 0.5);
+    if !must_split {
         let transcript = transcribe_wav_file(
             wav_path,
             base_url,
@@ -543,7 +551,6 @@ pub async fn transcribe_wav_maybe_split(
     }
 
     fs::create_dir_all(checkpoint_dir).map_err(|e| format!("create checkpoint dir: {e}"))?;
-    let duration_sec = (payload as f64 / PCM_BYTES_PER_SEC as f64).max(1.0);
     let mut start = 0.0f64;
     let mut i = 0u32;
     let mut chunks: Vec<(u64, TimedTranscript)> = Vec::new();

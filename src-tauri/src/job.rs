@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use tokio_util::sync::CancellationToken;
 
 use crate::audio_save;
+use crate::brief_pipeline;
 use crate::cancel_registry::JobCancelRegistry;
 use crate::castbox;
 use crate::deps;
@@ -85,6 +86,10 @@ pub struct AcquiredArtifact {
     pub n_tracks: u32,
     /// Approximate size of all wav files, for backpressure accounting (bytes).
     pub bytes_on_disk: u64,
+    /// Path to a video file retained for the Brief frame-extraction stage.
+    /// `None` when Brief is disabled or the source has no video track.
+    #[serde(default)]
+    pub video_for_brief: Option<String>,
 }
 
 /// Result of the Acquire stage (stage A).
@@ -492,8 +497,11 @@ pub async fn run_acquire_stage(
     // video has manual subs in a priority language, fetch the SRT directly and
     // skip download + Whisper. Single-video URLs only — pure-playlist URLs would
     // need per-entry probes that are not worth the round-trips on a 100-item list.
+    // D5: when Brief is enabled, disable this fast-path so we always get audio
+    // (and thus a proper VTT) + a video file for frame extraction.
     if (source_kind == "url" || pipeline::is_http_url(&source))
         && settings.use_subtitles_when_available
+        && !settings.generate_brief
         && !subs::is_pure_playlist_url(&source)
         && !cancel.is_cancelled()
     {
@@ -742,6 +750,71 @@ they cannot be downloaded as a single yt-dlp playlist"
         .map(|m| m.len())
         .sum();
 
+    // ── Brief: download video to work_dir when needed for frame extraction ────
+    // Brief needs a video file but the user may not want it saved permanently.
+    // We download it into the work directory (cleaned up after the job) unless
+    // keep_downloaded_video is set (in which case the permanent copy is used).
+    let video_for_brief: Option<String> = if settings.generate_brief {
+        let is_url = source_kind == "url" || pipeline::is_http_url(&source);
+
+        if is_url {
+            // If the user also wants to keep the video, the video was already
+            // downloaded to out_dir. Try to find it; otherwise download to work_dir.
+            if settings.keep_downloaded_video {
+                // Find the mp4 that was saved to out_dir
+                prep.source_media_files
+                    .iter()
+                    .find(|p| {
+                        p.extension()
+                            .and_then(|e| e.to_str())
+                            .map(|e| e.eq_ignore_ascii_case("mp4"))
+                            .unwrap_or(false)
+                    })
+                    .map(|p| p.to_string_lossy().into_owned())
+            } else {
+                // Download video to work_dir for frame extraction only
+                if let Some(yt_dlp) = deps::resolve_tool_path(yt_dlp_path_override.as_deref(), "yt-dlp") {
+                    emit_progress(&sink, &job_id, "brief-video", "Downloading video for Brief frame extraction…");
+                    let video_dest = work_dir.join("brief_video.mp4");
+                    let yt_args: Vec<String> = vec![
+                        "-f".to_string(), "bv*+ba/b".to_string(),
+                        "--merge-output-format".to_string(), "mp4".to_string(),
+                        "--no-playlist".to_string(),
+                        "-o".to_string(), video_dest.to_string_lossy().into_owned(),
+                        source.clone(),
+                    ];
+                    // Run yt-dlp; if it fails, Brief will run without screenshots
+                    if pipeline::run_cmd(
+                        &yt_dlp,
+                        &yt_args,
+                        std::time::Duration::from_secs(600),
+                        &cancel,
+                    )
+                    .await
+                    .is_ok() && video_dest.is_file() {
+                        Some(video_dest.to_string_lossy().into_owned())
+                    } else {
+                        pipeline::emit_pipeline_text(
+                            &sink, &job_id, "brief-video-warn",
+                            "Video download for Brief failed — generating brief without screenshots.",
+                        );
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+        } else {
+            // Local file source: check if any source_media_file is a video
+            prep.source_media_files
+                .iter()
+                .find(|p| pipeline::is_probably_video(p))
+                .map(|p| p.to_string_lossy().into_owned())
+        }
+    } else {
+        None
+    };
+
     Ok(AcquireOutcome::Ready(AcquiredArtifact {
         work_dir: work_dir.to_string_lossy().into_owned(),
         wav_paths: prep.wav_paths,
@@ -756,6 +829,7 @@ they cannot be downloaded as a single yt-dlp playlist"
         display_label,
         n_tracks,
         bytes_on_disk,
+        video_for_brief,
     }))
 }
 
@@ -1090,6 +1164,59 @@ pub async fn run_transcribe_stage(
 
     // Always remove the temp work dir after success (see browser_queue_job_finish).
     let _ = fs::remove_dir_all(&work_dir);
+
+    // ── Brief post-step (soft fail) ───────────────────────────────────────────
+    if settings.generate_brief {
+        let vtt_p = Path::new(&transcript_path).with_extension("vtt");
+        let vtt_path = if vtt_p.is_file() { Some(vtt_p) } else { None };
+        let video_pb: Option<PathBuf> = artifact
+            .video_for_brief
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from);
+
+        match brief_pipeline::run_brief_pipeline(
+            &sink,
+            &job_id,
+            Path::new(&transcript_path),
+            vtt_path.as_deref(),
+            video_pb.as_deref(),
+            &settings,
+            &cancel,
+        )
+        .await
+        {
+            Ok(pdf) => {
+                emit_progress(
+                    &sink,
+                    &job_id,
+                    "brief-ok",
+                    &format!("Brief saved: {}", pdf.display()),
+                );
+            }
+            Err(e) if e == pipeline::JOB_CANCELLED_MSG => {
+                return Err(e);
+            }
+            Err(e) => {
+                use crate::settings::BriefFailPolicy;
+                match settings.brief_fail_policy {
+                    BriefFailPolicy::FailJob => {
+                        emit_progress(&sink, &job_id, "brief-error", &format!("Brief failed: {e}"));
+                        return Err(format!("Brief generation failed: {e}"));
+                    }
+                    BriefFailPolicy::KeepTranscript => {
+                        // Soft fail: transcript is kept, PDF is not generated.
+                        pipeline::emit_pipeline_text(
+                            &sink,
+                            &job_id,
+                            "brief-warn",
+                            &format!("Brief generation failed (transcript is kept): {e}"),
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     let summary = if n_tracks == 1 {
         format!("Saved: {}", transcript_path)

@@ -39,6 +39,8 @@ vi.mock("../lib/invokeSafe", () => ({
   discardArtifact: vi.fn().mockResolvedValue(undefined),
   processQueueItem: vi.fn(), // unused in the refactored QueuePanel (kept for backwards compat in mocks)
   saveFailedLinks: vi.fn().mockResolvedValue(0),
+  runBriefForItem: vi.fn().mockResolvedValue("/tmp/brief.pdf"),
+  resolveCastboxChannel: vi.fn(),
 }));
 
 import { transcribeBrowserTracks } from "../lib/browserWhisper";
@@ -606,6 +608,114 @@ describe("QueuePanel", () => {
         "false",
       );
     });
+  });
+});
+
+describe("Brief chip", () => {
+  it("Brief chip is disabled when geminiApiKey is empty", async () => {
+    const settings = { ...settingsFixture, geminiApiKey: "", generateBrief: false };
+    render(
+      <QueuePanel
+        settings={settings}
+        readinessComplete={true}
+        onPersistSettings={vi.fn()}
+        onOpenOutputSettings={undefined}
+      />,
+    );
+    const briefChip = screen.getByTestId("output-chip-brief");
+    expect(briefChip).toBeDisabled();
+  });
+
+  it("FDD chip label is used when briefDocMode is fdd", async () => {
+    const settings = {
+      ...settingsFixture,
+      geminiApiKey: "test-key",
+      generateBrief: false,
+      briefDocMode: "fdd" as const,
+    };
+    render(
+      <QueuePanel
+        settings={settings}
+        readinessComplete={true}
+        onPersistSettings={vi.fn()}
+        onOpenOutputSettings={undefined}
+      />,
+    );
+    expect(screen.getByTestId("output-chip-brief")).toHaveTextContent("FDD");
+  });
+
+  it("Brief chip is enabled when geminiApiKey is set", async () => {
+    const settings = {
+      ...settingsFixture,
+      geminiApiKey: "test-key",
+      generateBrief: false,
+      briefDocMode: "brief" as const,
+    };
+    render(
+      <QueuePanel
+        settings={settings}
+        readinessComplete={true}
+        onPersistSettings={vi.fn()}
+        onOpenOutputSettings={undefined}
+      />,
+    );
+    const briefChip = screen.getByTestId("output-chip-brief");
+    expect(briefChip).not.toBeDisabled();
+    expect(briefChip).toHaveTextContent("Brief");
+  });
+
+  it("clicking Brief chip when privacy not acknowledged shows privacy warning", async () => {
+    const user = userEvent.setup();
+    const onPersist = vi.fn();
+    const settings = {
+      ...settingsFixture,
+      geminiApiKey: "test-key",
+      generateBrief: false,
+      briefProviderPrivacyAcknowledged: false,
+    };
+    render(
+      <QueuePanel
+        settings={settings}
+        readinessComplete={true}
+        onPersistSettings={onPersist}
+        onOpenOutputSettings={undefined}
+      />,
+    );
+    await user.click(screen.getByTestId("output-chip-brief"));
+    // Privacy warning should appear, but onPersist should NOT have been called yet
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(onPersist).not.toHaveBeenCalled();
+  });
+
+  it("confirming privacy warning enables Brief and VTT", async () => {
+    const user = userEvent.setup();
+    const onPersist = vi.fn();
+    const settings = {
+      ...settingsFixture,
+      geminiApiKey: "test-key",
+      generateBrief: false,
+      exportWebVtt: false,
+      briefProviderPrivacyAcknowledged: false,
+    };
+    render(
+      <QueuePanel
+        settings={settings}
+        readinessComplete={true}
+        onPersistSettings={onPersist}
+        onOpenOutputSettings={undefined}
+      />,
+    );
+    await user.click(screen.getByTestId("output-chip-brief"));
+    // Click confirm button
+    const confirmBtn = screen.getByRole("button", { name: /i understand/i });
+    await user.click(confirmBtn);
+    expect(onPersist).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generateBrief: true,
+        exportWebVtt: true,
+        briefProviderPrivacyAcknowledged: true,
+      }),
+    );
   });
 });
 

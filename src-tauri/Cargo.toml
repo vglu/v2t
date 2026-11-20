@@ -46,6 +46,11 @@ utoipa-swagger-ui = { version = "8", features = ["axum"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 lopdf = "0.34"
 base64 = { version = "0.22", features = ["std"] }
+printpdf = { version = "0.7", features = ["embedded_images"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+async-trait = "0.1"
+which = "7"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["time", "process", "macros", "rt-multi-thread", "io-util", "net", "sync", "test-util"] }
+tempfile = "3"

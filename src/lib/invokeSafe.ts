@@ -459,3 +459,26 @@ export async function resolveCastboxChannel(url: string): Promise<CastboxChannel
   const { invoke } = await import("@tauri-apps/api/core");
   return await invoke<CastboxChannel>("resolve_castbox_channel", { url });
 }
+
+/**
+ * Run Brief (design-doc PDF) generation for a completed job item.
+ * Returns the path to the generated PDF, or null on failure.
+ */
+export async function runBriefForItem(
+  jobId: string,
+  transcriptPath: string,
+  videoPath: string | null,
+  settings: AppSettings,
+): Promise<string | null> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<string>("run_brief_for_item", {
+      jobId,
+      transcriptPath,
+      videoPath,
+      settings,
+    });
+  } catch {
+    return null;
+  }
+}

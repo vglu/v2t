@@ -26,6 +26,8 @@ export type AcquiredArtifact = {
   nTracks: number;
   /** Approximate size of all wav files, for backpressure accounting (bytes). */
   bytesOnDisk: number;
+  /** Path to video kept for Brief frame extraction (populated when generateBrief=true). */
+  videoForBrief?: string | null;
 };
 
 /** Matches Rust `AcquireOutcome` (serde tag `kind`, camelCase). */

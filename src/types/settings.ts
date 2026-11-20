@@ -17,6 +17,26 @@ export type WhisperAcceleration = "auto" | "cuda" | "vulkan" | "cpu";
 /** When pyannote diarize fails after ASR. */
 export type DiarizeFailPolicy = "keepTranscript" | "failJob";
 
+/** When the Brief stage fails after a successful transcription. */
+export type BriefFailPolicy = "keepTranscript" | "failJob";
+
+/** Shape of the post-transcription design document PDF. */
+export type BriefDocMode = "fdd" | "brief";
+
+/** Quality profile for Brief / FDD generation.
+ * "fast" → briefModel (lite); "accurate" → briefModelAccurate (full Flash, FDD only). */
+export type BriefModelProfile = "fast" | "accurate";
+
+/** Returns the effective Gemini model based on profile and doc mode. */
+export function effectiveBriefModel(settings: AppSettings): string {
+  const useAccurate =
+    settings.briefModelProfile === "accurate" && settings.briefDocMode === "fdd";
+  if (useAccurate) {
+    return settings.briefModelAccurate || "gemini-3.1-flash";
+  }
+  return settings.briefModel || "gemini-3.1-flash-lite";
+}
+
 /** UI language. "auto" lets React derive from navigator.language; the
  * other values are ISO 639-1 codes matching the i18n catalogs in
  * `src/locales/`. Mirror of the Rust `UiLanguage` enum (`settings.rs`). */
@@ -130,6 +150,23 @@ export type AppSettings = {
   maxPendingArtifacts: number;
   /** Backpressure: max total size (MiB) of pending artifacts. */
   maxPendingArtifactsMb: number;
+
+  // ── Brief / FDD (Design Doc PDF) ──────────────────────────────────────────
+
+  /** When true, run the design-doc stage after a successful transcription. */
+  generateBrief: boolean;
+  /** FDD (functional design doc, default) or meeting Brief. */
+  briefDocMode: BriefDocMode;
+  /** Gemini model for design-doc generation (separate from Vision OCR model). */
+  briefModel: string;
+  /** User acknowledged that transcripts + screenshots will be sent to a cloud provider. */
+  briefProviderPrivacyAcknowledged: boolean;
+  /** When the design-doc stage fails: keep transcript or fail the whole job. */
+  briefFailPolicy: BriefFailPolicy;
+  /** Quality profile: "fast" uses briefModel (lite), "accurate" uses briefModelAccurate for FDD. */
+  briefModelProfile: BriefModelProfile;
+  /** Gemini model for accurate profile (default: gemini-3.1-flash). */
+  briefModelAccurate: string;
 };
 
 export type ApiServerSettings = {
@@ -189,6 +226,13 @@ export const defaultAppSettings: AppSettings = {
   transcribeConcurrency: 1,
   maxPendingArtifacts: 10,
   maxPendingArtifactsMb: 4096,
+  generateBrief: false,
+  briefDocMode: "fdd",
+  briefModel: "gemini-3.1-flash-lite",
+  briefProviderPrivacyAcknowledged: false,
+  briefFailPolicy: "keepTranscript",
+  briefModelProfile: "fast",
+  briefModelAccurate: "gemini-3.1-flash",
 };
 
 export type DependencyReport = {

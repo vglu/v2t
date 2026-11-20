@@ -11,7 +11,28 @@
     "diarize": "Speakers (pyannote diarize)",
     "media_tools": "Media tools (ffmpeg, yt-dlp)",
     "subtitles_fast_path": "Subtitles fast-path",
+    "brief": "Brief / FDD (Design Doc)",
     "other": "Other"
+  },
+  "brief": {
+    "intro": "After transcription, generate a PDF design document from the transcript and screenshots (Gemini).",
+    "mode_label": "Document type",
+    "mode_fdd": "FDD — Functional Design Document (default)",
+    "mode_brief": "Brief — meeting decisions & actions",
+    "mode_hint": "FDD mirrors a requirements spec (business rules, glossary, formulas). Brief is meeting minutes style.",
+    "profile_label": "Quality profile",
+    "profile_fast": "Fast — lite model (gemini-3.1-flash-lite)",
+    "profile_accurate": "Accurate — full Flash (better for dense UI / ADO / formulas)",
+    "profile_accurate_hint": "Accurate uses a stronger multimodal model for FDD. Recommended when the meeting has complex UI screenshots, ADO work items, or formulas.",
+    "model_label": "Fast model (profile = Fast)",
+    "model_hint": "Uses the same Gemini API key as Vision. Default: gemini-3.1-flash-lite.",
+    "model_accurate_label": "Accurate model (profile = Accurate, FDD only)",
+    "model_accurate_hint": "Stronger multimodal Flash used when Quality profile = Accurate. Default: gemini-3.1-flash (note: gemini-2.5-flash returned 404 on this key).",
+    "fail_policy_label": "If design-doc generation fails",
+    "fail_keep": "Keep transcript without PDF (recommended)",
+    "fail_job": "Fail the job",
+    "cost_hint": "Estimated cost: ~$0.07 per 1-hour meeting at Flash pricing. Free tier available.",
+    "privacy_note": "Transcripts and screenshots are sent to Google Gemini. Use only with content you can share."
   },
   "output_pack": {
     "intro": "Plain .txt is always written. Optionally keep timed or media siblings next to it."

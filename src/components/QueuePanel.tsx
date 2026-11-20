@@ -11,6 +11,7 @@ import {
   openSessionLog,
   releaseQueueJobSlot,
   resolveCastboxChannel,
+  runBriefForItem,
   saveFailedLinks,
   scanMediaFolder,
   sessionLogAppendUi,
@@ -799,6 +800,26 @@ export function QueuePanel({
     [appendLog, t],
   );
 
+  const retryBriefForItem = useCallback(
+    async (item: QueueItem) => {
+      if (!item.transcriptPath) return;
+      const videoPath = item.artifact?.videoForBrief ?? null;
+      appendLog(`Brief: generating design doc for ${item.displayLabel}…`);
+      const pdfPath = await runBriefForItem(
+        item.id,
+        item.transcriptPath,
+        videoPath,
+        settings,
+      );
+      if (pdfPath) {
+        appendLog(`Brief: PDF saved → ${pdfPath}`);
+      } else {
+        appendLog(`Brief: failed for ${item.displayLabel}`);
+      }
+    },
+    [appendLog, settings],
+  );
+
   const visibleLogLines = useMemo(() => {
     if (showDownloadPercents) return logLines;
     return logLines.filter((l) => !YT_DLP_PERCENT_LINE_RE.test(l));
@@ -912,10 +933,24 @@ export function QueuePanel({
       disabled: !onPersistSettings,
       title: t("profile.chip_info"),
     },
+    {
+      id: "brief",
+      label: settings.briefDocMode === "fdd" ? "FDD" : "Brief",
+      kind: "brief" as const,
+      pressed: settings.generateBrief,
+      disabled: !onPersistSettings || !settings.geminiApiKey,
+      title: !settings.geminiApiKey
+        ? t("profile.chip_brief_needs_key")
+        : settings.briefDocMode === "fdd"
+          ? t("profile.chip_fdd")
+          : t("profile.chip_brief"),
+    },
   ];
 
+  const [briefPrivacyPending, setBriefPrivacyPending] = useState(false);
+
   const toggleOutputChip = useCallback(
-    (id: "vtt" | "video" | "audio" | "info") => {
+    (id: "vtt" | "video" | "audio" | "info" | "brief") => {
       if (!onPersistSettings) return;
       const next: AppSettings = { ...settings };
       if (id === "vtt") {
@@ -924,11 +959,29 @@ export function QueuePanel({
         if (!next.exportWebVtt) {
           next.diarizeSpeakers = false;
           next.labelSpeakers = false;
+          // Brief requires VTT — disable Brief when VTT is turned off.
+          next.generateBrief = false;
         }
       } else if (id === "video") {
         next.keepDownloadedVideo = !settings.keepDownloadedVideo;
       } else if (id === "audio") {
         next.keepDownloadedAudio = !settings.keepDownloadedAudio;
+      } else if (id === "brief") {
+        if (!settings.generateBrief) {
+          // Turning Brief on
+          if (!settings.briefProviderPrivacyAcknowledged) {
+            // Show privacy warning first — don't enable yet
+            setBriefPrivacyPending(true);
+            return;
+          }
+          next.generateBrief = true;
+          // Brief requires VTT — auto-enable
+          if (!next.exportWebVtt) {
+            next.exportWebVtt = true;
+          }
+        } else {
+          next.generateBrief = false;
+        }
       } else {
         next.keepMediaInfo = !settings.keepMediaInfo;
       }
@@ -936,6 +989,22 @@ export function QueuePanel({
     },
     [onPersistSettings, settings],
   );
+
+  const handleBriefPrivacyConfirm = useCallback(() => {
+    if (!onPersistSettings) return;
+    setBriefPrivacyPending(false);
+    const next: AppSettings = {
+      ...settings,
+      generateBrief: true,
+      briefProviderPrivacyAcknowledged: true,
+      exportWebVtt: true,
+    };
+    void onPersistSettings(reconcileProfileId(next));
+  }, [onPersistSettings, settings]);
+
+  const handleBriefPrivacyCancel = useCallback(() => {
+    setBriefPrivacyPending(false);
+  }, []);
 
   const outputFolderLabel = shortOutputFolder(
     settings.outputDir,
@@ -1082,7 +1151,7 @@ export function QueuePanel({
                   data-testid={`output-chip-${chip.id}`}
                   onClick={() => {
                     if (chip.id === "txt") return;
-                    toggleOutputChip(chip.id as "vtt" | "video" | "audio" | "info");
+                    toggleOutputChip(chip.id as "vtt" | "video" | "audio" | "info" | "brief");
                   }}
                 >
                   {chip.label}
@@ -1091,6 +1160,27 @@ export function QueuePanel({
             </div>
           </div>
         </div>
+        {briefPrivacyPending && (
+          <div className="brief-privacy-warning" role="alert">
+            <strong>{t("profile.brief_privacy_title")}</strong>
+            <p>{t("profile.brief_privacy_warning")}</p>
+            <div className="brief-privacy-actions">
+              <button
+                type="button"
+                className="primary"
+                onClick={handleBriefPrivacyConfirm}
+              >
+                {t("profile.brief_privacy_confirm")}
+              </button>
+              <button
+                type="button"
+                onClick={handleBriefPrivacyCancel}
+              >
+                {t("profile.brief_privacy_cancel")}
+              </button>
+            </div>
+          </div>
+        )}
         {onOpenOutputSettings ? (
           <button
             type="button"
@@ -1318,6 +1408,8 @@ export function QueuePanel({
                               onOpenSubtaskLink={openSubtaskLink}
                               onRetryStage={retryTranscribeStage}
                               onRetrySubtask={() => retryTranscribeStage(it)}
+                              showRetryBrief={settings.generateBrief && Boolean(settings.geminiApiKey)}
+                              onRetryBrief={retryBriefForItem}
                             />
                           );
                         })}
@@ -1392,6 +1484,8 @@ type QueueItemRowProps = {
   onOpenSubtaskLink: (url: string) => void;
   onRetryStage: (item: QueueItem) => void;
   onRetrySubtask: () => void;
+  onRetryBrief?: (item: QueueItem) => void;
+  showRetryBrief?: boolean;
 };
 
 function QueueItemRow({
@@ -1406,6 +1500,8 @@ function QueueItemRow({
   onOpenSubtaskLink,
   onRetryStage,
   onRetrySubtask,
+  onRetryBrief,
+  showRetryBrief,
 }: QueueItemRowProps) {
   const { t: tQueue } = useTranslation("queue");
 
@@ -1529,6 +1625,19 @@ function QueueItemRow({
                 onClick={() => onRetryStage(item)}
               >
                 ↻
+              </button>
+            </div>
+          ) : null}
+
+          {showRetryBrief && onRetryBrief && canOpenResult ? (
+            <div className="queue-table-actions-inner">
+              <button
+                type="button"
+                className="queue-table-action-btn"
+                title={tQueue("brief_retry_title", { defaultValue: "Generate Brief (design doc PDF)" })}
+                onClick={() => void onRetryBrief(item)}
+              >
+                Brief
               </button>
             </div>
           ) : null}

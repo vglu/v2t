@@ -15,7 +15,8 @@
     "outputs": "What gets saved",
     "cookies": "YouTube / TikTok",
     "map": "Where to click",
-    "limits": "Limits"
+    "limits": "Limits",
+    "brief": "Brief (Design Doc)"
   },
   "nav_hint": {
     "overview": "What the app does",
@@ -25,7 +26,22 @@
     "outputs": "TXT, VTT, media",
     "cookies": "Age gates and cookies",
     "map": "Preferences map",
-    "limits": "What not to expect"
+    "limits": "What not to expect",
+    "brief": "Design document from meeting"
+  },
+  "brief": {
+    "title": "Brief — Design Document from Meeting",
+    "intro": "Brief generates a structured PDF design document from a recorded meeting. It uses an LLM to extract decisions, action items, open questions, and engineering design details.",
+    "requirements_title": "Requirements",
+    "req_key": "A Gemini API key (Settings → Transcription → Gemini API key).",
+    "req_vtt": "WebVTT enabled (the Brief chip auto-enables it).",
+    "req_video": "For screenshots: the source must have a video track. Audio-only files generate a text-only document.",
+    "privacy_title": "Privacy",
+    "privacy": "Your transcript and screenshots are sent to Google Gemini. Do not use Brief with confidential recordings unless you are on a Gemini data-protection plan.",
+    "output_title": "Output file",
+    "output": "Saved as {stem}.brief.pdf next to the .txt transcript in the output folder.",
+    "cost_title": "Cost estimate",
+    "cost": "Approximately $0.07 per 1-hour meeting using Gemini Flash. Free tier (60 req/min) is usually sufficient for one meeting at a time."
   },
   "overview": {
     "title": "What Video to Text does",

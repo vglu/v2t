@@ -29,12 +29,16 @@ pub struct TimedWord {
 }
 
 /// Overlap between consecutive media chunks when exporting WebVTT (seconds).
-pub const CHUNK_OVERLAP_SECS: f64 = 2.5;
+///
+/// Must be large enough that a later chunk can cover speech lost at the tail of
+/// an earlier chunk. Local Whisper often stops ~2–3 minutes before the end of a
+/// long chunk; a 2.5s overlap cannot recover that.
+pub const CHUNK_OVERLAP_SECS: f64 = 45.0;
 
 const CUE_MAX_CHARS: usize = 64;
 const CUE_MAX_DURATION_MS: u64 = 10_000;
 const CUE_GAP_BREAK_MS: u64 = 500;
-const OVERLAP_NEAR_DUP_START_MS: u64 = 800;
+const OVERLAP_NEAR_DUP_START_MS: u64 = 1_500;
 
 /// A plain transcript paired with factual segment-level timings when available.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -533,24 +537,23 @@ pub fn merge_chunk_transcripts(
 /// Merge chunk transcripts, optionally dropping overlap-region duplicates.
 ///
 /// When `overlap_ms == 0`, behaves like a plain offset+sort merge.
-/// When `overlap_ms > 0`, later-chunk segments that start before
-/// `later_offset + overlap_ms/2`, or that near-duplicate an earlier segment
-/// (normalized text, start within 800 ms), are dropped.
+/// When `overlap_ms > 0`, later-chunk segments that near-duplicate an earlier
+/// segment (normalized text, start within [`OVERLAP_NEAR_DUP_START_MS`]) are
+/// dropped. A blind mid-overlap cutoff is intentionally **not** used: earlier
+/// chunks often go silent 1–3 minutes before their ffmpeg window ends, and the
+/// overlapping head of the next chunk is the only source that can fill that hole.
 pub fn merge_overlapping_chunk_transcripts(
     mut chunks: Vec<(u64, TimedTranscript)>,
     overlap_ms: u64,
 ) -> Result<TimedTranscript, String> {
+    let _ = overlap_ms; // retained for call-site clarity / future tuning
     chunks.sort_by_key(|(offset_ms, _)| *offset_ms);
 
     let mut segments = Vec::new();
     for (offset_ms, transcript) in chunks {
         let mut offset = offset_segments(&transcript.segments, offset_ms)?;
-        if overlap_ms > 0 && !segments.is_empty() {
-            let cutoff = offset_ms.saturating_add(overlap_ms / 2);
+        if !segments.is_empty() {
             offset.retain(|segment| {
-                if segment.start_ms < cutoff {
-                    return false;
-                }
                 !segments.iter().any(|earlier| {
                     near_duplicate_segment(earlier, segment, OVERLAP_NEAR_DUP_START_MS)
                 })
@@ -1844,7 +1847,7 @@ mod tests {
     }
 
     #[test]
-    fn merge_overlapping_drops_early_and_near_duplicate_segments() {
+    fn merge_overlapping_drops_near_duplicate_keeps_non_dup_overlap_head() {
         let chunks = vec![
             (
                 0,
@@ -1861,8 +1864,9 @@ mod tests {
                 TimedTranscript {
                     text: "b".into(),
                     segments: vec![
-                        // Absolute start 3_200 < 3_000 + 1_250 → dropped by cutoff
-                        segment(200, 400, "too early"),
+                        // Absolute 3_200 — unique text in overlap; must be kept so
+                        // early-dying previous chunks can be repaired.
+                        segment(200, 400, "fills hole"),
                         // Absolute start 4_050 near-dup of "overlap edge" at 4_000
                         segment(1_050, 1_400, "Overlap Edge"),
                         segment(2_000, 2_500, "kept later"),
@@ -1873,9 +1877,9 @@ mod tests {
         let merged = merge_overlapping_chunk_transcripts(chunks, 2_500).unwrap();
         let texts: Vec<_> = merged.segments.iter().map(|s| s.text.as_str()).collect();
         assert!(texts.contains(&"kept early"));
+        assert!(texts.contains(&"fills hole"));
         assert!(texts.contains(&"overlap edge"));
         assert!(texts.contains(&"kept later"));
-        assert!(!texts.iter().any(|t| t.eq_ignore_ascii_case("too early")));
         assert_eq!(
             texts
                 .iter()
@@ -1884,8 +1888,48 @@ mod tests {
             1
         );
         assert_eq!(merged.text, plain_text_from_segments(&merged.segments));
-        assert!(!merged.text.contains("too early"));
         assert!(!merged.text.contains("a\n\nb"));
+    }
+
+    #[test]
+    fn merge_overlapping_recovers_early_dying_chunk_tail() {
+        // Reproduces the Labor Management meeting failure mode: chunk 0 goes
+        // silent ~150s before its 480s window ends; chunk 1 starts 180s earlier
+        // and still has speech for that hole.
+        let chunks = vec![
+            (
+                0,
+                TimedTranscript {
+                    text: "early".into(),
+                    segments: vec![
+                        segment(0, 2_000, "intro"),
+                        segment(328_000, 330_000, "last words of chunk0"),
+                    ],
+                },
+            ),
+            (
+                300_000,
+                TimedTranscript {
+                    text: "later".into(),
+                    segments: vec![
+                        segment(5_000, 8_000, "recovered mid meeting"),
+                        segment(40_000, 42_000, "continues after hole"),
+                    ],
+                },
+            ),
+        ];
+        let merged = merge_overlapping_chunk_transcripts(chunks, 180_000).unwrap();
+        let texts: Vec<_> = merged.segments.iter().map(|s| s.text.as_str()).collect();
+        assert!(texts.contains(&"intro"));
+        assert!(texts.contains(&"last words of chunk0"));
+        assert!(texts.contains(&"recovered mid meeting"));
+        assert!(texts.contains(&"continues after hole"));
+        let recovered = merged
+            .segments
+            .iter()
+            .find(|s| s.text == "recovered mid meeting")
+            .expect("hole filler");
+        assert_eq!(recovered.start_ms, 305_000);
     }
 
     #[test]

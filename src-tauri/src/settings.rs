@@ -74,6 +74,25 @@ fn default_max_pending_artifacts_mb() -> u32 {
     4096
 }
 
+fn default_brief_model() -> String {
+    "gemini-3.1-flash-lite".to_string()
+}
+
+fn default_brief_model_accurate() -> String {
+    // Stronger multimodal Flash — full pass-2 quality for dense FDD (ADO, formulas, UI grids).
+    // gemini-3.1-flash-lite is confirmed working; gemini-3.1-flash is the step-up variant.
+    // gemini-2.5-flash returned 404 on this key — do not use as default.
+    "gemini-3.1-flash".to_string()
+}
+
+fn default_brief_model_profile() -> BriefModelProfile {
+    BriefModelProfile::Fast
+}
+
+fn default_brief_doc_mode() -> BriefDocMode {
+    BriefDocMode::Fdd
+}
+
 fn default_profile_id_for_serde() -> String {
     // Missing field in existing settings.json → custom (do not rewrite power-user configs).
     "custom".to_string()
@@ -353,6 +372,30 @@ pub struct AppSettings {
     /// Backpressure: max total size (MiB) of pending artifacts.
     #[serde(default = "default_max_pending_artifacts_mb")]
     pub max_pending_artifacts_mb: u32,
+
+    // ── Brief / FDD (Design Doc PDF) ─────────────────────────────────────────
+
+    /// When true, run the design-doc stage after a successful transcription.
+    #[serde(default)]
+    pub generate_brief: bool,
+    /// Output shape: Functional Design Document (default) or meeting Brief.
+    #[serde(default = "default_brief_doc_mode")]
+    pub brief_doc_mode: BriefDocMode,
+    /// Gemini model for design-doc generation (separate from Vision OCR model).
+    #[serde(default = "default_brief_model")]
+    pub brief_model: String,
+    /// User has acknowledged that transcripts + screenshots will be sent to a cloud provider.
+    #[serde(default)]
+    pub brief_provider_privacy_acknowledged: bool,
+    /// When the design-doc stage fails: keep transcript (soft fail) or fail the whole job.
+    #[serde(default)]
+    pub brief_fail_policy: BriefFailPolicy,
+    /// Quality profile for Brief / FDD generation (fast = lite model, accurate = full Flash).
+    #[serde(default = "default_brief_model_profile")]
+    pub brief_model_profile: BriefModelProfile,
+    /// Gemini model used when `brief_model_profile` = Accurate (default: gemini-3.1-flash).
+    #[serde(default = "default_brief_model_accurate")]
+    pub brief_model_accurate: String,
 }
 
 /// Behavior when the pyannote diarize sidecar fails.
@@ -364,6 +407,56 @@ pub enum DiarizeFailPolicy {
     KeepTranscript,
     /// Fail the job so the operator can fix token / CUDA / env.
     FailJob,
+}
+
+/// Behavior when the Brief (design-doc) stage fails after a successful transcription.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum BriefFailPolicy {
+    /// Job succeeds with a warning; transcript is kept, PDF is missing (default).
+    #[default]
+    KeepTranscript,
+    /// Mark the whole job as failed so the operator can retry.
+    FailJob,
+}
+
+/// Quality profile for Brief / FDD generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum BriefModelProfile {
+    /// Fast / lite model — `brief_model` field (default: gemini-3.1-flash-lite).
+    #[default]
+    Fast,
+    /// Accurate — stronger multimodal Flash for FDD with dense UI / ADO / formulas.
+    /// Uses `brief_model_accurate` field (default: gemini-3.1-flash).
+    Accurate,
+}
+
+/// Shape of the post-transcription design document PDF.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum BriefDocMode {
+    /// Functional Design Document — business rules, glossary, formulas (default).
+    #[default]
+    Fdd,
+    /// Meeting brief — attendees, decisions, action items.
+    Brief,
+}
+
+impl BriefDocMode {
+    pub fn pdf_suffix(self) -> &'static str {
+        match self {
+            BriefDocMode::Fdd => "fdd",
+            BriefDocMode::Brief => "brief",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            BriefDocMode::Fdd => "FDD",
+            BriefDocMode::Brief => "Brief",
+        }
+    }
 }
 
 /// Whether tinydiarize speaker labels may run for this job.
@@ -437,6 +530,35 @@ impl Default for AppSettings {
             transcribe_concurrency: default_transcribe_concurrency(),
             max_pending_artifacts: default_max_pending_artifacts(),
             max_pending_artifacts_mb: default_max_pending_artifacts_mb(),
+            generate_brief: false,
+            brief_doc_mode: BriefDocMode::Fdd,
+            brief_model: default_brief_model(),
+            brief_provider_privacy_acknowledged: false,
+            brief_fail_policy: BriefFailPolicy::KeepTranscript,
+            brief_model_profile: BriefModelProfile::Fast,
+            brief_model_accurate: default_brief_model_accurate(),
+        }
+    }
+}
+
+impl AppSettings {
+    /// Returns the Gemini model to use for Brief / FDD generation.
+    ///
+    /// - `Accurate` profile + FDD mode → `brief_model_accurate` (stronger Flash)
+    /// - `Fast` profile or Brief mode → `brief_model` (lite model)
+    pub fn effective_brief_model(&self) -> String {
+        let use_accurate = self.brief_model_profile == BriefModelProfile::Accurate
+            && matches!(self.brief_doc_mode, BriefDocMode::Fdd);
+        if use_accurate {
+            if self.brief_model_accurate.trim().is_empty() {
+                default_brief_model_accurate()
+            } else {
+                self.brief_model_accurate.clone()
+            }
+        } else if self.brief_model.trim().is_empty() {
+            default_brief_model()
+        } else {
+            self.brief_model.clone()
         }
     }
 }
@@ -642,5 +764,61 @@ mod tests {
     fn default_profile_id_is_simple() {
         assert_eq!(AppSettings::default().profile_id, "simple");
         assert!(AppSettings::default().use_subtitles_when_available);
+    }
+
+    #[test]
+    fn brief_model_profile_defaults_fast() {
+        let s = AppSettings::default();
+        assert_eq!(s.brief_model_profile, BriefModelProfile::Fast);
+        assert_eq!(s.brief_model_accurate, "gemini-3.1-flash");
+    }
+
+    #[test]
+    fn effective_brief_model_fast_profile_returns_lite() {
+        let mut s = AppSettings::default();
+        s.brief_doc_mode = BriefDocMode::Fdd;
+        s.brief_model_profile = BriefModelProfile::Fast;
+        s.brief_model = "gemini-3.1-flash-lite".to_string();
+        s.brief_model_accurate = "gemini-3.1-flash".to_string();
+        assert_eq!(s.effective_brief_model(), "gemini-3.1-flash-lite");
+    }
+
+    #[test]
+    fn effective_brief_model_accurate_fdd_returns_flash() {
+        let mut s = AppSettings::default();
+        s.brief_doc_mode = BriefDocMode::Fdd;
+        s.brief_model_profile = BriefModelProfile::Accurate;
+        s.brief_model = "gemini-3.1-flash-lite".to_string();
+        s.brief_model_accurate = "gemini-3.1-flash".to_string();
+        assert_eq!(s.effective_brief_model(), "gemini-3.1-flash");
+    }
+
+    #[test]
+    fn effective_brief_model_accurate_brief_mode_uses_fast() {
+        let mut s = AppSettings::default();
+        s.brief_doc_mode = BriefDocMode::Brief;
+        s.brief_model_profile = BriefModelProfile::Accurate;
+        s.brief_model = "gemini-3.1-flash-lite".to_string();
+        s.brief_model_accurate = "gemini-3.1-flash".to_string();
+        // Brief mode always uses the fast model even if accurate profile is set
+        assert_eq!(s.effective_brief_model(), "gemini-3.1-flash-lite");
+    }
+
+    #[test]
+    fn brief_model_profile_roundtrip() {
+        let mut s = AppSettings::default();
+        s.brief_model_profile = BriefModelProfile::Accurate;
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains("\"briefModelProfile\":\"accurate\""));
+        let back: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.brief_model_profile, BriefModelProfile::Accurate);
+    }
+
+    #[test]
+    fn missing_brief_model_profile_defaults_fast() {
+        let json = r#"{"outputDir":null,"filenameTemplate":"{title}_{date}.txt","ffmpegPath":null,"ytDlpPath":null,"deleteAudioAfter":true,"apiBaseUrl":"https://api.openai.com/v1","apiModel":"whisper-1","apiKey":"","language":null}"#;
+        let s: AppSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(s.brief_model_profile, BriefModelProfile::Fast);
+        assert_eq!(s.brief_model_accurate, "gemini-3.1-flash");
     }
 }

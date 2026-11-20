@@ -2,13 +2,20 @@ mod api_job_registry;
 mod api_key_store;
 mod api_server;
 mod audio_save;
+pub mod brief_ado;
+pub mod brief_frames;
+pub mod brief_gate;
+pub mod brief_md;
+pub mod brief_pdf;
+pub mod brief_pipeline;
+pub mod brief_provider;
 mod cancel_registry;
 mod castbox;
-mod deps;
+pub mod deps;
 mod diarize;
 mod doc_extract;
 mod failed_links;
-mod gemini_key_store;
+pub mod gemini_key_store;
 mod hf_token_store;
 mod gpu_detect;
 mod job;
@@ -17,10 +24,10 @@ mod model_download;
 mod output_template;
 mod pipeline;
 mod process_kill;
-mod progress;
+pub mod progress;
 mod scan;
 mod session_log;
-mod settings;
+pub mod settings;
 mod subs;
 mod temp_cleanup;
 pub mod timed_transcript;
@@ -450,6 +457,45 @@ fn api_server_apply(
     build_api_server_info(&app, &supervisor)
 }
 
+/// Re-run the Brief (design-doc) stage for an already-transcribed item.
+/// Allows retry without re-transcription (D4/D21).
+#[tauri::command]
+async fn run_brief_for_item(
+    app: tauri::AppHandle,
+    job_id: String,
+    transcript_path: String,
+    video_path: Option<String>,
+    settings: AppSettings,
+) -> Result<String, String> {
+    let cancel = CancellationToken::new();
+    let sink: SinkHandle = TauriSink::handle(app.clone());
+
+    let vtt_path: Option<std::path::PathBuf> = {
+        let p = std::path::Path::new(&transcript_path).with_extension("vtt");
+        if p.is_file() { Some(p) } else { None }
+    };
+    let video_pb: Option<std::path::PathBuf> = video_path
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from);
+
+    let pdf_path = brief_pipeline::run_brief_pipeline(
+        &sink,
+        &job_id,
+        std::path::Path::new(&transcript_path),
+        vtt_path.as_deref(),
+        video_pb.as_deref(),
+        &settings,
+        &cancel,
+    )
+    .await?;
+
+    pdf_path
+        .to_str()
+        .map(str::to_string)
+        .ok_or_else(|| "PDF path is not valid UTF-8".to_string())
+}
+
 /// Generate a fresh bearer token, persist it, and restart the server if running.
 #[tauri::command]
 fn api_server_regenerate_token(
@@ -532,7 +578,8 @@ pub fn run() {
             acquire_media_item,
             transcribe_artifact,
             discard_artifact,
-            resolve_castbox_channel
+            resolve_castbox_channel,
+            run_brief_for_item
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

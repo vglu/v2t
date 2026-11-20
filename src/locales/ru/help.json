@@ -15,7 +15,8 @@
     "outputs": "Что сохраняется",
     "cookies": "YouTube / TikTok",
     "map": "Куда нажимать",
-    "limits": "Ограничения"
+    "limits": "Ограничения",
+    "brief": "Brief (Design Doc)"
   },
   "nav_hint": {
     "overview": "Что делает приложение",
@@ -25,7 +26,8 @@
     "outputs": "TXT, VTT, медиа",
     "cookies": "Возраст и cookies",
     "map": "Карта настроек",
-    "limits": "Чего не ждать"
+    "limits": "Чего не ждать",
+    "brief": "Brief (Design Doc)"
   },
   "overview": {
     "title": "Что делает Video to Text",
@@ -158,3 +160,4 @@
     "l8": "Несохранённые настройки не используются, пока не нажмёте «Сохранить изменения»."
   }
 }
+

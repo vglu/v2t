@@ -3,6 +3,89 @@
 Дата: 2026-03-27. Для передачи исполняющим агентам (Cursor, copilot и т.п.).
 Каждая задача независима. Агент берёт одну задачу, читает только указанные файлы, делает только указанные изменения.
 
+---
+
+## Актуальный пакет (2026-11-20): FDD quality → video-to-spec parity
+
+**PO:** делать по очереди, одна задача за раз. Оркестратор: **Анатолий**.  
+**Контекст:** `docs/FDD-IMPROVEMENTS.md`. PDF — основной артефакт для пользователя (не MD).  
+**Порядок:** TASK-FDD-Q1 → Q2 → Q3 → Q4. После каждой: `cargo check` / `npm run build` + короткий статус.
+
+### TASK-FDD-Q1 — Stronger model profile for FDD ✅
+
+**Статус:** ✅ done (2026-11-20)  
+**Агент:** rust-tauri-reviewer + UI (settings)  
+**Файлы:** `src-tauri/src/settings.rs`, `src/types/settings.ts`, `src/components/SettingsPanel.tsx`, `src/locales/{en,ru}/settings.json`, `src-tauri/src/brief_pipeline.rs`
+
+#### Что сделать
+
+1. Добавить preset качества FDD: `briefModelProfile` = `fast` | `accurate` (или эквивалент).
+2. `fast` (default для Brief / lite): текущий `gemini-3.1-flash-lite` (или настройка `briefModel`).
+3. `accurate` для FDD: более сильная multimodal-модель (актуальный Flash/Pro, доступный ключу — проверить; не оставлять deprecated `2.5-flash`).
+4. В UI Settings → Brief/FDD: выбор профиля + hint «accurate лучше для плотных UI/ADO/формул».
+5. Pipeline: при `briefDocMode=fdd` и profile=accurate использовать модель accurate, если пользователь не переопределил явный `briefModel` под профиль.
+
+#### Проверка
+
+`cargo check`, `npm run build`. Smoke: Settings показывает профиль.
+
+---
+
+### TASK-FDD-Q2 — Inline screenshots under BR (PDF) ✅
+
+**Статус:** ✅ done (2026-11-20) — schema `screenshot_refs`, PDF inline under BR, appendix excludes inline  
+**Агент:** rust-tauri-reviewer / continue after Anatoly limit  
+**Файлы:** `src-tauri/src/brief_provider.rs`, `src-tauri/src/brief_pdf.rs`, `src-tauri/src/brief_md.rs`
+
+#### Что сделать
+
+1. Расширить schema FDD: у `business_rules[]` поле `frame_index` / `screenshot_refs` (опционально).
+2. Промпт: привязывать кадр к правилу, которое он evidencит.
+3. PDF: в секции Business Rules после каждого BR с ref — вставить соответствующий скрин (не только Visual Appendix).
+4. Appendix оставить для кадров без привязки.
+
+#### Проверка
+
+Unit parse test + `cargo test --lib brief_`; ручной PDF на ARB.
+
+---
+
+### TASK-FDD-Q3 — ADO / work-item harvest ✅
+
+**Статус:** ✅ done (2026-11-20) — `brief_ado.rs` harvest + PDF «Work Items (ADO)» + glossary merge  
+**Агент:** continue after Anatoly limit  
+**Файлы:** `brief_ado.rs`, `brief_provider.rs`, `brief_pipeline.rs`, `brief_pdf.rs`
+
+#### Что сделать
+
+1. Извлечь из транскрипта + OCR/caption кадры ids вида `#1129017`, `1125575`.
+2. Попадать в glossary / release notes / отдельный блок «Work items».
+3. Не выдумывать ids — только явно видимые/сказанные.
+
+#### Проверка
+
+Parse fixture test с известными ids из ARB transcript.
+
+---
+
+### TASK-FDD-Q4 — Window-aware crop (без обоев) ✅
+
+**Статус:** ✅ done (2026-11-20) — Teams strip + `refine_png_to_content_window` (variance bbox)  
+**Агент:** continue after model limit  
+**Файлы:** `src-tauri/src/brief_frames.rs`, `Cargo.toml` (`image`)
+
+#### Что сделать
+
+1. Улучшить crop: не только правая полоса Teams, а детекция активного окна приложения (или крупнейший светлый прямоугольник UI) — без desktop wallpaper.
+2. Fallback: текущий Teams strip crop.
+3. Тесты на synthetic / известных размерах.
+
+#### Проверка
+
+`cargo test brief_frames`; визуально ARB кадр без обоев заката.
+
+---
+
 **Актуальный пакет (2026-07-29):** очередь v2 — троттлинг сети + разделение Download / Transcribe.
 Полная спецификация и задачи: **`docs/PLAN-QUEUE-V2.md`** (самодостаточна).
 Порядок: TASK-Q2-1 → Q2-2 → Q2-3 → Q2-4 → Q2-5. TASK-Q2-6 ждёт решения PO.
@@ -1416,6 +1499,289 @@ let results: Vec<Result<(usize, String), String>> = futures::stream::iter(chunk_
 - Не параллелить чанки для `localWhisper` / `browserWhisper`.
 - Не вводить per-host rate limit (одна цель API — только её лимит важен).
 - Не менять текущий формат чекпоинтов.
+
+---
+
+---
+
+## Пакет TASK-BRIEF-* (2026-11-20) — фича Brief (Design Doc PDF)
+
+**BA:** `.cursor/tasks/BA-20261119-213300-alice.md`  
+**REF:** `.cursor/tasks/REF-20261120-video-to-spec-for-brief.md`  
+**PO-решения:** D1–D27 (все OQ закрыты)
+
+### TASK-BRIEF-1 — Settings: добавить поля Brief ✅
+
+**Агент:** rust-tauri-reviewer  
+**Файлы:** `src-tauri/src/settings.rs`, `src/types/settings.ts`
+
+Добавить в `AppSettings` (Rust + TS):
+- `generate_brief: bool` (default false) — чип Brief включён
+- `brief_model: String` (default "gemini-2.5-flash") — модель для Brief
+- `brief_provider_privacy_acknowledged: bool` (default false) — first-run cloud warning acknowledged
+- `brief_fail_policy: BriefFailPolicy` enum: `KeepTranscript` (default) / `FailJob`
+
+Добавить `BriefFailPolicy` enum (Rust) + тип (TS).
+
+**Проверка:** `cargo check`, `npm run build`
+
+---
+
+### TASK-BRIEF-2 — Brief chip в Output row + зависимости VTT/Video ✅
+
+**Агент:** kieran-typescript-reviewer  
+**Файлы:** `src/components/QueuePanel.tsx`, `src/locales/*/queue.json`
+
+Добавить чип `Brief` в `outputFormatChips`:
+- `id: "brief"`, `label: "Brief"`, `pressed: settings.generateBrief`
+- `disabled` если нет geminiApiKey (настроен провайдер)
+- Tooltip: ключ `profile.chip_brief` (добавить во все 8 локалей)
+
+Обновить `toggleOutputChip`:
+- При включении Brief: `exportWebVtt = true` (авто-включить VTT)
+- При отключении VTT: `generateBrief = false` (Brief требует VTT)
+- При включении Brief + нет privacy acknowledgment → показать privacy warning (см. TASK-BRIEF-3)
+
+**Проверка:** `npm run build`, Vitest тест на зависимости чипов
+
+---
+
+### TASK-BRIEF-3 — Privacy first-run warning при первом включении Brief ✅
+
+**Агент:** kieran-typescript-reviewer  
+**Файлы:** `src/components/QueuePanel.tsx`, `src/locales/*/queue.json`
+
+Когда пользователь включает Brief впервые (briefProviderPrivacyAcknowledged === false):
+- Показать inline-предупреждение (аналог warn-hint): "Transcripts and screenshots will be sent to Gemini (Google). Enable Brief only if this is acceptable."
+- Кнопка "I understand, enable Brief" → устанавливает `briefProviderPrivacyAcknowledged = true`, `generateBrief = true`
+- Кнопка "Cancel" → не включает Brief
+
+**Проверка:** `npm run build`
+
+---
+
+### TASK-BRIEF-4 — BriefProvider trait + GeminiProvider + MockProvider (Rust) ✅
+
+**Агент:** rust-tauri-reviewer  
+**Файлы:** `src-tauri/src/brief_provider.rs`
+
+```rust
+#[async_trait]
+pub trait BriefProvider: Send + Sync {
+    async fn detect_moments(&self, transcript: &str, min: usize, max: usize, cancel: &CancellationToken) -> Result<Vec<BriefAnchor>, String>;
+    async fn generate_doc(&self, transcript: &str, frames: &[BriefFrame], cancel: &CancellationToken) -> Result<BriefDoc, String>;
+}
+```
+
+Типы:
+- `BriefAnchor { seconds: f64, label: String, reason: String }`
+- `BriefFrame { index: usize, seconds: f64, label: String, path: PathBuf }`
+- `BriefDoc { title, date, duration, source, summary, attendees, decisions, action_items, open_questions, scope_in, scope_out, acceptance_criteria, risks, screenshot_annotations }`
+
+Реализовать `GeminiProvider` (делает два HTTP-вызова к Gemini API, мультимодальный для pass-2).  
+Реализовать `MockProvider` (только в тестах) — детерминированные ответы.
+
+**Проверка:** `cargo check`
+
+---
+
+### TASK-BRIEF-5 — Frame extraction via ffmpeg (Rust) ✅
+
+**Агент:** v2t-pipeline-specialist  
+**Файлы:** `src-tauri/src/brief_frames.rs`
+
+Функция:
+```rust
+pub async fn extract_frames(ffmpeg: &Path, video: &Path, anchors: &[BriefAnchor], out_dir: &Path, cancel: &CancellationToken) -> Result<Vec<BriefFrame>, String>
+```
+
+- Для каждого anchor: `ffmpeg -ss {seconds} -i {video} -frames:v 1 {out_dir}/{idx:02}_{label}.png`
+- Перцептивный dedup (port dHash из video-to-spec): отброс кадров с hamming-расстоянием ≤ 8
+- Лимит 25 кадров (отбрасывать менее важные при превышении)
+- Временные файлы в `out_dir`
+
+**Проверка:** `cargo check`
+
+---
+
+### TASK-BRIEF-6 — Brief pipeline: anchor detection + doc generation (Rust) ✅
+
+**Агент:** v2t-pipeline-specialist  
+**Файлы:** `src-tauri/src/brief_pipeline.rs`
+
+```rust
+pub async fn run_brief_pipeline(
+    app: &AppHandle, sink: &SinkHandle, job_id: &str,
+    transcript_path: &Path, vtt_path: Option<&Path>,
+    video_path: Option<&Path>, settings: &AppSettings,
+    cancel: &CancellationToken,
+) -> Result<PathBuf, String>
+```
+
+Шаги:
+1. Читать VTT (если есть) → строки для LLM
+2. Если `video_path.is_some()`: pass-1 (detect_moments) → extract_frames → pass-2 (generate_doc with frames)  
+   Иначе: pass-2 без кадров + emit предупреждение "No video — brief without screenshots"
+3. Render PDF → `{stem}.brief.pdf` рядом с transcript
+4. Прогресс: emit phases "brief-anchors", "brief-frames", "brief-doc", "brief-pdf"
+5. Soft fail: при ошибке вернуть `Err(msg)` (job успешен, Brief с ошибкой — по `brief_fail_policy`)
+
+Обработка длинных транскриптов (D19): если VTT > 50_000 chars — разбить на окна для pass-1; pass-2 принимает max 400KB текст.
+
+**Проверка:** `cargo check`
+
+---
+
+### TASK-BRIEF-7 — PDF generation с поддержкой кириллицы (Rust) ✅
+
+**Агент:** rust-tauri-reviewer  
+**Файлы:** `src-tauri/src/brief_pdf.rs`, `src-tauri/assets/fonts/NotoSans-Regular.ttf`, `src-tauri/assets/fonts/NotoSans-Bold.ttf`, `src-tauri/Cargo.toml`
+
+Добавить в `Cargo.toml`:
+```toml
+printpdf = "0.7"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+```
+
+Шрифты: `include_bytes!("../assets/fonts/NotoSans-Regular.ttf")` и Bold.
+
+Функция:
+```rust
+pub fn render_brief_pdf(doc: &BriefDoc, frames: &[BriefFrame], out_path: &Path) -> Result<(), String>
+```
+
+Шаблон секций (D16, BA E4):
+1. Header (title, date, source, duration)
+2. Context / Attendees
+3. Summary
+4. Decisions (список с таймкодом)
+5. Action items / Tasks
+6. Open questions
+7. Engineering design (Scope in/out, AC, Risks)
+8. Visual appendix (кадры с таймкодами и подписями)
+
+Пустые секции: "None stated in the meeting" (D17).  
+Кириллица: NotoSans покрывает U+0400–U+04FF.  
+Word wrap для длинных строк (≤ 180 мм).
+
+**Проверка:** `cargo check`
+
+---
+
+### TASK-BRIEF-8 — Brief post-step в job.rs ✅
+
+**Агент:** rust-tauri-reviewer  
+**Файлы:** `src-tauri/src/job.rs`, `src-tauri/src/lib.rs`
+
+В конце `run_transcribe_stage` (после write_transcript_pair, перед cleanup), если `settings.generate_brief`:
+1. Определить `vtt_path` (если `export_webvtt`)
+2. Определить `video_for_brief` из `artifact.video_for_brief` (см. ниже)
+3. Вызвать `brief_pipeline::run_brief_pipeline(...)` с SinkHandle
+4. Если returns `Err` → по `brief_fail_policy`: KeepTranscript (emit warn, continue) / FailJob (return Err)
+
+В `run_acquire_stage`: когда `settings.generate_brief && is_url`:
+- Дизейблить subtitle fast-path для данного job (`use_subtitles_when_available = false`)
+- Скачать video в `work_dir/video_{stem}.mp4` через yt-dlp best-video → сохранить в `AcquiredArtifact.video_for_brief`
+
+Добавить `video_for_brief: Option<String>` в `AcquiredArtifact`.
+
+Для локальных видеофайлов: `video_for_brief = Some(source_media_files[0])`.
+Для аудио-файлов: `video_for_brief = None`.
+
+**Новая Tauri-команда** `run_brief_for_item`:
+```rust
+#[tauri::command]
+async fn run_brief_for_item(
+    app: AppHandle, job_id: String, transcript_path: String,
+    video_path: Option<String>, settings: AppSettings,
+) -> Result<String, String>
+```
+Позволяет retry Brief без ретранскрипции (D4/D21).
+
+**Проверка:** `cargo check`
+
+---
+
+### TASK-BRIEF-9 — Brief settings section в SettingsPanel.tsx ✅
+
+**Агент:** kieran-typescript-reviewer  
+**Файлы:** `src/components/SettingsPanel.tsx`, `src/locales/*/settings.json`
+
+Новая секция "Brief (Design Doc)" в SettingsPanel:
+- Текстовое поле `briefModel` (модель Gemini для Brief)
+- Выбор политики при сбое (`briefFailPolicy`)
+- Hint о стоимости / free-tier
+- Cost estimate: "~$0.07 per hour-long meeting at Flash pricing"
+
+Показывать секцию только когда `generateBrief === true` (или всегда, но disabled если нет ключа).
+
+**Проверка:** `npm run build`
+
+---
+
+### TASK-BRIEF-10 — i18n: все 8 локалей ✅
+
+**Агент:** kieran-typescript-reviewer  
+**Файлы:** `src/locales/*/queue.json`, `src/locales/*/settings.json`, `src/locales/*/help.json`
+
+Ключи для queue.json (8 локалей):
+- `profile.chip_brief` — tooltip чипа Brief
+- `profile.chip_brief_needs_key` — "Brief needs a Gemini API key"
+- `profile.chip_brief_needs_vtt` — "Brief requires VTT — enabling VTT too"
+- `profile.brief_privacy_warning` — privacy warning text
+- `profile.brief_privacy_confirm` — "I understand, enable Brief"
+- `profile.brief_privacy_cancel` — "Cancel"
+
+Ключи для settings.json (8 локалей):
+- `section.brief` — "Brief (Design Doc)"
+- `brief.model_label`, `brief.model_hint`, `brief.fail_policy_label`, `brief.fail_keep`, `brief.fail_job`, `brief.cost_hint`
+
+Ключи для help.json (8 локалей):
+- `nav.brief`, `nav_hint.brief`, `brief` section
+
+**Проверка:** `npm run build`
+
+---
+
+### TASK-BRIEF-11 — Retry Brief из UI (кнопка на item) ✅
+
+**Агент:** kieran-typescript-reviewer  
+**Файлы:** `src/components/QueuePanel.tsx`
+
+На завершённом item (status=done) при `settings.generateBrief` показывать дополнительную кнопку "Brief ↺" в action column.  
+Вызывает `invoke("run_brief_for_item", { jobId, transcriptPath, videoPath, settings })`.  
+Показывает прогресс в row item (brief-specific phase).
+
+**Проверка:** `npm run build`
+
+---
+
+### TASK-BRIEF-12 — Rust unit tests ✅
+
+**Агент:** rust-tauri-reviewer  
+**Файлы:** `src-tauri/src/brief_provider.rs`, `src-tauri/src/brief_pipeline.rs`, `src-tauri/src/brief_frames.rs`
+
+Тесты:
+- `MockProvider::detect_moments` возвращает 3 anchor-а → pass-1 returns Ok
+- `MockProvider::generate_doc` без видео → doc без screenshots + warning
+- Перцептивный dedup: два идентичных кадра → один остаётся
+- `brief_fail_policy::KeepTranscript` при ошибке провайдера → job не падает
+
+**Проверка:** `cargo test`
+
+---
+
+### TASK-BRIEF-13 — Vitest тесты ✅
+
+**Агент:** kieran-typescript-reviewer  
+**Файлы:** `src/components/QueuePanel.test.tsx` (или рядом)
+
+Тесты:
+- Brief chip включён → VTT chip pressed
+- VTT chip выключен → Brief chip выключен
+- Brief без geminiApiKey → chip disabled + правильный tooltip
+
+**Проверка:** `npm run test:run`
 
 ---
 

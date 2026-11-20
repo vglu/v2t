@@ -15,7 +15,8 @@
     "outputs": "What gets saved",
     "cookies": "YouTube / TikTok",
     "map": "Where to click",
-    "limits": "Limits"
+    "limits": "Limits",
+    "brief": "Brief (Design Doc)"
   },
   "nav_hint": {
     "overview": "What the app does",
@@ -25,7 +26,8 @@
     "outputs": "TXT, VTT, media",
     "cookies": "Age gates and cookies",
     "map": "Preferences map",
-    "limits": "What not to expect"
+    "limits": "What not to expect",
+    "brief": "Brief (Design Doc)"
   },
   "overview": {
     "title": "What Video to Text does",
@@ -158,3 +160,4 @@
     "l8": "Unsaved Preferences are not used until you click Save changes."
   }
 }
+

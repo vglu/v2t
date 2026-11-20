@@ -15,7 +15,8 @@
     "outputs": "Що зберігається",
     "cookies": "YouTube / TikTok",
     "map": "Куди натискати",
-    "limits": "Обмеження"
+    "limits": "Обмеження",
+    "brief": "Brief (Design Doc)"
   },
   "nav_hint": {
     "overview": "Що робить застосунок",
@@ -25,7 +26,8 @@
     "outputs": "TXT, VTT, медіа",
     "cookies": "Вік і cookies",
     "map": "Карта налаштувань",
-    "limits": "Чого не чекати"
+    "limits": "Чого не чекати",
+    "brief": "Brief (Design Doc)"
   },
   "overview": {
     "title": "Що робить Video to Text",
@@ -158,3 +160,4 @@
     "l8": "Незбережені налаштування не використовуються, доки не натиснете «Зберегти зміни»."
   }
 }
+

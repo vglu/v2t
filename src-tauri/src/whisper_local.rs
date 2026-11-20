@@ -920,7 +920,12 @@ pub async fn transcribe_wav_maybe_split_whisper(
     let token = safe_job_token(job_id);
     let payload = pcm_payload_bytes(wav_path)?;
     let duration_sec = (payload as f64 / PCM_BYTES_PER_SEC as f64).max(1.0);
-    if payload <= MAX_UPLOAD_BYTES {
+    // Split whenever the upload cap is exceeded, and also for timed WebVTT when
+    // the file is longer than one chunk window — a single whisper-cli pass on
+    // 8–12 minute audio often loses the last minutes even with intact sound.
+    let must_split =
+        payload > MAX_UPLOAD_BYTES || (export_webvtt && duration_sec > CHUNK_SECS + 0.5);
+    if !must_split {
         let out_base = work_dir.join(format!("v2t-whisper-{token}-0"));
         let transcript = transcribe_one_wav(
             wav_path,
