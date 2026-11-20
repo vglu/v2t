@@ -17,9 +17,9 @@
   "brief": {
     "intro": "After transcription, generate a PDF design document from the transcript and screenshots (Gemini).",
     "mode_label": "Document type",
-    "mode_fdd": "FDD — Functional Design Document (default)",
-    "mode_brief": "Brief — meeting decisions & actions",
-    "mode_hint": "FDD mirrors a requirements spec (business rules, glossary, formulas). Brief is meeting minutes style.",
+    "mode_fdd": "FDD — Functional Design Document",
+    "mode_brief": "Brief — meeting decisions & actions (default)",
+    "mode_hint": "Brief is meeting minutes style. FDD mirrors a requirements spec (business rules, glossary, formulas).",
     "profile_label": "Quality profile",
     "profile_fast": "Fast — lite model (gemini-3.1-flash-lite)",
     "profile_accurate": "Accurate — full Flash (better for dense UI / ADO / formulas)",

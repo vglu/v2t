@@ -1742,8 +1742,8 @@ export function SettingsPanel({
             })
           }
         >
-          <option value="fdd">{t("brief.mode_fdd")}</option>
           <option value="brief">{t("brief.mode_brief")}</option>
+          <option value="fdd">{t("brief.mode_fdd")}</option>
         </select>
         <p className="hint">{t("brief.mode_hint")}</p>
       </label>

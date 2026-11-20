@@ -155,7 +155,7 @@ export type AppSettings = {
 
   /** When true, run the design-doc stage after a successful transcription. */
   generateBrief: boolean;
-  /** FDD (functional design doc, default) or meeting Brief. */
+  /** Meeting Brief (default) or FDD (functional design doc). */
   briefDocMode: BriefDocMode;
   /** Gemini model for design-doc generation (separate from Vision OCR model). */
   briefModel: string;
@@ -227,7 +227,7 @@ export const defaultAppSettings: AppSettings = {
   maxPendingArtifacts: 10,
   maxPendingArtifactsMb: 4096,
   generateBrief: false,
-  briefDocMode: "fdd",
+  briefDocMode: "brief",
   briefModel: "gemini-3.1-flash-lite",
   briefProviderPrivacyAcknowledged: false,
   briefFailPolicy: "keepTranscript",

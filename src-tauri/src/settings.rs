@@ -90,7 +90,7 @@ fn default_brief_model_profile() -> BriefModelProfile {
 }
 
 fn default_brief_doc_mode() -> BriefDocMode {
-    BriefDocMode::Fdd
+    BriefDocMode::Brief
 }
 
 fn default_profile_id_for_serde() -> String {
@@ -378,7 +378,7 @@ pub struct AppSettings {
     /// When true, run the design-doc stage after a successful transcription.
     #[serde(default)]
     pub generate_brief: bool,
-    /// Output shape: Functional Design Document (default) or meeting Brief.
+    /// Output shape: meeting Brief (default) or Functional Design Document.
     #[serde(default = "default_brief_doc_mode")]
     pub brief_doc_mode: BriefDocMode,
     /// Gemini model for design-doc generation (separate from Vision OCR model).
@@ -436,10 +436,10 @@ pub enum BriefModelProfile {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum BriefDocMode {
-    /// Functional Design Document — business rules, glossary, formulas (default).
-    #[default]
+    /// Functional Design Document — business rules, glossary, formulas.
     Fdd,
-    /// Meeting brief — attendees, decisions, action items.
+    /// Meeting brief — attendees, decisions, action items (default).
+    #[default]
     Brief,
 }
 
@@ -531,7 +531,7 @@ impl Default for AppSettings {
             max_pending_artifacts: default_max_pending_artifacts(),
             max_pending_artifacts_mb: default_max_pending_artifacts_mb(),
             generate_brief: false,
-            brief_doc_mode: BriefDocMode::Fdd,
+            brief_doc_mode: BriefDocMode::Brief,
             brief_model: default_brief_model(),
             brief_provider_privacy_acknowledged: false,
             brief_fail_policy: BriefFailPolicy::KeepTranscript,
@@ -771,6 +771,7 @@ mod tests {
         let s = AppSettings::default();
         assert_eq!(s.brief_model_profile, BriefModelProfile::Fast);
         assert_eq!(s.brief_model_accurate, "gemini-3.1-flash");
+        assert_eq!(s.brief_doc_mode, BriefDocMode::Brief);
     }
 
     #[test]

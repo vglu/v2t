@@ -2,6 +2,18 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.22] - 2026-11-20
+
+### Added
+
+- **Brief / FDD design docs** in the desktop app: Gemini multimodal pipeline → Markdown + PDF, with scene/LLM anchors, caption-gate, and Preferences controls (document type + model quality profile). Default document type is **Brief**; FDD is optional.
+- FDD PDF polish: inline screenshots under Business Rules, Work Items / ADO id harvest, Noto Sans fonts.
+- Frame extraction: Teams/Meet strip crop plus content-window refine to drop desktop wallpaper around the active UI.
+
+### Changed
+
+- Accurate model profile uses a stronger Gemini Flash model when **FDD** mode is selected.
+
 ## [2.0.21] - 2026-11-14
 
 ### Fixed
@@ -450,6 +462,7 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.22]: https://github.com/vglu/v2t/releases/tag/v2.0.22
 [2.0.21]: https://github.com/vglu/v2t/releases/tag/v2.0.21
 [2.0.20]: https://github.com/vglu/v2t/releases/tag/v2.0.20
 [2.0.19]: https://github.com/vglu/v2t/releases/tag/v2.0.19
