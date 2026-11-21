@@ -2,6 +2,13 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [2.0.24] - 2026-11-21
+
+### Fixed
+
+- **Folder scan for transcription** only enqueues audio/video (mp4, wav, …). Images, PDF and DOCX no longer land in the Whisper queue.
+- **Queue table layout:** open/reveal/Brief actions stay on one row; long labels ellipsize instead of breaking the grid.
+
 ## [2.0.23] - 2026-11-21
 
 ### Fixed
@@ -468,6 +475,7 @@ Domain spot-check (opening phrase “bulk upload”): Teams / OpenAI / `large-v3
 [1.1.1]: https://github.com/vglu/v2t/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vglu/v2t/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vglu/v2t/releases/tag/v1.0.0
+[2.0.24]: https://github.com/vglu/v2t/releases/tag/v2.0.24
 [2.0.23]: https://github.com/vglu/v2t/releases/tag/v2.0.23
 [2.0.22]: https://github.com/vglu/v2t/releases/tag/v2.0.22
 [2.0.21]: https://github.com/vglu/v2t/releases/tag/v2.0.21

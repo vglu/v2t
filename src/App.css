@@ -1142,13 +1142,43 @@ textarea {
 
 .queue-table-actions-head {
   width: 1%;
+  white-space: nowrap;
   padding-left: 0.25rem !important;
+}
+
+.queue-table-label-cell {
+  max-width: 0;
+  width: 52%;
+}
+
+.queue-table-label-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-table-kind-cell {
+  width: 4.5rem;
+  white-space: nowrap;
+  color: #8b8fa3;
+}
+
+.queue-table-lang-cell {
+  width: 9.5rem;
+  white-space: nowrap;
+}
+
+.queue-table-status-cell {
+  width: 6.5rem;
+  white-space: nowrap;
 }
 
 .queue-status-cell {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
+  white-space: nowrap;
 }
 
 .queue-status-check {
@@ -1160,17 +1190,20 @@ textarea {
 }
 
 .queue-table-actions-cell {
+  width: 1%;
   text-align: right;
   vertical-align: middle;
+  white-space: nowrap;
 }
 
 .queue-table-actions-inner {
   display: inline-flex;
   flex-direction: row;
   flex-wrap: nowrap;
-  gap: 0.2rem;
+  gap: 0.25rem;
   justify-content: flex-end;
   align-items: center;
+  min-height: 2rem;
 }
 
 button.queue-table-action-btn {
@@ -1182,15 +1215,22 @@ button.queue-table-action-btn {
   background: #1a1d26;
   color: #c5c8d4;
   cursor: pointer;
+  height: 2rem;
+  box-sizing: border-box;
 }
 
 button.queue-table-action-btn--icon {
   width: 2rem;
-  height: 2rem;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+button.queue-table-action-btn--brief {
+  padding: 0 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .queue-action-icon {
@@ -1895,6 +1935,28 @@ button.ghost {
 .queue-table th {
   color: #777a73;
   background: #f8f7f3;
+}
+
+.queue-table-kind-cell {
+  color: #8a9088;
+}
+
+button.queue-table-action-btn {
+  border-color: #d5dad3;
+  background: #f4f6f3;
+  color: #2f3631;
+}
+
+button.queue-table-action-btn:hover:not(:disabled) {
+  border-color: #b7c0b6;
+  background: #eef1ec;
+  color: #1c2420;
+}
+
+button.queue-table-action-btn--brief {
+  border-color: #c5d2c8;
+  background: #e8f0ea;
+  color: #234f3b;
 }
 
 .log-panel,
@@ -3243,8 +3305,9 @@ button.preferences-depth-tab--active:hover {
 }
 
 .queue-language-select {
-  width: 148px;
-  min-width: 132px;
+  width: 100%;
+  max-width: 9rem;
+  min-width: 7.5rem;
   padding: 0.28rem 1.5rem 0.28rem 0.45rem;
   font-size: 0.76rem;
   background: #f8faf7;

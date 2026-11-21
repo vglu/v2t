@@ -1593,9 +1593,11 @@ function QueueItemRow({
   return (
     <>
       <tr data-testid="queue-row">
-        <td title={item.source}>{headerLabel}</td>
-        <td>{item.kind}</td>
-        <td>
+        <td className="queue-table-label-cell" title={item.source}>
+          <span className="queue-table-label-text">{headerLabel}</span>
+        </td>
+        <td className="queue-table-kind-cell">{item.kind}</td>
+        <td className="queue-table-lang-cell">
           <select
             className="queue-language-select"
             aria-label={tQueue("language.item_aria", {
@@ -1617,7 +1619,7 @@ function QueueItemRow({
             ))}
           </select>
         </td>
-        <td>
+        <td className="queue-table-status-cell">
           <div className="queue-status-cell">
             {showDoneCheck ? (
               <span className="queue-status-check" aria-hidden>
@@ -1628,31 +1630,31 @@ function QueueItemRow({
           </div>
         </td>
         <td className="queue-table-actions-cell">
-          {canOpenResult && outPath ? (
-            <div className="queue-table-actions-inner">
-              <button
-                type="button"
-                className="queue-table-action-btn queue-table-action-btn--icon"
-                title={tQueue("actions.show_in_folder")}
-                aria-label={tQueue("actions.show_in_folder")}
-                onClick={() => onReveal(outPath)}
-              >
-                <IconRevealInFolder className="queue-action-icon" />
-              </button>
-              <button
-                type="button"
-                className="queue-table-action-btn queue-table-action-btn--icon"
-                title={tQueue("actions.open_file")}
-                aria-label={tQueue("actions.open_file")}
-                onClick={() => onOpen(outPath)}
-              >
-                <IconOpenFile className="queue-action-icon" />
-              </button>
-            </div>
-          ) : null}
+          <div className="queue-table-actions-inner">
+            {canOpenResult && outPath ? (
+              <>
+                <button
+                  type="button"
+                  className="queue-table-action-btn queue-table-action-btn--icon"
+                  title={tQueue("actions.show_in_folder")}
+                  aria-label={tQueue("actions.show_in_folder")}
+                  onClick={() => onReveal(outPath)}
+                >
+                  <IconRevealInFolder className="queue-action-icon" />
+                </button>
+                <button
+                  type="button"
+                  className="queue-table-action-btn queue-table-action-btn--icon"
+                  title={tQueue("actions.open_file")}
+                  aria-label={tQueue("actions.open_file")}
+                  onClick={() => onOpen(outPath)}
+                >
+                  <IconOpenFile className="queue-action-icon" />
+                </button>
+              </>
+            ) : null}
 
-          {retryThisStage ? (
-            <div className="queue-table-actions-inner">
+            {retryThisStage ? (
               <button
                 type="button"
                 className="queue-table-action-btn queue-table-action-btn--icon"
@@ -1662,21 +1664,21 @@ function QueueItemRow({
               >
                 ↻
               </button>
-            </div>
-          ) : null}
+            ) : null}
 
-          {showRetryBrief && onRetryBrief && canOpenResult ? (
-            <div className="queue-table-actions-inner">
+            {showRetryBrief && onRetryBrief && canOpenResult ? (
               <button
                 type="button"
-                className="queue-table-action-btn"
-                title={tQueue("brief_retry_title", { defaultValue: "Generate Brief (design doc PDF)" })}
+                className="queue-table-action-btn queue-table-action-btn--brief"
+                title={tQueue("brief_retry_title", {
+                  defaultValue: "Generate Brief (design doc PDF)",
+                })}
                 onClick={() => void onRetryBrief(item)}
               >
                 Brief
               </button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </td>
       </tr>
 
