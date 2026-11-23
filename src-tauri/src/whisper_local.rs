@@ -12,8 +12,8 @@ use crate::pipeline::{self, JOB_CANCELLED_MSG};
 use crate::process_kill;
 use crate::progress::{JobEvent, QueueJobProgressEvent, SinkHandle};
 use crate::timed_transcript::{
-    build_cues_from_words, merge_overlapping_chunk_transcripts, plain_text_from_segments,
-    read_timed_checkpoint,
+    build_cues_from_words, collapse_hallucination_loops, has_hallucination_loops,
+    merge_overlapping_chunk_transcripts, plain_text_from_segments, read_timed_checkpoint,
     require_timed_segments_for_export, secs_to_ms, validate_segments_against_media_duration,
     write_timed_checkpoint, TimedSegment, TimedTranscript, TimedWord, CHUNK_OVERLAP_SECS,
 };
@@ -312,6 +312,8 @@ async fn transcribe_one_wav(
         args.push("-ml".into());
         args.push(WEBVTT_MAX_SEGMENT_CHARS.into());
         args.push("-sow".into());
+        // Suppress non-speech tokens — reduces silence/crosstalk hallucination loops.
+        args.push("--suppress-nst".into());
         if let Some(preset) = dtw_preset_from_model_path(model_path) {
             args.push("-dtw".into());
             args.push(preset.into());
@@ -325,6 +327,7 @@ async fn transcribe_one_wav(
         }
     } else {
         args.push("-otxt".into());
+        args.push("--suppress-nst".into());
     }
 
     let mut out =
@@ -367,6 +370,91 @@ async fn transcribe_one_wav(
         }
     }
 
+    let mut transcript = read_whisper_transcript(out_base, export_webvtt, label_speakers)?;
+
+    // One anti-loop retry: temperature bump + VAD (if not already) when the first
+    // pass produced consecutive identical cues (classic silence hallucination).
+    if has_hallucination_loops(&transcript) {
+        sink.emit(JobEvent::QueueJobProgress(QueueJobProgressEvent {
+            job_id: job_id.to_string(),
+            phase: "whisper".to_string(),
+            message: "ASR loop detected — retrying chunk with temperature + VAD…".into(),
+            subtask_index: None,
+            subtask_total: None,
+            subtask_percent: None,
+        }));
+        let retry_base = out_base.with_file_name(format!(
+            "{}-antiloop",
+            out_base
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("v2t-whisper")
+        ));
+        let mut retry_args = args.clone();
+        retry_args.retain(|a| a != "-of");
+        // Replace -of path
+        if let Some(idx) = retry_args.iter().position(|a| a == "-of") {
+            if idx + 1 < retry_args.len() {
+                retry_args[idx + 1] = retry_base.to_string_lossy().into_owned();
+            }
+        } else {
+            retry_args.push("-of".into());
+            retry_args.push(retry_base.to_string_lossy().into_owned());
+        }
+        if !retry_args.iter().any(|a| a == "--vad") {
+            if let Some(vad_model) = locate_vad_model(app) {
+                retry_args.push("--vad".into());
+                retry_args.push("--vad-model".into());
+                retry_args.push(vad_model.to_string_lossy().into_owned());
+                retry_args.push("-vsd".into());
+                retry_args.push("400".into());
+            }
+        }
+        retry_args.push("-tp".into());
+        retry_args.push("0.20".into());
+        match run_whisper_cli_with_progress(cli, &retry_args, WHISPER_TIMEOUT, cancel, sink, job_id)
+            .await
+        {
+            Ok(retry_out) if retry_out.status.success() => {
+                if let Ok(retried) =
+                    read_whisper_transcript(&retry_base, export_webvtt, label_speakers)
+                {
+                    transcript = retried;
+                }
+            }
+            _ => {}
+        }
+        let _ = std::fs::remove_file(retry_base.with_extension("json"));
+        let _ = std::fs::remove_file(retry_base.with_extension("txt"));
+    }
+
+    let (transcript, loop_stats) = collapse_hallucination_loops(transcript);
+    if loop_stats.had_loops() {
+        sink.emit(JobEvent::QueueJobProgress(QueueJobProgressEvent {
+            job_id: job_id.to_string(),
+            phase: "whisper".to_string(),
+            message: format!(
+                "Collapsed {} ASR loop(s) (~{:.1} min marked lost)",
+                loop_stats.collapsed_runs,
+                loop_stats.lost_ms as f64 / 60_000.0
+            ),
+            subtask_index: None,
+            subtask_total: None,
+            subtask_percent: None,
+        }));
+    }
+
+    if export_webvtt {
+        require_timed_segments_for_export(&transcript, true, "Local Whisper")?;
+    }
+    Ok(transcript)
+}
+
+fn read_whisper_transcript(
+    out_base: &Path,
+    export_webvtt: bool,
+    label_speakers: bool,
+) -> Result<TimedTranscript, String> {
     if export_webvtt {
         let json_path = out_base.with_extension("json");
         let json = match read_text_file_lossy(&json_path) {
@@ -380,7 +468,6 @@ async fn transcribe_one_wav(
             Err(e) => return Err(format!("read whisper json: {e}")),
         };
         let transcript = parse_whisper_json(&json, label_speakers)?;
-        require_timed_segments_for_export(&transcript, true, "Local Whisper")?;
         let _ = std::fs::remove_file(&json_path);
         Ok(transcript)
     } else {
@@ -1068,6 +1155,22 @@ pub async fn transcribe_wav_maybe_split_whisper(
                 .join("\n\n"),
         )
     };
+    // Final pass across chunk boundaries (loops can span the merge).
+    let (transcript, loop_stats) = collapse_hallucination_loops(transcript);
+    if loop_stats.had_loops() {
+        sink.emit(JobEvent::QueueJobProgress(QueueJobProgressEvent {
+            job_id: job_id.to_string(),
+            phase: "whisper".to_string(),
+            message: format!(
+                "Collapsed {} ASR loop(s) after merge (~{:.1} min marked lost)",
+                loop_stats.collapsed_runs,
+                loop_stats.lost_ms as f64 / 60_000.0
+            ),
+            subtask_index: None,
+            subtask_total: None,
+            subtask_percent: None,
+        }));
+    }
 
     Ok(TimedTranscribeOutcome {
         transcript,

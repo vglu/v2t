@@ -586,10 +586,147 @@ fn near_duplicate_segment(a: &TimedSegment, b: &TimedSegment, start_tol_ms: u64)
 }
 
 fn normalize_cue_text(text: &str) -> String {
-    text.split_whitespace()
+    let (_, body) = extract_voice_speaker(text);
+    body.split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
+}
+
+/// Minimum consecutive identical cues before we treat them as an ASR hallucination loop.
+pub const HALLUCINATION_LOOP_MIN_RUN: usize = 4;
+/// Ignore very short cues (noise tokens) when detecting loops.
+const HALLUCINATION_LOOP_MIN_CHARS: usize = 12;
+/// Only insert a "[lost …]" marker when the collapsed span is at least this long.
+const HALLUCINATION_LOOP_MARK_MIN_MS: u64 = 5_000;
+
+/// Stats from [`collapse_hallucination_loops`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LoopCollapseStats {
+    pub collapsed_runs: u32,
+    pub dropped_segments: u32,
+    pub lost_ms: u64,
+}
+
+impl LoopCollapseStats {
+    pub fn had_loops(&self) -> bool {
+        self.collapsed_runs > 0
+    }
+}
+
+/// True when the timed transcript contains a consecutive hallucination loop.
+pub fn has_hallucination_loops(transcript: &TimedTranscript) -> bool {
+    if transcript.segments.len() < HALLUCINATION_LOOP_MIN_RUN {
+        return false;
+    }
+    let mut i = 0;
+    while i < transcript.segments.len() {
+        let norm = normalize_cue_text(&transcript.segments[i].text);
+        if norm.chars().count() < HALLUCINATION_LOOP_MIN_CHARS {
+            i += 1;
+            continue;
+        }
+        let mut j = i + 1;
+        while j < transcript.segments.len()
+            && normalize_cue_text(&transcript.segments[j].text) == norm
+        {
+            j += 1;
+        }
+        if j - i >= HALLUCINATION_LOOP_MIN_RUN {
+            return true;
+        }
+        i = j;
+    }
+    false
+}
+
+/// Collapse Whisper hallucination loops: the same cue text repeated many times
+/// in a row (common on silence / crosstalk). Keeps the first cue and, when the
+/// collapsed span is long enough, inserts an English `[lost …]` marker so the
+/// gap is visible instead of a wall of duplicates.
+pub fn collapse_hallucination_loops(transcript: TimedTranscript) -> (TimedTranscript, LoopCollapseStats) {
+    if transcript.segments.is_empty() {
+        let (text, stats) = collapse_repeated_plain_lines(&transcript.text);
+        return (
+            TimedTranscript {
+                text,
+                segments: Vec::new(),
+            },
+            stats,
+        );
+    }
+
+    let mut out: Vec<TimedSegment> = Vec::with_capacity(transcript.segments.len());
+    let mut stats = LoopCollapseStats::default();
+    let mut i = 0;
+    while i < transcript.segments.len() {
+        let norm = normalize_cue_text(&transcript.segments[i].text);
+        let mut j = i + 1;
+        if norm.chars().count() >= HALLUCINATION_LOOP_MIN_CHARS {
+            while j < transcript.segments.len()
+                && normalize_cue_text(&transcript.segments[j].text) == norm
+            {
+                j += 1;
+            }
+        }
+        let run = j - i;
+        if run >= HALLUCINATION_LOOP_MIN_RUN {
+            let first = transcript.segments[i].clone();
+            let last_end = transcript.segments[j - 1].end_ms;
+            let marker_start = first.end_ms.max(first.start_ms.saturating_add(1));
+            let lost_ms = last_end.saturating_sub(marker_start);
+            out.push(first);
+            if lost_ms >= HALLUCINATION_LOOP_MARK_MIN_MS {
+                let lost_min = lost_ms as f64 / 60_000.0;
+                out.push(TimedSegment {
+                    start_ms: marker_start,
+                    end_ms: last_end.max(marker_start.saturating_add(1)),
+                    text: format!("[lost ~{lost_min:.1} min — ASR loop collapsed]"),
+                    speaker: None,
+                });
+            }
+            stats.collapsed_runs += 1;
+            stats.dropped_segments += (run - 1) as u32;
+            stats.lost_ms = stats.lost_ms.saturating_add(lost_ms);
+            i = j;
+        } else {
+            out.push(transcript.segments[i].clone());
+            i += 1;
+        }
+    }
+
+    (TimedTranscript::from_segments(out), stats)
+}
+
+fn collapse_repeated_plain_lines(text: &str) -> (String, LoopCollapseStats) {
+    let mut stats = LoopCollapseStats::default();
+    let mut out: Vec<String> = Vec::new();
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let norm = normalize_cue_text(lines[i]);
+        let mut j = i + 1;
+        if norm.chars().count() >= HALLUCINATION_LOOP_MIN_CHARS {
+            while j < lines.len() && normalize_cue_text(lines[j]) == norm {
+                j += 1;
+            }
+        }
+        let run = j - i;
+        if run >= HALLUCINATION_LOOP_MIN_RUN {
+            out.push(lines[i].to_string());
+            out.push(format!(
+                "[lost — ASR loop collapsed, {} duplicate lines removed]",
+                run - 1
+            ));
+            stats.collapsed_runs += 1;
+            stats.dropped_segments += (run - 1) as u32;
+            i = j;
+        } else {
+            out.push(lines[i].to_string());
+            i += 1;
+        }
+    }
+    (out.join("\n"), stats)
 }
 
 /// Convert a floating-point second offset (ffmpeg `-ss`) into whole milliseconds.
@@ -1844,6 +1981,44 @@ mod tests {
         let (sp3, body3) = extract_voice_speaker("plain");
         assert_eq!(sp3, None);
         assert_eq!(body3, "plain");
+    }
+
+    #[test]
+    fn collapse_hallucination_loops_keeps_first_and_marks_lost() {
+        let mut segments = vec![segment(0, 1_000, "intro unique")];
+        for i in 0..6u64 {
+            let start = 60_000 + i * 8_000;
+            segments.push(segment(
+                start,
+                start + 7_000,
+                "URL, and tenant ID .",
+            ));
+        }
+        segments.push(segment(200_000, 201_000, "outro unique"));
+        let (out, stats) = collapse_hallucination_loops(TimedTranscript::from_segments(segments));
+        assert!(stats.had_loops());
+        assert_eq!(stats.collapsed_runs, 1);
+        assert!(stats.dropped_segments >= 5);
+        let texts: Vec<_> = out.segments.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(texts[0], "intro unique");
+        assert_eq!(texts[1], "URL, and tenant ID .");
+        assert!(texts[2].starts_with("[lost ~"));
+        assert!(texts[2].contains("ASR loop collapsed"));
+        assert_eq!(*texts.last().unwrap(), "outro unique");
+        assert!(!has_hallucination_loops(&out));
+    }
+
+    #[test]
+    fn collapse_hallucination_loops_ignores_short_runs() {
+        let segments = vec![
+            segment(0, 1_000, "same phrase here"),
+            segment(1_000, 2_000, "same phrase here"),
+            segment(2_000, 3_000, "same phrase here"),
+            segment(3_000, 4_000, "different"),
+        ];
+        let (out, stats) = collapse_hallucination_loops(TimedTranscript::from_segments(segments));
+        assert!(!stats.had_loops());
+        assert_eq!(out.segments.len(), 4);
     }
 
     #[test]
